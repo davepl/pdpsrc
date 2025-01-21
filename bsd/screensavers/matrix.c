@@ -24,14 +24,6 @@
 #define SCREEN_HEIGHT 24
 
 
-/*
-** Strings to load a VT220 softfont providing the extra Matrix characters, select it and unselect it.
-** This softfont contains 46 mirrored katakana as ASCII !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMN
-** The real term is a Dynamically Replaceable Character Sets (DRCS) loaded into the terminal's
-** memory using a Down-Line-Loading DRCS (DECDLD) control string. The font is built using Sixels.
-** Font design by Philippe Majerus, January 2025
-*/
-#define LOAD_MATRIX_SOFTFONT "\033P1;1;2{ MMQAyAAA\?/\?\?\?\?@A\?\?;\?ACwGOO\?/\?\?\?B\?\?\?\?;{CCECC[\?/\?@AAA\?\?\?;\?CC{CC\?\?/AAABAAA\?;CC}ScCC\?/\?\?B\?\?@A\?;{CCC}CC\?/@AAA\?@A\?;_gg}gg_\?/\?\?\?B\?\?\?\?;{CCCCMO\?/\?@AAA\?\?\?;CC{CCMO\?/\?\?\?@AA\?\?;{CCCCCC\?/BAAAAAA\?;C}CCC]C\?/\?\?@AAA\?\?;]_\?\?SSS\?/\?\?@AAAA\?;EIqaAAA\?/A@\?\?@AA\?;KSCCC}C\?/AAAAA@\?\?;Mo\?\?\?WE\?/\?\?@AAAA\?;{csSCMO\?/\?@AAAA\?\?;OQQ{SSO\?/\?\?\?@A\?\?\?;]_\?M\?\?M\?/\?\?@AAAA\?;GIIyIIG\?/\?\?\?@A\?\?\?;OOGG}\?\?\?/\?\?\?\?B\?\?\?;GGG}GGG\?/\?\?\?@AA\?\?;\?CCCCC\?\?/AAAAAAA\?;MQaQAAA\?/A@\?@AA\?\?;CkSecCC\?/@\?\?B\?@@\?;Mo\?\?\?\?\?\?/\?\?@@AAA\?;\?wC\?[_\?\?/B\?\?\?\?@A\?;CCCGGG}\?/AAAAAA@\?;]aAAAAA\?/\?\?@AAA\?\?;\?_OGCGO\?/@\?\?\?\?\?\?\?;CsC}CsC\?/@\?\?BA\?@\?;EIQaaQA\?/\?\?A@\?\?\?\?;CSQIII\?\?/AAA@@@@\?;\?o\?EW_\?\?/B@@AABA\?;MO_OG\?\?\?/A@\?@AAA\?;OQQQ}QO\?/AAAA@\?\?\?;WgGG}GG\?/\?\?@\?B\?\?\?;\?\?{CCC\?\?/AABAAAA\?;}QQQQQQ\?/BAAAAAA\?;WiIIIIG\?/\?\?@AAA\?\?;}\?\?\?\?\?]\?/\?@AAAA\?\?;_\?}\?\?}\?\?/\?@B\?\?@A\?;O_\?\?\?\?}\?/\?\?@@AAB\?;}AAAAA}\?/BAAAAAB\?;]aAAAAM\?/\?\?@AAA\?\?;]iIIIII\?/\?\?@AAA\?\?;]_\?\?CCC\?/\?\?@AAAA\?\033\\"
 #define SELECT_MATRIX_SOFTFONT "\033( M"
 #define UNSELECT_SOFTFONT "\033(B"
 
@@ -47,10 +39,86 @@ struct Trail {
 struct Trail trails[MAX_TRAILS];
 int trail_timer = 0;
 
+/* Keep track of whether the Matrix softfont or the default ASCII ROM font is selected */
+int softfontCharsetSelected = 0;
+
+
+void loadMatrixSoftfont()
+{
+    int i;
+
+    /*
+    ** Strings to load a VT220 softfont providing the extra Matrix characters, select it and unselect it.
+    ** This softfont contains 46 mirrored katakana as ASCII !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMN
+    ** The real term is a Dynamically Replaceable Character Sets (DRCS) loaded into the terminal's
+    ** memory using a Down-Line-Loading DRCS (DECDLD) control string. The font is built using Sixels.
+    ** Font design by Philippe Majerus, January 2025
+    */
+    const char* softfont[] = {
+        // DECDLD parameters
+        "\033P1;1;2{ M",
+        // Characters sixels:
+        /* ! */ "MQAyAAA\?/\?\?\?\?@A\?\?"    ";",
+        /* " */ "\?ACwGOO\?/\?\?\?B\?\?\?\?"  ";",
+        /* # */ "{CCECC[\?/\?@AAA\?\?\?"      ";",
+        /* $ */ "\?CC{CC\?\?/AAABAAA\?"       ";",
+        /* % */ "CC}ScCC\?/\?\?B\?\?@A\?"     ";",
+        /* & */ "{CCC}CC\?/@AAA\?@A\?"        ";",
+        /* ' */ "_gg}gg_\?/\?\?\?B\?\?\?\?"   ";",
+        /* ( */ "{CCCCMO\?/\?@AAA\?\?\?"      ";",
+        /* ) */ "CC{CCMO\?/\?\?\?@AA\?\?"     ";",
+        /* * */ "{CCCCCC\?/BAAAAAA\?"         ";",
+        /* + */ "C}CCC]C\?/\?\?@AAA\?\?"      ";",
+        /* , */ "]_\?\?SSS\?/\?\?@AAAA\?"     ";",
+        /* - */ "EIqaAAA\?/A@\?\?@AA\?"       ";",
+        /* . */ "KSCCC}C\?/AAAAA@\?\?"        ";",
+        /* / */ "Mo\?\?\?WE\?/\?\?@AAAA\?"    ";",
+        /* 0 */ "{csSCMO\?/\?@AAAA\?\?"       ";",
+        /* 1 */ "OQQ{SSO\?/\?\?\?@A\?\?\?"    ";",
+        /* 2 */ "]_\?M\?\?M\?/\?\?@AAAA\?"    ";",
+        /* 3 */ "GIIyIIG\?/\?\?\?@A\?\?\?"    ";",
+        /* 4 */ "OOGG}\?\?\?/\?\?\?\?B\?\?\?" ";",
+        /* 5 */ "GGG}GGG\?/\?\?\?@AA\?\?"     ";",
+        /* 6 */ "\?CCCCC\?\?/AAAAAAA\?"       ";",
+        /* 7 */ "MQaQAAA\?/A@\?@AA\?\?"       ";",
+        /* 8 */ "CkSecCC\?/@\?\?B\?@@\?"      ";",
+        /* 9 */ "Mo\?\?\?\?\?\?/\?\?@@AAA\?"  ";",
+        /* : */ "\?wC\?[_\?\?/B\?\?\?\?@A\?"  ";",
+        /* ; */ "CCCGGG}\?/AAAAAA@\?"         ";",
+        /* < */ "]aAAAAA\?/\?\?@AAA\?\?"      ";",
+        /* = */ "\?_OGCGO\?/@\?\?\?\?\?\?\?"  ";",
+        /* > */ "CsC}CsC\?/@\?\?BA\?@\?"      ";",
+        /* ? */ "EIQaaQA\?/\?\?A@\?\?\?\?"    ";",
+        /* @ */ "CSQIII\?\?/AAA@@@@\?"        ";",
+        /* A */ "\?o\?EW_\?\?/B@@AABA\?"      ";",
+        /* B */ "MO_OG\?\?\?/A@\?@AAA\?"      ";",
+        /* C */ "OQQQ}QO\?/AAAA@\?\?\?"       ";",
+        /* D */ "WgGG}GG\?/\?\?@\?B\?\?\?"    ";",
+        /* E */ "\?\?{CCC\?\?/AABAAAA\?"      ";",
+        /* F */ "}QQQQQQ\?/BAAAAAA\?"         ";",
+        /* G */ "WiIIIIG\?/\?\?@AAA\?\?"      ";",
+        /* H */ "}\?\?\?\?\?]\?/\?@AAAA\?\?"  ";",
+        /* I */ "_\?}\?\?}\?\?/\?@B\?\?@A\?"  ";",
+        /* J */ "O_\?\?\?\?}\?/\?\?@@AAB\?"   ";",
+        /* K */ "}AAAAA}\?/BAAAAAB\?"         ";",
+        /* L */ "]aAAAAM\?/\?\?@AAA\?\?"      ";",
+        /* M */ "]iIIIII\?/\?\?@AAA\?\?"      ";",
+        /* N */ "]_\?\?CCC\?/\?\?@AAAA\?"     "\033\\"
+        // Other characters are not defined in this softfont
+    };
+    
+    for (i=0;i<sizeof(softfont)/sizeof(softfont[0]);i++)
+    {
+        printf("%s", softfont[i]);
+    }
+}
+
 /* Signal handler to restore the cursor and reset scrolling region */
 void restore_on_exit(signum)
 int signum;
 {
+    /* Ensure we don't leave the Matrix softfont selected */
+    printf(UNSELECT_SOFTFONT);
     /* Show the cursor again */
     printf("\033[?25h");
     /* Reset scrolling region to the entire screen (1..24 or as needed) */
@@ -103,15 +171,23 @@ void update_trails()
                 {
                     // Normal ASCII character
                     c += '!';
+                    if (softfontCharsetSelected)
+                    {
+                        printf(UNSELECT_SOFTFONT);
+                        softfontCharsetSelected = 0;
+                    }
                     putchar(c);
                 }
                 else
                 {
                     // Mirrored Katakana character
                     c = c - 94 + '!';
-                    printf(SELECT_MATRIX_SOFTFONT);
+                    if (!softfontCharsetSelected)
+                    {
+                        printf(SELECT_MATRIX_SOFTFONT);
+                        softfontCharsetSelected = 1;
+                    }
                     putchar(c);
-                    printf(UNSELECT_SOFTFONT);
                 }
                 
                 /* Increment the number of rows drawn */
@@ -147,7 +223,7 @@ int main()
     printf("\033[1;24r");
 
     /* Load Matrix softfont */
-    printf(LOAD_MATRIX_SOFTFONT);
+    loadMatrixSoftfont();
 
     /* Clear screen */
     printf("\033[2J");
