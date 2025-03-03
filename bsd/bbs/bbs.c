@@ -7,6 +7,9 @@
 #define MAX_MENU_DEPTH 10
 #define USERNAME_LEN 20
 #define PASSWORD_HASH_LEN 32
+#define USERS_FILE "users.dat"
+#define MAX_USERS 100
+#define SALT_LENGTH 8
 
 /* MenuOption struct: Represents an option in a menu, which can lead to a function or submenu */
 typedef struct {
@@ -55,6 +58,11 @@ void file_transfers(void);
 void online_games(void);
 void view_profile(void);
 void edit_profile(void);
+void load_users(void);
+void save_users(void);
+int find_user(const char *username);
+void hash_password(const char *password, char *hashed);
+int verify_password(const char *password, const char *hashed);
 
 /* Menu stack management */
 void push_menu(Menu *menu) {
@@ -157,23 +165,93 @@ void init_system(void) {
     user_profile_menu.options[1].function = edit_profile;
 
     /* Load user data from file */
-    /* TODO: Implement load_users() to read users from a file */
+    load_users();
 }
 
+/* Initialize users array */
+void load_users(void) {
+    FILE *file = fopen(USERS_FILE, "rb");
+    users = malloc(sizeof(User) * MAX_USERS);
+    num_users = 0;
+
+    if (file != NULL) {
+        /* Read number of users */
+        fread(&num_users, sizeof(int), 1, file);
+        /* Read user data */
+        fread(users, sizeof(User), num_users, file);
+        fclose(file);
+    }
+}
+
+/* Save users to file */
+void save_users(void) {
+    FILE *file = fopen(USERS_FILE, "wb");
+    if (file != NULL) {
+        fwrite(&num_users, sizeof(int), 1, file);
+        fwrite(users, sizeof(User), num_users, file);
+        fclose(file);
+    }
+}
+
+/* Find user by username, returns index or -1 if not found */
+int find_user(const char *username) {
+    for (int i = 0; i < num_users; i++) {
+        if (strcmp(users[i].username, username) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+/* Simple password hashing (in practice, use a proper crypto library) */
+void hash_password(const char *password, char *hashed) {
+    /* Simple XOR-based hash for demonstration - NOT FOR PRODUCTION USE */
+    const char salt[] = "BBS2024!";
+    int i;
+    for (i = 0; i < PASSWORD_HASH_LEN - 1 && password[i] != '\0'; i++) {
+        hashed[i] = password[i] ^ salt[i % SALT_LENGTH];
+    }
+    hashed[i] = '\0';
+}
+
+/* Verify password against stored hash */
+int verify_password(const char *password, const char *hashed) {
+    char computed_hash[PASSWORD_HASH_LEN];
+    hash_password(password, computed_hash);
+    return strcmp(computed_hash, hashed) == 0;
+}
+
+/* Updated handle_login implementation */
 void handle_login(void) {
     char choice;
     char username[USERNAME_LEN];
     char password[USERNAME_LEN];
+    char hashed[PASSWORD_HASH_LEN];
+    
     while (!logged_in) {
+        printf("\nBBS Login\n");
         printf("1. Log in\n2. Register\n3. Exit\n");
         choice = get_user_input();
+        
         if (choice == '1') {
             printf("Username: ");
             scanf("%s", username);
             printf("Password: ");
             scanf("%s", password);
-            logged_in = 1;
-            strcpy(current_user.username, username);
+            
+            int user_index = find_user(username);
+            if (user_index >= 0) {
+                hash_password(password, hashed);
+                if (verify_password(password, users[user_index].password_hash)) {
+                    logged_in = 1;
+                    current_user = users[user_index];
+                    printf("Welcome back, %s!\n", username);
+                } else {
+                    printf("Invalid password.\n");
+                }
+            } else {
+                printf("User not found.\n");
+            }
         }
         else if (choice == '2') {
             register_new_user();
@@ -182,6 +260,45 @@ void handle_login(void) {
             exit(0);
         }
     }
+}
+
+/* Updated register_new_user implementation */
+void register_new_user(void) {
+    char username[USERNAME_LEN];
+    char password[USERNAME_LEN];
+    char confirm_password[USERNAME_LEN];
+    
+    if (num_users >= MAX_USERS) {
+        printf("Maximum number of users reached.\n");
+        return;
+    }
+    
+    printf("Enter new username: ");
+    scanf("%s", username);
+    
+    if (find_user(username) >= 0) {
+        printf("Username already exists.\n");
+        return;
+    }
+    
+    printf("Enter password: ");
+    scanf("%s", password);
+    printf("Confirm password: ");
+    scanf("%s", confirm_password);
+    
+    if (strcmp(password, confirm_password) != 0) {
+        printf("Passwords do not match.\n");
+        return;
+    }
+    
+    /* Create new user */
+    strcpy(users[num_users].username, username);
+    hash_password(password, users[num_users].password_hash);
+    num_users++;
+    
+    /* Save updated user list */
+    save_users();
+    printf("Registration successful! Please log in.\n");
 }
 
 void menu_loop(void) {
@@ -236,12 +353,6 @@ void logout(void) {
     /* TODO: Perform additional cleanup (e.g., save session data) */
 }
 
-/* register_new_user: Registers a new user (stub) */
-void register_new_user(void) {
-    printf("TODO: Implement user registration\n");
-    /* TODO: Prompt for username, password, etc., and save to user file */
-}
-
 /* Stub functions for BBS features */
 void view_message_boards(void) {
     printf("TODO: Implement message boards functionality\n");
@@ -258,12 +369,45 @@ void online_games(void) {
     /* TODO: List and launch available games */
 }
 
+/* Updated view_profile implementation */
 void view_profile(void) {
-    printf("TODO: Implement view profile\n");
-    /* TODO: Display current_user's profile information */
+    printf("\nUser Profile\n");
+    printf("Username: %s\n", current_user.username);
+    /* Add additional profile fields here */
 }
 
+/* Updated edit_profile implementation */
 void edit_profile(void) {
-    printf("TODO: Implement edit profile\n");
-    /* TODO: Allow user to modify profile fields */
+    char current_password[USERNAME_LEN];
+    char new_password[USERNAME_LEN];
+    char confirm_password[USERNAME_LEN];
+    
+    printf("\nEdit Profile\n");
+    printf("1. Change Password\n");
+    printf("Q. Return\n");
+    
+    char choice = get_user_input();
+    if (choice == '1') {
+        printf("Enter current password: ");
+        scanf("%s", current_password);
+        
+        if (verify_password(current_password, current_user.password_hash)) {
+            printf("Enter new password: ");
+            scanf("%s", new_password);
+            printf("Confirm new password: ");
+            scanf("%s", confirm_password);
+            
+            if (strcmp(new_password, confirm_password) == 0) {
+                int user_index = find_user(current_user.username);
+                hash_password(new_password, users[user_index].password_hash);
+                current_user = users[user_index];
+                save_users();
+                printf("Password updated successfully.\n");
+            } else {
+                printf("Passwords do not match.\n");
+            }
+        } else {
+            printf("Invalid current password.\n");
+        }
+    }
 }
