@@ -1,6 +1,8 @@
 /* Sieve of Eratosthenes
-   by Dave Plummer 08/06/2024
+   by Dave Plummer 06/09/2025
    for the PDP-11 running 2.9BSD
+
+   cc -o krsieve -O krsieve.c
 */
 
 #include <stdio.h>
