@@ -55,9 +55,9 @@ void restore_on_exit(signum)
 int signum;
 {
     /* Show the cursor again */
-    printf("\033[?25h");
+    puts("\033[?25h");
     /* Reset scrolling region to the entire screen (1..24 or as needed) */
-    printf("\033[1;24r");
+    puts("\033[1;24r");
     /* Optionally clear screen or any other cleanup */
     fflush(stdout);
 
@@ -101,17 +101,10 @@ void update_trails()
             if (trails[i].rows_drawn < trails[i].length) 
             {
                 printf("\033[1;%dH", trails[i].column + 1);
-                c = (rand() % (94+46));
-                if (c < 94)
-                {
-                    // Normal ASCII character
-                    c += '!';
-                    putchar(c);
-                }
-                else
+                c = (rand() % (46));
                 {
                     // Mirrored Katakana character
-                    c = c - 94 + '!';
+                    c = c + '!';
                     printf(SELECT_MATRIX_SOFTFONT);
                     putchar(c);
                     printf(UNSELECT_SOFTFONT);
@@ -136,6 +129,8 @@ int main()
     int trail_length = 8; /* Configurable length of the trail */
     int spawn_rate = 1;   /* Configurable spawn rate */
 
+    puts("Starting!");
+
     /* Seed the random generator */
     srand(time((long *)0));
 
@@ -144,16 +139,17 @@ int main()
     signal(SIGTERM, restore_on_exit);
 
     /* Hide the cursor */
-    printf("\033[?25l");
+    puts("\033[?25l");
+
 
     /* Set scrolling region to full screen */
-    printf("\033[1;24r");
+    puts("\033[1;24r");
 
     /* Load Matrix softfont */
-    printf(LOAD_MATRIX_SOFTFONT);
+    puts(LOAD_MATRIX_SOFTFONT);
 
     /* Clear screen */
-    printf("\033[2J");
+    puts("\033[2J");
 
     /* Initialize trails */
     initialize_trails();
@@ -168,7 +164,7 @@ int main()
         update_trails();
 
         /* Reset cursor to top-left (optional) */
-        printf("\033[1;1H");
+        puts("\033[1;1H");
 
         /* Flush output */
         fflush(stdout);
