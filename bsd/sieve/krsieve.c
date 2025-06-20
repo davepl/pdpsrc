@@ -33,7 +33,7 @@ struct Result resultsDictionary[] = {
     {1000000, 78498}};
 
 /* Program Help */
-print_help(progname) char *progname;
+void print_help(progname) char *progname;
 {
     printf("Usage: %s [-l limit] [-s seconds] [-1] [-p] [-q] [-h]\n", progname);
     printf("Options:\n");
@@ -46,7 +46,7 @@ print_help(progname) char *progname;
 }
 
 /* Validate results */
-validate_results(limit, count) int limit, count;
+int validate_results(limit, count) int limit, count;
 {
     int i;
     for (i = 0; i < sizeof(resultsDictionary) / sizeof(resultsDictionary[0]); i++)
@@ -60,7 +60,7 @@ validate_results(limit, count) int limit, count;
 }
 
 /* Sieve of Eratosthenes */
-sieve_of_eratosthenes(limit, print_primes, count_ptr) int limit, print_primes, *count_ptr;
+void sieve_of_eratosthenes(limit, print_primes, count_ptr) int limit, print_primes, *count_ptr;
 {
     int i, j, count;
     int size;
@@ -114,7 +114,7 @@ sieve_of_eratosthenes(limit, print_primes, count_ptr) int limit, print_primes, *
 }
 
 /* Main program */
-main(argc, argv) int argc;
+int main(argc, argv) int argc;
 char *argv[];
 {
     int limit, oneshot, print_primes, quiet, seconds, passes;

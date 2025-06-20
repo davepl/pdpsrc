@@ -119,7 +119,7 @@ int main()
     int spawn_rate = 2;   /* Configurable spawn rate */
 
     /* Seed the random generator */
-    srand(time((long *)0));
+    srand(time((time_t *)0));
 
     /* Install signal handlers */
     signal(SIGINT, restore_on_exit);
