@@ -30,18 +30,27 @@ static void restore_on_exit();
 
 /* Function prototypes */
 void initialize_grid(int current[HEIGHT][WIDTH]);
+void initialize_test_pattern(int current[HEIGHT][WIDTH]);
 void copy_grid(int source[HEIGHT][WIDTH], int dest[HEIGHT][WIDTH]);
 int count_neighbors(int grid[HEIGHT][WIDTH], int row, int col);
 void render_grid(int grid[HEIGHT][WIDTH]);
 
-int main()
+int main(argc, argv)
+int argc;
+char *argv[];
 {
     int current_grid[HEIGHT][WIDTH];
     int next_grid[HEIGHT][WIDTH];
     int row, col;
 
-    /* Initialize the current grid with random alive/dead cells */
-    initialize_grid(current_grid);
+    /* Initialize the current grid */
+    if (argc > 1 && argv[1][0] == 't') {
+        /* Use test pattern if 't' argument is provided */
+        initialize_test_pattern(current_grid);
+    } else {
+        /* Use random initialization by default */
+        initialize_grid(current_grid);
+    }
 
     /* Install signal handler for Ctrl-C (SIGINT) and SIGTERM. */
     (void) signal(SIGINT,  restore_on_exit);
@@ -101,16 +110,69 @@ int main()
 void initialize_grid(int current[HEIGHT][WIDTH])
 {
     int row, col;
+    int random_val;
     
     /* Seed random number generator with current time for variety */
     srand((unsigned int)time(NULL));
 
+    /* First, clear the entire grid */
     for (row = 0; row < HEIGHT; row++) {
         for (col = 0; col < WIDTH; col++) {
-            /* Make cells less dense (about 25% alive) for better patterns */
-            current[row][col] = (rand() % 4 == 0) ? 1 : 0;
+            current[row][col] = 0;
         }
     }
+
+    /* Now add some random live cells with a lower density */
+    for (row = 0; row < HEIGHT; row++) {
+        for (col = 0; col < WIDTH; col++) {
+            random_val = rand() % 100;  /* Get value 0-99 */
+            /* Only make about 15% of cells alive for more stable patterns */
+            if (random_val < 15) {
+                current[row][col] = 1;
+            }
+        }
+    }
+}
+
+/* Initialize with a known test pattern for debugging */
+void initialize_test_pattern(int current[HEIGHT][WIDTH])
+{
+    int row, col;
+    
+    /* Clear the entire grid first */
+    for (row = 0; row < HEIGHT; row++) {
+        for (col = 0; col < WIDTH; col++) {
+            current[row][col] = 0;
+        }
+    }
+    
+    /* Add some known stable and oscillating patterns */
+    
+    /* Block (stable) at position (5,5) */
+    current[5][5] = 1;
+    current[5][6] = 1;
+    current[6][5] = 1;
+    current[6][6] = 1;
+    
+    /* Blinker (oscillator) at position (10,10) */
+    current[10][9] = 1;
+    current[10][10] = 1;
+    current[10][11] = 1;
+    
+    /* Glider at position (15,15) */
+    current[15][16] = 1;
+    current[16][17] = 1;
+    current[17][15] = 1;
+    current[17][16] = 1;
+    current[17][17] = 1;
+    
+    /* Toad (oscillator) at position (5,20) */
+    current[5][20] = 1;
+    current[5][21] = 1;
+    current[5][22] = 1;
+    current[6][19] = 1;
+    current[6][20] = 1;
+    current[6][21] = 1;
 }
 
 /* Copy source grid to destination grid */
