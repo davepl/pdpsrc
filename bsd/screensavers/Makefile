@@ -1,7 +1,11 @@
 # Makefile for compiling simple C programs
 
 CC = cc
-CFLAGS =
+# Base flags that work on all compilers
+CFLAGS = 
+# Check if compiler supports warning suppression (modern GCC/Clang)
+WARN_FLAGS := $(shell $(CC) -Wno-deprecated-non-prototype -E - < /dev/null > /dev/null 2>&1 && echo "-Wno-deprecated-non-prototype")
+CFLAGS += $(WARN_FLAGS)
 LDFLAGS =
 LIBS = -lm
 

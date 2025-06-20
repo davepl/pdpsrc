@@ -54,62 +54,13 @@ void my_memmove(char *dest, char *src, int n) {
 #endif
 
 int main(int argc, char *argv[]) {
-int main(int argc, char *argv[]) {
     int sock;
     char *hostname;
     char *username = "";
     char *password = "";
     char *topic = DEFAULT_TOPIC;
     char *value = DEFAULT_VALUE;
-    char *hostname;
-    char *username = "";
-    char *password = "";
-    char *topic = DEFAULT_TOPIC;
-    char *value = DEFAULT_VALUE;
     int rc;
-    int opt;
-    extern char *optarg;
-    extern int optind;
-
-    /* Check if no arguments are provided */
-    if (argc == 1) {
-        fprintf(stderr, "Usage: %s [-h hostname] [-u username] [-p password] [-t topic] [-v value]\n", argv[0]);
-        exit(1);
-    }
-
-    /* Initialize hostname to default */
-    hostname = DEFAULT_HOSTNAME;
-
-    /* Parse command-line options */
-    while ((opt = getopt(argc, argv, "h:u:p:t:v:")) != EOF) {
-        switch (opt) {
-            case 'h':
-                hostname = optarg;
-                break;
-            case 'u':
-                username = optarg;
-                break;
-            case 'p':
-                password = optarg;
-                break;
-            case 't':
-                topic = optarg;
-                break;
-            case 'v':
-                value = optarg;
-                break;
-            default:
-                fprintf(stderr, "Usage: %s [-h hostname] [-u username] [-p password] [-t topic] [-v value]\n", argv[0]);
-                exit(1);
-        }
-    }
-
-    /* Ensure mandatory arguments are provided */
-    if (username[0] == '\0' || password[0] == '\0') {
-        fprintf(stderr, "Error: Username and password are required.\n");
-        fprintf(stderr, "Usage: %s [-h hostname] [-u username] [-p password] [-t topic] [-v value]\n", argv[0]);
-        exit(1);
-    }
     int opt;
     extern char *optarg;
     extern int optind;
