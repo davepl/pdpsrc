@@ -14,7 +14,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
+/* getopt is in stdlib.h on 2.11BSD, but in getopt.h on modern systems */
+#ifdef __pdp11__
+/* getopt already included via stdlib.h on 2.11BSD */
+#else
 #include <getopt.h>
+#endif
 
 #define DEFAULT_LIMIT 1000L
 #define DEFAULT_SECONDS 5

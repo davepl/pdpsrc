@@ -2,10 +2,6 @@
 
 CC = cc
 CFLAGS = 
-# Modern warning flags (comment out on 2.11BSD)
-MODERN_WARNINGS = -Wno-deprecated-non-prototype
-# Uncomment the next line on macOS/Linux, comment out on 2.11BSD  
-CFLAGS += $(MODERN_WARNINGS)
 LDFLAGS =
 LIBS = -lm
 
@@ -15,21 +11,41 @@ PROGRAMS = stars matrix sine matrix2 sine2
 # Default target
 all: $(PROGRAMS)
 
-# Explicit rules for each program
+# Explicit rules for each program with platform detection
 stars: stars.c
-	$(CC) $(CFLAGS) -o stars stars.c $(LDFLAGS) $(LIBS)
+	@if [ "`uname -m`" = "pdp11" ]; then \
+		$(CC) $(CFLAGS) -o stars stars.c $(LIBS); \
+	else \
+		$(CC) $(CFLAGS) -Wno-deprecated-non-prototype -o stars stars.c $(LIBS); \
+	fi
 
 matrix: matrix.c
-	$(CC) $(CFLAGS) -o matrix matrix.c $(LDFLAGS) $(LIBS)
+	@if [ "`uname -m`" = "pdp11" ]; then \
+		$(CC) $(CFLAGS) -o matrix matrix.c $(LIBS); \
+	else \
+		$(CC) $(CFLAGS) -Wno-deprecated-non-prototype -o matrix matrix.c $(LIBS); \
+	fi
 
 matrix2: matrix2.c
-	$(CC) $(CFLAGS) -o matrix2 matrix2.c $(LDFLAGS) $(LIBS)
+	@if [ "`uname -m`" = "pdp11" ]; then \
+		$(CC) $(CFLAGS) -o matrix2 matrix2.c $(LIBS); \
+	else \
+		$(CC) $(CFLAGS) -Wno-deprecated-non-prototype -o matrix2 matrix2.c $(LIBS); \
+	fi
 
 sine: sine.c
-	$(CC) $(CFLAGS) -o sine sine.c $(LDFLAGS) $(LIBS)
+	@if [ "`uname -m`" = "pdp11" ]; then \
+		$(CC) $(CFLAGS) -o sine sine.c $(LIBS); \
+	else \
+		$(CC) $(CFLAGS) -Wno-deprecated-non-prototype -o sine sine.c $(LIBS); \
+	fi
 
 sine2: sine2.c
-	$(CC) $(CFLAGS) -o sine2 sine2.c $(LDFLAGS) $(LIBS)
+	@if [ "`uname -m`" = "pdp11" ]; then \
+		$(CC) $(CFLAGS) -o sine2 sine2.c $(LIBS); \
+	else \
+		$(CC) $(CFLAGS) -Wno-deprecated-non-prototype -o sine2 sine2.c $(LIBS); \
+	fi
 
 # Clean target
 clean:

@@ -9,7 +9,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <unistd.h>     /* For getopt() */     /* For getopt() */
+#include <unistd.h>     /* For getopt() on most systems */
+/* Additional getopt header for some modern systems */
+#ifdef __pdp11__
+/* getopt available via unistd.h on 2.11BSD */
+#else
+#include <getopt.h>
+#endif
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
