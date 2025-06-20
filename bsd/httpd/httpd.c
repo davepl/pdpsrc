@@ -16,7 +16,12 @@
 #include <arpa/inet.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+/* Handle errno.h location differences between BSD versions */
+#if defined(__NetBSD__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__linux__) || defined(__APPLE__)
+#include <errno.h>
+#else
 #include <sys/errno.h>
+#endif
 #include <sys/time.h>
 
 #include <netdb.h>
@@ -102,7 +107,7 @@ char *argv[];
 
     /* Log request time */
     {
-        long secs;
+        time_t secs;
         char *logtime;
 
         time(&secs);
@@ -191,7 +196,11 @@ char *argv[];
     if (strstr(path, "/cgi-bin/")) {
 
         int pid;
+#if defined(__NetBSD__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__linux__) || defined(__APPLE__)
+        int status;
+#else
         union wait status;
+#endif
         
         /* CGI program must be executable and not setuid/setgid */
         if (!(st.st_mode & S_IEXEC) ||
@@ -216,11 +225,21 @@ char *argv[];
             wait(&status);
 
             if (WIFEXITED(status))
+#if defined(__NetBSD__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__linux__) || defined(__APPLE__)
+                fprintf(htlog, "Exited with status %d\n",
+                        WEXITSTATUS(status));
+#else
                 fprintf(htlog, "Exited with status %d\n",
                         status.w_retcode);
+#endif
             else if (WIFSIGNALED(status))
+#if defined(__NetBSD__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__linux__) || defined(__APPLE__)
+                fprintf(htlog, "Terminated with signal %d\n",
+                        WTERMSIG(status));
+#else
                 fprintf(htlog, "Terminated with signal %d\n",
                         status.w_termsig);
+#endif
         }
 
     } else
