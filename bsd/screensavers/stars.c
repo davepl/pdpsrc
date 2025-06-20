@@ -18,8 +18,12 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <time.h>
-#ifdef __NetBSD__
+
+#if defined(__NetBSD__) || defined(__APPLE__) || defined(__linux__)
+#define USE_DELAY 1
 #include <unistd.h>
+#else
+#define USE_DELAY 0
 #endif
 
 #define NUM_STARS 20
@@ -123,7 +127,7 @@ int main()
             draw_star(stars[i].row, stars[i].col, STAR_CHAR);
 
             /* Delay after moving each star */
-#ifdef __NetBSD__
+#if USE_DELAY
             usleep(30000); /* 30ms delay on NetBSD */
 #endif
         }

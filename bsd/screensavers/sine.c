@@ -18,8 +18,12 @@
 #include <signal.h>
 #include <time.h>
 #include <math.h>
-#ifdef __NetBSD__
+
+#if defined(__NetBSD__) || defined(__APPLE__) || defined(__linux__)
+#define USE_DELAY 1
 #include <unistd.h>
+#else
+#define USE_DELAY 0
 #endif
 
 #define NUMSINES 3  /* Number of sine waves */
@@ -85,7 +89,7 @@ int main()
         fflush(stdout);
 
         /* Small delay */
-#ifdef __NetBSD__
+#if USE_DELAY
         usleep(50000); /* 50ms delay on NetBSD */
 #endif
 

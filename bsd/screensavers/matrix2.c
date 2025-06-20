@@ -1,5 +1,17 @@
 /* 
- * matrix.c - Draws a matrix-like rain of characters on the screen.
+ * matrix.c #include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <time.h>
+
+#if defined(__NetBSD__) || defined(__APPLE__) || defined(__linux__)
+#define USE_DELAY 1
+#include <unistd.h>
+#else
+#define USE_DELAY 0
+#endif
+
+#define MAX_TRAILS 10 matrix-like rain of characters on the screen.
  *            Trails are drawn with configurable length.
  *            Written in K&R style for 2.11BSD, etc.
  *
@@ -146,7 +158,7 @@ int main()
         fflush(stdout);
 
         /* Small delay */
-#ifdef __NetBSD__
+#if USE_DELAY
         usleep(40000);
 #endif
 
