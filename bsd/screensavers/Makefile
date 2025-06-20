@@ -6,7 +6,7 @@ LDFLAGS =
 LIBS = -lm
 
 # Program names
-PROGRAMS = stars matrix sine matrix2 sine2
+PROGRAMS = stars matrix sine matrix2 sine2 life
 
 # Default target
 all: $(PROGRAMS)
@@ -45,6 +45,13 @@ sine2: sine2.c
 		$(CC) $(CFLAGS) -o sine2 sine2.c $(LIBS); \
 	else \
 		$(CC) $(CFLAGS) -Wno-deprecated-non-prototype -o sine2 sine2.c $(LIBS); \
+	fi
+
+life: life.c
+	@if [ "`uname -m`" = "pdp11" ]; then \
+		$(CC) $(CFLAGS) -o life life.c $(LIBS); \
+	else \
+		$(CC) $(CFLAGS) -Wno-deprecated-non-prototype -o life life.c $(LIBS); \
 	fi
 
 # Clean target

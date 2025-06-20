@@ -1,7 +1,7 @@
 /*
  *  game_of_life.c - Conway's Game of Life screensaver for PDP-11/83 with VT220 terminal.
- *                  Displays an 80x24 grid where cells evolve based on Game of Life rules.
- *                  Written in K&R style for 2.11BSD, etc.
+ *                   Displays an 80x24 grid where cells evolve based on Game of Life rules.
+ *                   Written in K&R style for 2.11BSD, etc.
  *
  *  Compile example (on 2.11BSD, might need -lm for math library):
  *    cc -o game_of_life game_of_life.c -lm
@@ -9,7 +9,7 @@
  *  Press Ctrl-C to exit (SIGINT), which restores the cursor and
  *  resets the scrolling region.
  * 
- *  Author: [Your Name], 2024. 
+ *  Author: Davepl 2025
  *  License: GPL 2.0
  * 
  */
@@ -18,6 +18,8 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <string.h>
+#include <unistd.h>
+#include <time.h>
 
 #define WIDTH 80
 #define HEIGHT 24
@@ -85,7 +87,8 @@ int main()
         /* Swap grids */
         copy_grid(next_grid, current_grid);
 
-        /* Small delay: 200ms. Adjust to taste. */
+        /* Small delay: Adjust to taste. */
+        usleep(50000);
     }
 
     /* Normally never reached, but just in case */
@@ -98,11 +101,14 @@ int main()
 void initialize_grid(int current[HEIGHT][WIDTH])
 {
     int row, col;
-    srand(0);
+    
+    /* Seed random number generator with current time for variety */
+    srand((unsigned int)time(NULL));
 
     for (row = 0; row < HEIGHT; row++) {
         for (col = 0; col < WIDTH; col++) {
-            current[row][col] = (rand() % 2);
+            /* Make cells less dense (about 25% alive) for better patterns */
+            current[row][col] = (rand() % 4 == 0) ? 1 : 0;
         }
     }
 }
@@ -156,14 +162,15 @@ void render_grid(int grid[HEIGHT][WIDTH])
     printf("\033[1;1H");
 
     /* Iterate through the grid and print characters */
-    for (row = 0; row < HEIGHT; row++) {
+    for (row = 0; row < HEIGHT - 1; row++) {  /* Leave last row for status */
         for (col = 0; col < WIDTH; col++) {
             if (grid[row][col])
                 putchar(ALIVE_CHAR);
             else
                 putchar(DEAD_CHAR);
         }
-        putchar('\n');
+        if (row < HEIGHT - 2)  /* Don't print newline on last row */
+            putchar('\n');
     }
 
     /* Flush output to ensure it appears on the screen */
