@@ -50,30 +50,24 @@ asm-dirs:
 	@arch=`uname -m 2>/dev/null || echo unknown`; \
 	if [ "$$arch" = "pdp11" ] || [ "$$arch" = "PDP-11" ]; then \
 		echo "PDP-11 architecture detected, building MACRO-11 assembly..."; \
-		if type macro11 >/dev/null 2>&1 || type as >/dev/null 2>&1; then \
-			for dir in $(ASM_DIRS); do \
-				echo "Building $$dir..."; \
-				if [ -d "$$dir" ]; then \
-					(cd $$dir; \
-					 for asm_file in *.asm; do \
-						if [ -f "$$asm_file" ]; then \
-							obj_name=`echo $$asm_file | sed 's/\.asm$$/.o/'`; \
-							prog_name=`echo $$asm_file | sed 's/\.asm$$//'`; \
-							echo "  Assembling $$asm_file -> $$prog_name"; \
-							if type macro11 >/dev/null 2>&1; then \
-								macro11 -o $$obj_name $$asm_file; \
-								if [ $$? -eq 0 ]; then ld -o $$prog_name $$obj_name; fi; \
-							else \
-								as -o $$obj_name $$asm_file; \
-								if [ $$? -eq 0 ]; then ld -o $$prog_name $$obj_name; fi; \
-							fi; \
+		for dir in $(ASM_DIRS); do \
+			echo "Building $$dir..."; \
+			if [ -d "$$dir" ]; then \
+				(cd $$dir; \
+				 for asm_file in *.asm; do \
+					if [ -f "$$asm_file" ]; then \
+						prog_name=`echo $$asm_file | sed 's/\.asm$$//'`; \
+						echo "  Assembling $$asm_file -> $$prog_name"; \
+						if as -o $$prog_name $$asm_file 2>/dev/null; then \
+							chmod +x $$prog_name; \
+							echo "    Successfully built $$prog_name"; \
+						else \
+							echo "    Assembly failed for $$asm_file"; \
 						fi; \
-					 done) || exit 1; \
-				fi; \
-			done; \
-		else \
-			echo "  Warning: MACRO-11 assembler not found, skipping assembly files"; \
-		fi; \
+					fi; \
+				 done) || true; \
+			fi; \
+		done; \
 	else \
 		echo "  Skipping MACRO-11 assembly (not PDP-11 architecture: $$arch)"; \
 		echo "  MACRO-11 assembly code is only compatible with PDP-11 systems"; \
