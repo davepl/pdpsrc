@@ -1,11 +1,11 @@
 # Makefile for sudo
 
 CC = cc
-# Base flags that work on all compilers
 CFLAGS = -O
-# Check if compiler supports K&R warning suppression (modern GCC/Clang)
-WARN_FLAGS := $(shell $(CC) -Wno-implicit-int -E - < /dev/null > /dev/null 2>&1 && echo "-Wno-implicit-int -Wno-deprecated-non-prototype -Wno-return-mismatch")
-CFLAGS += $(WARN_FLAGS)
+# Modern warning flags (comment out on 2.11BSD)
+MODERN_WARNINGS = -Wno-implicit-int -Wno-deprecated-non-prototype -Wno-return-mismatch
+# Uncomment the next line on macOS/Linux, comment out on 2.11BSD
+CFLAGS += $(MODERN_WARNINGS)
 PROGRAM = sudo
 SRCS = sudo.c
 
