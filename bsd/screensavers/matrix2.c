@@ -18,8 +18,11 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <time.h>
+#ifdef __NetBSD__
+#include <unistd.h>
+#endif
 
-#define MAX_TRAILS 10
+#define MAX_TRAILS 20
 #define SCREEN_WIDTH 80
 #define SCREEN_HEIGHT 24
 
@@ -109,7 +112,7 @@ void update_trails()
 int main()
 {
     int trail_length = 14; /* Configurable length of the trail */
-    int spawn_rate = 3;   /* Configurable spawn rate */
+    int spawn_rate = 2;   /* Configurable spawn rate */
 
     /* Seed the random generator */
     srand(time((long *)0));
@@ -143,7 +146,9 @@ int main()
         fflush(stdout);
 
         /* Small delay */
+#ifdef __NetBSD__
         usleep(40000);
+#endif
 
         trail_timer++;
     }

@@ -18,6 +18,9 @@
 #include <signal.h>
 #include <time.h>
 #include <math.h>
+#ifdef __NetBSD__
+#include <unistd.h>
+#endif
 
 #define NUMSINES 3  /* Number of sine waves */
 #ifndef M_PI
@@ -80,6 +83,11 @@ int main()
 
         /* Flush output so it shows up now */
         fflush(stdout);
+
+        /* Small delay */
+#ifdef __NetBSD__
+        usleep(50000); /* 50ms delay on NetBSD */
+#endif
 
     }
 

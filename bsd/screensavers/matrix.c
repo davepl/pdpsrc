@@ -18,6 +18,9 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <time.h>
+#ifdef __NetBSD__
+#include <unistd.h>
+#endif
 
 #define MAX_TRAILS 16
 #define SCREEN_WIDTH 80
@@ -171,6 +174,9 @@ int main()
         fflush(stdout);
 
         /* Small delay */
+#ifdef __NetBSD__
+        usleep(50000); /* 50ms delay on NetBSD */
+#endif
 
         trail_timer++;
     }

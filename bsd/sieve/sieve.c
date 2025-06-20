@@ -20,12 +20,10 @@
 #define BITSPERBYTE 8
 
 /* Macros for bit manipulation */
-
 #define GET_BIT(array, n) ((array[(n) / BITSPERBYTE] >> ((n) % BITSPERBYTE)) & 1)
 #define SET_BIT(array, n) (array[(n) / BITSPERBYTE] |= (1 << ((n) % BITSPERBYTE)))
 
 /* Structure to hold the expected results for a given limit */
-
 struct Result {
     long limit;
     int count;
@@ -42,10 +40,7 @@ struct Result resultsDictionary[] = {
 };
 
 /* Program Help */
-
-void print_help(progname)
-char *progname;
-{
+void print_help(char *progname) {
     printf("Usage: %s [-l limit] [-s seconds] [-1] [-p] [-q] [-h|-?]\n", progname);
     printf("Options:\n");
     printf("  -l limit    Specify the upper limit for prime calculation (default: 1000)\n");
@@ -57,30 +52,22 @@ char *progname;
 }
 
 /* Validate a limit versus an expected result */
-
-int validate_results(limit, count)
-long limit;
-long count;
-{
+int validate_results(long limit, long count) {
     int i;
     for (i = 0; i < sizeof(resultsDictionary) / sizeof(resultsDictionary[0]); i++) {
         if (resultsDictionary[i].limit == limit) {
             return resultsDictionary[i].count == count;
         }
     }
-    return 0;  /* No matching limit found */
+    return -1;  /* No matching limit found */
 }
 
-void sieve_of_eratosthenes(limit, print_primes, count_ptr)
-long limit;
-int print_primes;
-long *count_ptr;
-{
+void sieve_of_eratosthenes(long limit, int print_primes, long *count_ptr) {
     long i, j, count;
     size_t size;
     char *sieve;
 
-    size = (limit / 2) / BITSPERBYTE + 1;
+    size = (limit + 1) / 2 / BITSPERBYTE + 1;
     count = 1;  /* 2 is a prime number */
     sieve = (char *) calloc(size, 1);
 
@@ -120,22 +107,26 @@ long *count_ptr;
 }
 
 /* Main program - parses args and runs sieve */
-
-int main(argc, argv)
-int argc;
-char *argv[];
-{
-    long limit = DEFAULT_LIMIT;
-    int oneshot = 0;
-    int print_primes = 0;
-    int quiet = 0;
-    int seconds = DEFAULT_SECONDS;
+int main(int argc, char *argv[]) {
+    long limit;
+    int oneshot;
+    int print_primes;
+    int quiet;
+    int seconds;
     int opt;
-    int passes=0;
-
+    int passes;
     struct timeval start_time, current_time;
-    double elapsed_time, total_time = 0;
-    long prime_count = 0;
+    double elapsed_time, total_time;
+    long prime_count;
+
+    limit = DEFAULT_LIMIT;
+    oneshot = 0;
+    print_primes = 0;
+    quiet = 0;
+    seconds = DEFAULT_SECONDS;
+    passes = 0;
+    total_time = 0;
+    prime_count = 0;
 
     while ((opt = getopt(argc, argv, "l:s:1pq?h")) != -1) {
         switch (opt) {

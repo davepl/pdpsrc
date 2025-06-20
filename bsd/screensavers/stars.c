@@ -18,6 +18,9 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <time.h>
+#ifdef __NetBSD__
+#include <unistd.h>
+#endif
 
 #define NUM_STARS 20
 #define SCREEN_ROWS 24
@@ -120,7 +123,9 @@ int main()
             draw_star(stars[i].row, stars[i].col, STAR_CHAR);
 
             /* Delay after moving each star */
-            /* usleep(30000); */
+#ifdef __NetBSD__
+            usleep(30000); /* 30ms delay on NetBSD */
+#endif
         }
     }
 
