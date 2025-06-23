@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <time.h>
+#include <sys/ioctl.h>
 
 #if defined(__NetBSD__) || defined(__APPLE__) || defined(__linux__)
 #define USE_DELAY 1
@@ -26,9 +27,48 @@
 #define USE_DELAY 0
 #endif
 
+/* Default fallback values if terminal size detection fails */
+#define DEFAULT_WIDTH 80
+#define DEFAULT_HEIGHT 24
+
 #define MAX_TRAILS 20
-#define SCREEN_WIDTH 80
-#define SCREEN_HEIGHT 24
+
+/* Global variables for screen dimensions */
+int SCREEN_WIDTH = DEFAULT_WIDTH;
+int SCREEN_HEIGHT = DEFAULT_HEIGHT;
+
+/* Function to get terminal size */
+void get_terminal_size()
+{
+#ifdef TIOCGWINSZ
+    struct winsize ws;
+    
+    /* Try to get window size using ioctl */
+    if (ioctl(0, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0 && ws.ws_row > 0) {
+        SCREEN_WIDTH = ws.ws_col;
+        SCREEN_HEIGHT = ws.ws_row;
+        return;
+    }
+#endif
+    
+    /* Fallback: try environment variables */
+    {
+        char *cols_env = getenv("COLUMNS");
+        char *lines_env = getenv("LINES");
+        
+        if (cols_env != NULL) {
+            int cols = atoi(cols_env);
+            if (cols > 0) SCREEN_WIDTH = cols;
+        }
+        
+        if (lines_env != NULL) {
+            int lines = atoi(lines_env);
+            if (lines > 0) SCREEN_HEIGHT = lines;
+        }
+    }
+    
+    /* If all else fails, use the defaults already set */
+}
 
 /* Structure to represent a trail */
 struct Trail {
@@ -47,8 +87,10 @@ int signum;
 {
     /* Show the cursor again */
     printf("\033[?25h");
-    /* Reset scrolling region to the entire screen (1..24 or as needed) */
-    printf("\033[1;24r");
+    /* Reset scrolling region to the entire screen */
+    printf("\033[r");
+    /* Move cursor to bottom of screen */
+    printf("\033[%d;1H", SCREEN_HEIGHT);
     /* Optionally clear screen or any other cleanup */
     fflush(stdout);
 
@@ -128,8 +170,11 @@ int main()
     /* Hide the cursor */
     printf("\033[?25l");
 
-    /* Set scrolling region to full screen */
-    printf("\033[1;24r");
+    /* Get the terminal size first */
+    get_terminal_size();
+
+    /* Set scrolling region to full screen using detected size */
+    printf("\033[1;%dr", SCREEN_HEIGHT);
 
     /* Clear screen */
     printf("\033[2J");
