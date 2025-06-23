@@ -199,7 +199,7 @@ int main()
 
         /* Small delay */
 #if USE_DELAY
-        usleep(40000);
+        usleep(20000);
 #endif
 
         trail_timer++;
