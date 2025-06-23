@@ -158,7 +158,7 @@ void update_trails()
 int main()
 {
     int trail_length = 14; /* Configurable length of the trail */
-    int spawn_rate = 2;   /* Configurable spawn rate */
+    int spawn_rate = 3;   /* Configurable spawn rate */
 
     /* Seed the random generator */
     srand(time((time_t *)0));
@@ -172,6 +172,9 @@ int main()
 
     /* Get the terminal size first */
     get_terminal_size();
+
+    if (SCREEN_HEIGHT - 10 > trail_length)
+        trail_length = SCREEN_HEIGHT - 10; /* Ensure trail length fits on screen */
 
     /* Set scrolling region to full screen using detected size */
     printf("\033[1;%dr", SCREEN_HEIGHT);
