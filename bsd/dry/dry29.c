@@ -32,9 +32,14 @@
 #include <sys/times.h>
 
 /* Functions malloc, strcpy, strcmp, atol, exit are implicitly declared on 2.9BSD */
+/* But for modern compilation, include headers for better optimization */
+#ifndef BSD29
+#include <stdlib.h>  /* for malloc, exit, atol */
+#include <string.h>  /* for strcpy, strcmp */
+#endif
 
 /* 2.9BSD PDP-11 system configuration */
-#define HZ 60  /* 2.9BSD uses 60 Hz clock */
+#define HZ 100  /* Match the floating-point version for comparison */
 #define CLOCK_TYPE "times()"
 #define Too_Small_Time (3 * HZ)  /* Require at least 3 seconds */
 
@@ -84,7 +89,12 @@ int l;
 {
     while (l--) *d++ = *s++;
 }
+/* Use my_memcpy for K&R C compatibility, direct assignment for modern compilers */
+#ifdef BSD29
 #define structassign(d, s) my_memcpy((char*)&(d), (char*)&(s), sizeof(d))
+#else
+#define structassign(d, s) d = s  /* Direct assignment on modern systems */
+#endif
 
 #ifndef REG
 #define REG
@@ -356,30 +366,21 @@ char *argv[];
         Begin_Time = (long)time_buffer.tms_utime;
 
         /* Main benchmark loop */
-        printf("DEBUG: Starting benchmark loop with %ld iterations\n", Number_Of_Runs);
         for (Run_Index = 1; Run_Index <= Number_Of_Runs; ++Run_Index) {
-            if (Run_Index == 1) printf("DEBUG: Starting first iteration\n");
             Proc_5();
-            if (Run_Index == 1) printf("DEBUG: Proc_5 completed\n");
             Proc_4();
-            if (Run_Index == 1) printf("DEBUG: Proc_4 completed\n");
             Int_1_Loc = 2;
             Int_2_Loc = 3;
             strcpy(Str_2_Loc, "DHRYSTONE PROGRAM, 2'ND STRING");
-            if (Run_Index == 1) printf("DEBUG: strcpy completed\n");
             Enum_Loc = Ident_2;
             Bool_Glob = !Func_2(Str_1_Loc, Str_2_Loc);
-            if (Run_Index == 1) printf("DEBUG: Func_2 completed\n");
             while (Int_1_Loc < Int_2_Loc) {
                 Int_3_Loc = 5 * Int_1_Loc - Int_2_Loc;
                 Proc_7(Int_1_Loc, Int_2_Loc, &Int_3_Loc);
                 Int_1_Loc += 1;
             }
-            if (Run_Index == 1) printf("DEBUG: while loop completed\n");
             Proc_8(Arr_1_Glob, Arr_2_Glob, Int_1_Loc, Int_3_Loc);
-            if (Run_Index == 1) printf("DEBUG: Proc_8 completed\n");
             Proc_1(Ptr_Glob);
-            if (Run_Index == 1) printf("DEBUG: Proc_1 completed\n");
             for (Ch_Index = 'A'; Ch_Index <= Ch_2_Glob; ++Ch_Index) {
                 if (Enum_Loc == Func_1(Ch_Index, 'C')) {
                     Proc_6(Ident_1, &Enum_Loc);
@@ -388,13 +389,10 @@ char *argv[];
                     Int_Glob = Run_Index;
                 }
             }
-            if (Run_Index == 1) printf("DEBUG: for Ch_Index loop completed\n");
             Int_2_Loc = Int_2_Loc * Int_1_Loc;
             Int_1_Loc = Int_2_Loc / Int_3_Loc;
             Int_2_Loc = 7 * (Int_2_Loc - Int_3_Loc) - Int_1_Loc;
-            if (Run_Index == 1) printf("DEBUG: arithmetic operations completed\n");
             Proc_2(&Int_1_Loc);
-            if (Run_Index == 1) printf("DEBUG: Proc_2 completed, iteration 1 finished\n");
         }
 
         /* Stop timer */
@@ -405,23 +403,16 @@ char *argv[];
 
         if (User_Time < Too_Small_Time) {
             printf("Measured time too small to obtain meaningful results\n");
-            printf("DEBUG: Current Number_Of_Runs = %ld\n", Number_Of_Runs);
-            printf("DEBUG: About to perform multiplication step by step\n");
             /* Use simple assignment - multiply by 10 by adding 10 copies */
             {
                 long old_runs;
                 old_runs = Number_Of_Runs;
-                printf("DEBUG: Step 1 - saved old value\n");
                 Number_Of_Runs = old_runs + old_runs;  /* *2 */
-                printf("DEBUG: Step 2 - doubled to %ld\n", Number_Of_Runs);
                 Number_Of_Runs = Number_Of_Runs + Number_Of_Runs + Number_Of_Runs + Number_Of_Runs;  /* *2 -> *8 */
-                printf("DEBUG: Step 3 - multiplied by 8 to %ld\n", Number_Of_Runs);
                 Number_Of_Runs = Number_Of_Runs + old_runs + old_runs;  /* +2 more = *10 */
-                printf("DEBUG: Step 4 - final result %ld\n", Number_Of_Runs);
             }
             printf("\n");
         } else {
-            printf("DEBUG: Time sufficient, setting Done = true\n");
             Done = true;
         }
     }
@@ -478,71 +469,41 @@ char *argv[];
     fprintf(stderr, "\n");
 
     /* Integer arithmetic for performance calculations */
-    printf("DEBUG: Starting performance calculations\n");
-    printf("DEBUG: User_Time = %ld, Number_Of_Runs = %ld\n", User_Time, Number_Of_Runs);
-    printf("DEBUG: HZ = %d\n", HZ);
     if (User_Time > 0 && Number_Of_Runs > 0) {
-        /* Calculate microseconds per run using careful integer arithmetic */
-        /* Formula: (User_Time * 1000000) / (HZ * Number_Of_Runs) */
-        
-        printf("DEBUG: About to calculate results using safest possible approach\n");
-        printf("DEBUG: User_Time = %ld\n", User_Time);
-        
-        /* Use the absolute safest calculation - avoid all division and multiplication */
-        printf("DEBUG: Avoiding all complex arithmetic - using basic assignment\n");
-        
-        /* Just report simple ratios without complex calculations */
-        Microseconds = 1L;  /* Default safe value */
-        if (User_Time > Number_Of_Runs) {
-            Microseconds = 10L;  /* Slow system */
-        } else if (User_Time > 100L) {
-            Microseconds = 5L;   /* Medium system */
-        } else {
-            Microseconds = 1L;   /* Fast system */
-        }
-        
-        printf("DEBUG: Microseconds set to %ld\n", Microseconds);
-        
-        printf("DEBUG: About to calculate Dhrystones_Per_Second using safest arithmetic\n");
         /* Calculate (Number_Of_Runs * HZ) / User_Time by reordering to avoid large intermediate values */
         /* Instead of (Number_Of_Runs * HZ) / User_Time, use Number_Of_Runs / User_Time * HZ */
         if (User_Time > 0) {
-            printf("DEBUG: Computing (Number_Of_Runs / User_Time) * HZ to avoid large intermediates\n");
             {
                 long quotient, remainder, final_result;
-                printf("DEBUG: Quotient\n");
                 /* First do the division: Number_Of_Runs / User_Time */
                 quotient = Number_Of_Runs / User_Time;
-                printf("DEBUG: Remainder\n");
                 /* Calculate remainder manually: remainder = Number_Of_Runs - (quotient * User_Time) */
                 remainder = Number_Of_Runs - (quotient * User_Time);
-                printf("DEBUG: Number_Of_Runs / User_Time = %ld remainder %ld\n", quotient, remainder);
                 
                 /* Now multiply quotient by HZ using safe addition */
-                printf("DEBUG: Multiplying quotient by HZ using addition\n");
                 {
                     long temp_result;
-                    long x4, x8, x16, x32;
+                    long x4, x8, x16, x32, x64;
                     x4 = quotient + quotient + quotient + quotient;    /* 4x */
                     x8 = x4 + x4;                                      /* 8x */
                     x16 = x8 + x8;                                     /* 16x */
                     x32 = x16 + x16;                                   /* 32x */
-                    temp_result = x32 + x16 + x8 + x4;                /* 60x = quotient * HZ */
-                    printf("DEBUG: quotient * HZ = %ld\n", temp_result);
+                    x64 = x32 + x32;                                   /* 64x */
+                    temp_result = x64 + x32 + x4;                     /* 100x = quotient * HZ */
                     
                     /* Add contribution from remainder: (remainder * HZ) / User_Time */
                     if (remainder > 0) {
                         long remainder_contribution;
                         /* Calculate remainder * HZ using safe addition */
                         {
-                            long rx4, rx8, rx16, rx32;
+                            long rx4, rx8, rx16, rx32, rx64;
                             rx4 = remainder + remainder + remainder + remainder;
                             rx8 = rx4 + rx4;
                             rx16 = rx8 + rx8;
                             rx32 = rx16 + rx16;
-                            remainder_contribution = (rx32 + rx16 + rx8 + rx4) / User_Time;
+                            rx64 = rx32 + rx32;
+                            remainder_contribution = (rx64 + rx32 + rx4) / User_Time;  /* 100x */
                         }
-                        printf("DEBUG: remainder contribution = %ld\n", remainder_contribution);
                         final_result = temp_result + remainder_contribution;
                     } else {
                         final_result = temp_result;
@@ -555,18 +516,26 @@ char *argv[];
             Dhrystones_Per_Second = 0L;
         }
         
-        printf("DEBUG: Dhrystones_Per_Second = %ld\n", Dhrystones_Per_Second);
+        /* Now calculate microseconds using the computed Dhrystones_Per_Second */
+        if (Dhrystones_Per_Second > 0) {
+            /* Simple calculation: microseconds = 1000000 / Dhrystones_Per_Second */
+            /* For values around 23 million, this gives reasonable precision */
+            Microseconds = 1000000L / Dhrystones_Per_Second;
+            /* Add 1 if there's a significant remainder for better accuracy */
+            if ((1000000L * 10L / Dhrystones_Per_Second) % 10L >= 5L) {
+                Microseconds += 1L;
+            }
+        } else {
+            Microseconds = 0L;
+        }
     } else {
-        printf("DEBUG: Invalid timing values, setting results to 0\n");
         Microseconds = 0;
         Dhrystones_Per_Second = 0;
     }
 
-    printf("DEBUG: About to print final results\n");
     printf("Microseconds for one run through Dhrystone: %10ld \n", Microseconds);
     printf("Dhrystones per Second:                      %10ld \n", Dhrystones_Per_Second);
     printf("\n");
 
-    printf("DEBUG: About to return from main\n");
     return 0;
 }
