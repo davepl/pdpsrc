@@ -1,29 +1,40 @@
-# Makefile for Dhrystone benchmark
-# Compatible with 2.11BSD, NetBSD, and macOS
+# Makefile for Dhrystone 2.2 benchmark
+# Simplified for 2.9BSD and modern systems
 
-CC = gcc
-CFLAGS = -O2 -g
-TARGET = dry
-SOURCE = dry.c
+# Default target: build the simplified 2.9BSD version
+all: dry29
 
-# Default target
-$(TARGET): $(SOURCE)
-	$(CC) $(CFLAGS) -o $(TARGET) $(SOURCE)
+# 2.9BSD version (integer-only, K&R C style)
+dry29:
+	cc -O -Wno-implicit-function-declaration -o dry29 dry29.c
 
-# For older systems without modern optimizations
-basic:
-	$(CC) -o $(TARGET) $(SOURCE)
+# No optimization (safe for all PDP-11 models)  
+dry29-noopt:
+	cc -Wno-implicit-function-declaration -o dry29 dry29.c
 
-# For systems with limited memory (like 2.11BSD)
-small:
-	$(CC) -Os -o $(TARGET) $(SOURCE)
+# Debug version with extra output
+dry29-debug:
+	cc -Wno-implicit-function-declaration -o dry29 dry29.c
 
-# Clean target
+# Original cross-platform version (for comparison)
+dry:
+	cc -O -o dry dry.c
+
+# Test targets
+test: dry29
+	./dry29 1000
+
+test-long: dry29
+	./dry29 100000
+
+compare: dry29 dry
+	@echo "Testing 2.9BSD version:"
+	./dry29 100000
+	@echo ""
+	@echo "Testing original version:"
+	./dry 100000
+
 clean:
-	rm -f $(TARGET) dry_traditional *.o
+	rm -f dry dry29 *.o core
 
-# Test target
-test: $(TARGET)
-	./$(TARGET) 10000
-
-.PHONY: clean test basic small
+.PHONY: all test test-long compare clean

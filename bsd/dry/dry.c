@@ -1,20 +1,79 @@
-/****************** "DHRYSTONE" Benchmark Program ***************************/
+/*
+ * =============================================================================
+ * DHRYSTONE BENCHMARK - Cross-Platform BSD Version
+ * =============================================================================
+ * 
+ * Filename:     dry.c
+ * Version:      C, Version 2.2 (Cross-Platform BSD Edition)
+ * Date:         June 30, 2025
+ * Author:       Dave Plummer 
+ * 
+ * Description:  A portable implementation of the Dhrystone 2.2 benchmark,
+ *               modified for compatibility across 2.11BSD (PDP-11), NetBSD,
+ *               and macOS systems while maintaining K&R C compatibility.
+ * 
+ * Original Credits:
+ *   - Algorithm:    Reinhold P. Weicker (Siemens Nixdorf)
+ *   - C Version:    Rick Richardson, PC Research Inc.
+ *   - Dhrystone:    "Dhrystone" Benchmark Program
+ *   - Based on:     Various GitHub implementations of classic Dhrystone
+ * 
+ * Compatibility:
+ *   - 2.11BSD (PDP-11) with K&R C compiler
+ *   - NetBSD 10.x with modern GCC
+ *   - macOS (Intel and Apple Silicon)
+ *   - Other Unix-like systems
+ * 
+ * Key Modifications for Cross-Platform Support:
+ *   - Fixed 16-bit integer overflow on PDP-11 systems
+ *   - Portable timing using times() system call
+ *   - K&R C compatible variable declarations
+ *   - Conditional compilation for different BSD variants
+ *   - Simplified build process (single compilation unit)
+ * 
+ * Build:
+ *   2.11BSD:     cc -O -o dry dry.c
+ *   Modern:      gcc -O2 -o dry dry.c
+ *   Make:        make
+ * 
+ * Usage:
+ *   ./dry [iterations]
+ * 
+ * License:      Public Domain (following original Dhrystone tradition)
+ * 
+ * =============================================================================
+ */
+
 #define Version "C, Version 2.2"
 
 /* Standard headers for 2.11BSD, NetBSD 10, and macOS */
+
 #include <stdio.h>
-#include <stdlib.h>  /* for malloc, exit, atoi */
-#include <string.h>  /* for strcpy, strcmp */
 #include <sys/types.h>
 #include <sys/times.h>
-
-/* Define HZ based on system - use times() return value */
-#ifndef HZ
-#include <unistd.h>
-#ifdef _SC_CLK_TCK
-#define HZ sysconf(_SC_CLK_TCK)
+#ifdef BSD211
+/* 2.11BSD function declarations */
+extern void *malloc();
+extern void free();
+extern void exit();
+extern long atol();
+extern char *strcpy();
+extern int strcmp();
 #else
-#define HZ 60  /* Default for 2.11BSD PDP-11 */
+#include <stdlib.h>  /* for malloc, exit, atoi */
+#include <unistd.h>   /* for sysconf on modern systems */
+#include <string.h>  /* for strcpy, strcmp */
+#endif
+
+/* Define HZ based on system */
+#if defined(__pdp11__) || defined(BSD211)
+#ifdef HZ
+#undef HZ  /* Undefine system HZ for 2.11BSD compatibility */
+#endif
+#define HZ 60  /* 2.11BSD PDP-11 uses 60 Hz */
+#else
+#ifndef HZ
+#define HZ 100  /* Default for modern BSD systems */
 #endif
 #endif
 
@@ -108,7 +167,7 @@ long Begin_Time, End_Time, User_Time;
 float Microseconds, Dhrystones_Per_Second;
 
 #define Mic_secs_Per_Second 1000000.0
-#define NUMBER_OF_RUNS 500000 /* Suitable for PDP-11/83 */
+#define NUMBER_OF_RUNS 5000  /* More reasonable for PDP-11/83 */
 #define Too_Small_Time (2*HZ)
 
 int main(int argc, char *argv[])
@@ -120,8 +179,9 @@ int main(int argc, char *argv[])
     Enumeration Enum_Loc;
     Str_30 Str_1_Loc;
     Str_30 Str_2_Loc;
-    REG int Run_Index;
-    REG int Number_Of_Runs;
+    REG long Run_Index;  /* Use long to match Number_Of_Runs */
+    REG long Number_Of_Runs;  /* Use long to avoid 16-bit int overflow on PDP-11 */
+    struct tms time_buffer;
 
     /* Arguments */
     if (argc > 2) {
@@ -129,7 +189,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
     if (argc == 2) {
-        Number_Of_Runs = atoi(argv[1]);
+        Number_Of_Runs = atol(argv[1]);
     } else {
         Number_Of_Runs = NUMBER_OF_RUNS;
     }
@@ -158,12 +218,11 @@ int main(int argc, char *argv[])
 
     Done = false;
     while (!Done) {
-        printf("Trying %d runs through Dhrystone:\n", Number_Of_Runs);
+        printf("Trying %ld runs through Dhrystone:\n", Number_Of_Runs);
 
         /* Start timer */
-        struct tms time_info;
-        times(&time_info);
-        Begin_Time = (long)time_info.tms_utime;
+        times(&time_buffer);
+        Begin_Time = (long)time_buffer.tms_utime;
 
         for (Run_Index = 1; Run_Index <= Number_Of_Runs; ++Run_Index) {
             Proc_5();
@@ -195,8 +254,8 @@ int main(int argc, char *argv[])
         }
 
         /* Stop timer */
-        times(&time_info);
-        End_Time = (long)time_info.tms_utime;
+        times(&time_buffer);
+        End_Time = (long)time_buffer.tms_utime;
 
         User_Time = End_Time - Begin_Time;
 
