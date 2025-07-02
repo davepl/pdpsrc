@@ -39,7 +39,7 @@
 #endif
 
 /* 2.9BSD PDP-11 system configuration */
-#define HZ 100  /* Match the floating-point version for comparison */
+#define HZ 60   /* 2.9BSD standard: 60 Hz (1/60 second ticks) */
 #define CLOCK_TYPE "times()"
 #define Too_Small_Time (3 * HZ)  /* Require at least 3 seconds */
 
@@ -480,30 +480,15 @@ char *argv[];
                 /* Calculate remainder manually: remainder = Number_Of_Runs - (quotient * User_Time) */
                 remainder = Number_Of_Runs - (quotient * User_Time);
                 
-                /* Now multiply quotient by HZ using safe addition */
+                /* Now multiply quotient by HZ */
                 {
                     long temp_result;
-                    long x4, x8, x16, x32, x64;
-                    x4 = quotient + quotient + quotient + quotient;    /* 4x */
-                    x8 = x4 + x4;                                      /* 8x */
-                    x16 = x8 + x8;                                     /* 16x */
-                    x32 = x16 + x16;                                   /* 32x */
-                    x64 = x32 + x32;                                   /* 64x */
-                    temp_result = x64 + x32 + x4;                     /* 100x = quotient * HZ */
-                    
+                    temp_result = quotient * HZ;
+                        
                     /* Add contribution from remainder: (remainder * HZ) / User_Time */
                     if (remainder > 0) {
                         long remainder_contribution;
-                        /* Calculate remainder * HZ using safe addition */
-                        {
-                            long rx4, rx8, rx16, rx32, rx64;
-                            rx4 = remainder + remainder + remainder + remainder;
-                            rx8 = rx4 + rx4;
-                            rx16 = rx8 + rx8;
-                            rx32 = rx16 + rx16;
-                            rx64 = rx32 + rx32;
-                            remainder_contribution = (rx64 + rx32 + rx4) / User_Time;  /* 100x */
-                        }
+                        remainder_contribution = (remainder * HZ) / User_Time;
                         final_result = temp_result + remainder_contribution;
                     } else {
                         final_result = temp_result;
