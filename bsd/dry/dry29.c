@@ -10,6 +10,7 @@
  * Authors:      Reinhold P. Weicker, CACM Vol 27, No 10, 10/84 pg. 1013.
  *               Rick Richardson, PC Research. Inc.
  *               Dave Cheney, modernization and portability
+ *               Dave Plummer, 29BSD and 211BSD port
  * 
  * Description:  Dhrystone 2.2 benchmark specifically for 2.9BSD on PDP-11.
  *               This version uses only integer arithmetic, K&R C style,
