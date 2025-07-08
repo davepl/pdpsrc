@@ -14,9 +14,18 @@
 #include <unistd.h>
 #include <errno.h>
 #include <signal.h>
+#include <stdint.h>
 
 #define SERVER_PORT 8080
-#define FRAME_SIZE 16
+
+/* Panel structure - must match kernel definition */
+/* Use pragma pack(1) to match PDP-11's natural 6-byte layout */
+#pragma pack(1)
+struct panel_state {
+    uint32_t ps_address;    /* 22-bit address (stored in 32-bit for portability) */
+    uint16_t ps_data;       /* 16-bit data */
+};
+#pragma pack()
 
 /* Global variables for signal handling */
 static int server_sockfd = -1;
@@ -92,19 +101,24 @@ int create_udp_server_socket(void)
 
 void handle_udp_clients(int sockfd)
 {
-    short frame[FRAME_SIZE];
+    struct panel_state panel;
     int bytes_received;
     int frame_count = 0;
     int stars_on_line = 0;
     struct sockaddr_in client_addr;
     int client_addr_len;
     
-    printf("Receiving UDP frames (each * = 1 frame):\n");
+    printf("Receiving UDP panel data (each * = 1 update):\n");
+    printf("Expected packet size: %d bytes (packed structure from PDP-11)\n", 
+           (int)sizeof(panel));
+    printf("Field sizes: ps_address=%d, ps_data=%d, uint32_t=%d, uint16_t=%d\n",
+           (int)sizeof(panel.ps_address), (int)sizeof(panel.ps_data),
+           (int)sizeof(uint32_t), (int)sizeof(uint16_t));
     
     while (1) {
-        /* Receive UDP frame */
+        /* Receive UDP panel data */
         client_addr_len = sizeof(client_addr);
-        bytes_received = recvfrom(sockfd, frame, sizeof(frame), 0,
+        bytes_received = recvfrom(sockfd, &panel, sizeof(panel), 0,
                                   (struct sockaddr *)&client_addr, &client_addr_len);
         
         if (bytes_received < 0) {
@@ -116,9 +130,9 @@ void handle_udp_clients(int sockfd)
             break;
         }
         
-        /* Check if we received a complete frame */
-        if (bytes_received == sizeof(frame)) {
-            /* Print a star for each frame */
+        /* Check if we received a complete panel structure from PDP-11 */
+        if (bytes_received == sizeof(panel)) {
+            /* Print a star for each update */
             printf("*");
             fflush(stdout);
             
@@ -131,22 +145,27 @@ void handle_udp_clients(int sockfd)
                 stars_on_line = 0;
             }
             
-            /* Print frame count every 150 frames (10 seconds at 15 fps) */
+            /* Print panel data every 150 updates (10 seconds at 15 fps) */
             if (frame_count % 150 == 0) {
-                printf(" [%d frames from %s:%d]\n", 
+                printf(" [%d updates - ADDR: 0x%06lx DATA: 0x%04x from %s:%d]\n", 
                        frame_count,
+                       (unsigned long)(panel.ps_address & 0x3FFFFF),
+                       (unsigned int)(panel.ps_data & 0xFFFF),
                        inet_ntoa(client_addr.sin_addr), 
                        ntohs(client_addr.sin_port));
                 stars_on_line = 0;
             }
         } else {
-            /* Incomplete frame received */
-            printf("?");
+            /* Incomplete panel data received - print diagnostic info */
+            printf("\n[Got %d bytes, expected %d bytes from %s:%d]\n",
+                   bytes_received, (int)sizeof(panel),
+                   inet_ntoa(client_addr.sin_addr), 
+                   ntohs(client_addr.sin_port));
             fflush(stdout);
         }
     }
     
-    printf("\nTotal frames received: %d\n", frame_count);
+    printf("\nTotal panel updates received: %d\n", frame_count);
 }
 
 void signal_handler(int sig)

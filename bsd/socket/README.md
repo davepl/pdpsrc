@@ -30,10 +30,11 @@ Start the server first:
 ```
 
 The server will:
-- Listen on port 8080
-- Accept client connections
-- Print a `*` for each frame received
-- Print frame counts every 10 seconds
+- Listen on port 8080 for UDP packets
+- Accept panel data from clients
+- Print a `*` for each panel update received
+- Display actual ADDRESS and DATA values from the PDP-11 front panel simulation
+- Print update counts every 10 seconds
 
 ### Client
 Connect to the server:
@@ -43,9 +44,13 @@ Connect to the server:
 ```
 
 The client will:
-- Send 16-word frames at 30 Hz (30 times per second)
-- Print connection status and frame count updates
+- Open `/dev/kmem` and locate the kernel `panel` symbol
+- Read the panel structure from kernel memory at 30 Hz
+- Send panel data (address and data values) to the server
+- Print connection status and periodic updates with actual panel values
 - Run continuously until interrupted
+
+**Note**: The client must run as root to access `/dev/kmem`.
 
 ## Testing
 
