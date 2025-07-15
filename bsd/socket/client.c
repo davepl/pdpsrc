@@ -96,13 +96,11 @@ int main(int argc, char *argv[])
     /* Open /dev/kmem and find panel symbol */
     kmem_fd = open_kmem_and_find_panel(&panel_addr);
     if (kmem_fd < 0) {
-        fprintf(stderr, "Warning: Failed to open /dev/kmem, using simulated data\n");
-        /* Continue with simulated data instead of exiting */
-        kmem_fd = -1;
-        panel_addr = 0;
-    } else {
-        printf("Panel symbol found at address 0x%lx\n", panel_addr);
+        fprintf(stderr, "Failed to open /dev/kmem or find panel symbol\n");
+        exit(1);
     }
+    
+    printf("Panel symbol found at address 0x%lx\n", panel_addr);
     
     /* Create UDP socket and set up server address */
     sockfd = create_udp_socket(server_ip, &server_addr);
@@ -168,30 +166,19 @@ void send_frames(int sockfd, struct sockaddr_in *server_addr)
     if (kmem_fd < 0) {
         kmem_fd = open_kmem_and_find_panel(&panel_addr);
         if (kmem_fd < 0) {
-            printf("Using simulated panel data (no kernel memory access)\n");
-            /* Continue with simulated data */
+            fprintf(stderr, "Cannot access kernel memory\n");
+            return;
         }
     }
     
     while (1) {
-        /* Read panel structure from kernel memory or simulate */
-        if (kmem_fd >= 0) {
-            if (read_panel_from_kmem(kmem_fd, panel_addr, &panel) < 0) {
-                fprintf(stderr, "Failed to read panel data from kernel\n");
-                break;
-            }
-        } else {
-            /* Generate simulated panel data */
-            panel.ps_address = 0x12345678 + frame_count;
-            panel.ps_data = 0x1234 + (frame_count % 256);
-            panel.ps_psw = 0x5678;
-            panel.ps_mser = 0x9ABC;
-            panel.ps_cpu_err = 0xDEF0;
-            panel.ps_mmr0 = 0x1111;
-            panel.ps_mmr3 = 0x2222;
+        /* Read panel structure from kernel memory */
+        if (read_panel_from_kmem(kmem_fd, panel_addr, &panel) < 0) {
+            fprintf(stderr, "Failed to read panel data from kernel\n");
+            break;
         }
         
-        /* Send panel data via UDP - serialize manually for portability */
+        /* Send panel data via UDP */
         {
             int bytes_sent = sendto(sockfd, &panel, sizeof(panel), 0,
                        (struct sockaddr *)server_addr, sizeof(*server_addr));

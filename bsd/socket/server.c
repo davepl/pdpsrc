@@ -149,6 +149,15 @@ void handle_udp_clients(int sockfd)
         
         /* Check if we received a complete panel structure from PDP-11 */
         if (bytes_received == sizeof(panel)) {
+            /* Convert from little-endian to host byte order */
+            panel.ps_address = ntohl(panel.ps_address);
+            panel.ps_data = ntohs(panel.ps_data);
+            panel.ps_psw = ntohs(panel.ps_psw);
+            panel.ps_mser = ntohs(panel.ps_mser);
+            panel.ps_cpu_err = ntohs(panel.ps_cpu_err);
+            panel.ps_mmr0 = ntohs(panel.ps_mmr0);
+            panel.ps_mmr3 = ntohs(panel.ps_mmr3);
+            
             char addr_bin[23], data_bin[17], psw_bin[17], mmr0_bin[17], mmr3_bin[17];
             
             /* Format each field as binary */
