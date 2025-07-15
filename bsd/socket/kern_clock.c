@@ -25,6 +25,11 @@
 struct panel_state {
 	long ps_address;	/* panel switches - 32-bit address */
 	short ps_data;		/* panel lamps - 16-bit data */
+    short ps_psw;
+    short ps_mser;
+    short ps_cpu_err;
+    short ps_mmr0;
+    short ps_mmr3;
 } panel = { 0L, 0 };
 
 /*
@@ -154,7 +159,12 @@ hardclock(dev,sp,r1,ov,nps,r0,pc,ps)
 	 * Keep this simple and safe - just use the pc parameter directly.
 	 */
 	panel.ps_address = (long)pc;
-	panel.ps_data = (short)(r0 & 0xFFFF);	/* 16-bit data from R0 */
+	panel.ps_data    = (short)(r0 & 0xFFFF);	
+    panel.ps_psw     = (short)(ps & 0xFFFF);
+    panel.ps_mser    = *(short *)017777744;
+    panel.ps_cpu_err = *(short *)017777766;
+    panel.ps_mmr0    = *(short *)017777572;
+    panel.ps_mmr3    = *(short *)017777516;
 
 	if (needsoft && BASEPRI(ps)) {	/* if ps is high, just return */
 		(void) _splsoftclock();

@@ -52,9 +52,14 @@ typedef unsigned long  u32_t;   /* 32 bits on modern, but we'll mask appropriate
 /* Panel structure - must match kernel definition */
 /* PDP-11 uses natural alignment, so we'll send/receive as individual fields */
 struct panel_state {
-    u32_t ps_address;    /* 22-bit address (stored in 32-bit for portability) */
-    u16_t ps_data;       /* 16-bit data */
-};
+	long ps_address;	/* panel switches - 32-bit address */
+	short ps_data;		/* panel lamps - 16-bit data */
+    short ps_psw;
+    short ps_mser;
+    short ps_cpu_err;
+    short ps_mmr0;
+    short ps_mmr3;
+} panel = { 0L, 0 };
 
 /* Function prototypes */
 int create_udp_socket(char *server_ip, struct sockaddr_in *server_addr);
@@ -91,11 +96,13 @@ int main(int argc, char *argv[])
     /* Open /dev/kmem and find panel symbol */
     kmem_fd = open_kmem_and_find_panel(&panel_addr);
     if (kmem_fd < 0) {
-        fprintf(stderr, "Failed to open /dev/kmem or find panel symbol\n");
-        exit(1);
+        fprintf(stderr, "Warning: Failed to open /dev/kmem, using simulated data\n");
+        /* Continue with simulated data instead of exiting */
+        kmem_fd = -1;
+        panel_addr = 0;
+    } else {
+        printf("Panel symbol found at address 0x%lx\n", panel_addr);
     }
-    
-    printf("Panel symbol found at address 0x%lx\n", panel_addr);
     
     /* Create UDP socket and set up server address */
     sockfd = create_udp_socket(server_ip, &server_addr);
@@ -106,7 +113,7 @@ int main(int argc, char *argv[])
     }
     
     printf("Connected successfully. Sending panel data at %d Hz...\n", FRAMES_PER_SECOND);
-    printf("Sending packet size: %d bytes (ps_address: %d, ps_data: %d)\n", 
+    printf("Packet size: %d bytes (ps_address: %d, ps_data: %d)\n", 
            (int)sizeof(struct panel_state), (int)sizeof(u32_t), (int)sizeof(u16_t));
     
     /* Send frames continuously */
@@ -161,43 +168,48 @@ void send_frames(int sockfd, struct sockaddr_in *server_addr)
     if (kmem_fd < 0) {
         kmem_fd = open_kmem_and_find_panel(&panel_addr);
         if (kmem_fd < 0) {
-            fprintf(stderr, "Cannot access kernel memory\n");
-            return;
+            printf("Using simulated panel data (no kernel memory access)\n");
+            /* Continue with simulated data */
         }
     }
     
     while (1) {
-        /* Read panel structure from kernel memory */
-        if (read_panel_from_kmem(kmem_fd, panel_addr, &panel) < 0) {
-            fprintf(stderr, "Failed to read panel data from kernel\n");
-            break;
+        /* Read panel structure from kernel memory or simulate */
+        if (kmem_fd >= 0) {
+            if (read_panel_from_kmem(kmem_fd, panel_addr, &panel) < 0) {
+                fprintf(stderr, "Failed to read panel data from kernel\n");
+                break;
+            }
+        } else {
+            /* Generate simulated panel data */
+            panel.ps_address = 0x12345678 + frame_count;
+            panel.ps_data = 0x1234 + (frame_count % 256);
+            panel.ps_psw = 0x5678;
+            panel.ps_mser = 0x9ABC;
+            panel.ps_cpu_err = 0xDEF0;
+            panel.ps_mmr0 = 0x1111;
+            panel.ps_mmr3 = 0x2222;
         }
         
         /* Send panel data via UDP - serialize manually for portability */
         {
-            char buffer[6];  /* 4 bytes address + 2 bytes data */
-            u32_t addr = (u32_t)panel.ps_address;
-            u16_t data = panel.ps_data;
-            
-            /* Pack data in network byte order for consistency */
-            buffer[0] = (addr >> 24) & 0xFF;
-            buffer[1] = (addr >> 16) & 0xFF; 
-            buffer[2] = (addr >> 8) & 0xFF;
-            buffer[3] = addr & 0xFF;
-            buffer[4] = (data >> 8) & 0xFF;
-            buffer[5] = data & 0xFF;
-            
-            if (sendto(sockfd, buffer, 6, 0, 
-                       (struct sockaddr *)server_addr, sizeof(*server_addr)) < 0) {
+            int bytes_sent = sendto(sockfd, &panel, sizeof(panel), 0,
+                       (struct sockaddr *)server_addr, sizeof(*server_addr));
+            if (bytes_sent < 0) {
                 perror("sendto");
                 break;
             }
         }
         
         frame_count++;
-        if (0 && frame_count % (FRAMES_PER_SECOND * 10) == 0) {  /* Every 10 seconds */
+        if (frame_count % (FRAMES_PER_SECOND * 1) == 0) {  /* Every 1 second */
             printf("Sent %d panel updates (addr=0x%lx, data=0x%x)\n", 
                    frame_count, panel.ps_address, (unsigned short)panel.ps_data);
+        }
+        
+        /* Debug: Print first few sends */
+        if (frame_count <= 5) {
+            printf("DEBUG: Sent packet #%d, size=%d bytes\n", frame_count, (int)sizeof(panel));
         }
         
         /* Wait for next frame time */

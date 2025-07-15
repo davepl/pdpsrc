@@ -22,8 +22,13 @@
 /* Use pragma pack(1) to match PDP-11's natural 6-byte layout */
 #pragma pack(1)
 struct panel_state {
-    uint32_t ps_address;    /* 22-bit address (stored in 32-bit for portability) */
-    uint16_t ps_data;       /* 16-bit data */
+	uint32_t ps_address;	/* panel switches - 32-bit address */
+	uint16_t ps_data;		/* panel lamps - 16-bit data */
+    uint16_t ps_psw;
+    uint16_t ps_mser;
+    uint16_t ps_cpu_err;
+    uint16_t ps_mmr0;
+    uint16_t ps_mmr3;
 };
 #pragma pack()
 
@@ -35,6 +40,17 @@ int create_udp_server_socket(void);
 void handle_udp_clients(int sockfd);
 void signal_handler(int sig);
 void setup_signal_handlers(void);
+void format_binary(uint32_t value, int bits, char *buffer);
+
+/* Format a value as binary string using O for 1 and . for 0 */
+void format_binary(uint32_t value, int bits, char *buffer)
+{
+    int i;
+    for (i = bits - 1; i >= 0; i--) {
+        buffer[bits - 1 - i] = ((value >> i) & 1) ? 'O' : '.';
+    }
+    buffer[bits] = '\0';
+}
 
 int main(int argc, char *argv[])
 {
@@ -96,6 +112,9 @@ int create_udp_server_socket(void)
         return -1;
     }
     
+    printf("UDP socket successfully bound to port %d\n", SERVER_PORT);
+    fflush(stdout);
+    
     return sockfd;
 }
 
@@ -104,16 +123,14 @@ void handle_udp_clients(int sockfd)
     struct panel_state panel;
     int bytes_received;
     int frame_count = 0;
-    int stars_on_line = 0;
     struct sockaddr_in client_addr;
-    int client_addr_len;
+    socklen_t client_addr_len;
     
-    printf("Receiving UDP panel data (each * = 1 update):\n");
+    printf("Receiving UDP panel data:\n");
     printf("Expected packet size: %d bytes (packed structure from PDP-11)\n", 
            (int)sizeof(panel));
-    printf("Field sizes: ps_address=%d, ps_data=%d, uint32_t=%d, uint16_t=%d\n",
-           (int)sizeof(panel.ps_address), (int)sizeof(panel.ps_data),
-           (int)sizeof(uint32_t), (int)sizeof(uint16_t));
+    printf("Format: ADDR (22-bit), DATA (16-bit), PSW (16-bit), MMR0 (16-bit), MMR3 (16-bit)\n");
+    printf("Binary format: O=1, .=0\n\n");
     
     while (1) {
         /* Receive UDP panel data */
@@ -132,32 +149,24 @@ void handle_udp_clients(int sockfd)
         
         /* Check if we received a complete panel structure from PDP-11 */
         if (bytes_received == sizeof(panel)) {
-            /* Print a star for each update */
-            printf("*");
+            char addr_bin[23], data_bin[17], psw_bin[17], mmr0_bin[17], mmr3_bin[17];
+            
+            /* Format each field as binary */
+            format_binary(panel.ps_address & 0x3FFFFF, 22, addr_bin);  /* 22-bit address */
+            format_binary(panel.ps_data, 16, data_bin);
+            format_binary(panel.ps_psw, 16, psw_bin);
+            format_binary(panel.ps_mmr0, 16, mmr0_bin);
+            format_binary(panel.ps_mmr3, 16, mmr3_bin);
+            
+            /* Print the frame data */
+            printf("ADDR: %s, DATA: %s, PSW: %s, MMR0: %s, MMR3: %s\n",
+                   addr_bin, data_bin, psw_bin, mmr0_bin, mmr3_bin);
             fflush(stdout);
             
             frame_count++;
-            stars_on_line++;
-            
-            /* Print newline every 60 stars for readability */
-            if (stars_on_line >= 60) {
-                printf("\n");
-                stars_on_line = 0;
-            }
-            
-            /* Print panel data every 150 updates (10 seconds at 15 fps) */
-            if (frame_count % 150 == 0) {
-                printf(" [%d updates - ADDR: 0x%06lx DATA: 0x%04x from %s:%d]\n", 
-                       frame_count,
-                       (unsigned long)(panel.ps_address & 0x3FFFFF),
-                       (unsigned int)(panel.ps_data & 0xFFFF),
-                       inet_ntoa(client_addr.sin_addr), 
-                       ntohs(client_addr.sin_port));
-                stars_on_line = 0;
-            }
         } else {
             /* Incomplete panel data received - print diagnostic info */
-            printf("\n[Got %d bytes, expected %d bytes from %s:%d]\n",
+            printf("[Got %d bytes, expected %d bytes from %s:%d]\n",
                    bytes_received, (int)sizeof(panel),
                    inet_ntoa(client_addr.sin_addr), 
                    ntohs(client_addr.sin_port));

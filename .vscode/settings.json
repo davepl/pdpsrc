@@ -3,6 +3,7 @@
         "stdio.h": "c",
         "time.h": "c",
         "unistd.h": "c",
-        "file.h": "c"
+        "file.h": "c",
+        "stdint.h": "c"
     }
 }
