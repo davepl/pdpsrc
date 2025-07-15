@@ -18,6 +18,42 @@
 
 #define SERVER_PORT 8080
 
+// Detect endianness at compile-time, fallback to runtime check if needed.
+#if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && defined(__ORDER_BIG_ENDIAN__)
+
+    #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+        #define le16toh(x) (x)
+        #define le32toh(x) (x)
+    #else
+        #define le16toh(x) __builtin_bswap16(x)
+        #define le32toh(x) __builtin_bswap32(x)
+    #endif
+
+#elif defined(_WIN32)
+    #include <stdlib.h>
+    #define le16toh(x) (x)
+    #define le32toh(x) (x)
+
+#elif defined(__APPLE__)
+    #include <libkern/OSByteOrder.h>
+    #define le16toh(x) OSSwapLittleToHostInt16(x)
+    #define le32toh(x) OSSwapLittleToHostInt32(x)
+
+#else
+    // Fallback: runtime check, safe but a bit slower
+    static inline uint16_t le16toh(uint16_t x) {
+        uint16_t test = 1;
+        if (*(uint8_t*)&test == 1) return x;
+        return (x << 8) | (x >> 8);
+    }
+    static inline uint32_t le32toh(uint32_t x) {
+        uint16_t test = 1;
+        if (*(uint8_t*)&test == 1) return x;
+        return ((x & 0xFF) << 24) | ((x & 0xFF00) << 8) |
+               ((x & 0xFF0000) >> 8) | ((x & 0xFF000000) >> 24);
+    }
+#endif
+
 /* Panel structure - must match kernel definition */
 /* Use pragma pack(1) to match PDP-11's natural 6-byte layout */
 #pragma pack(1)
@@ -150,13 +186,13 @@ void handle_udp_clients(int sockfd)
         /* Check if we received a complete panel structure from PDP-11 */
         if (bytes_received == sizeof(panel)) {
             /* Convert from little-endian to host byte order */
-            panel.ps_address = ntohl(panel.ps_address);
-            panel.ps_data = ntohs(panel.ps_data);
-            panel.ps_psw = ntohs(panel.ps_psw);
-            panel.ps_mser = ntohs(panel.ps_mser);
-            panel.ps_cpu_err = ntohs(panel.ps_cpu_err);
-            panel.ps_mmr0 = ntohs(panel.ps_mmr0);
-            panel.ps_mmr3 = ntohs(panel.ps_mmr3);
+            panel.ps_address = le32toh(panel.ps_address);
+            panel.ps_data = le16toh(panel.ps_data);
+            panel.ps_psw = le16toh(panel.ps_psw);
+            panel.ps_mser = le16toh(panel.ps_mser);
+            panel.ps_cpu_err = le16toh(panel.ps_cpu_err);
+            panel.ps_mmr0 = le16toh(panel.ps_mmr0);
+            panel.ps_mmr3 = le16toh(panel.ps_mmr3);
             
             char addr_bin[23], data_bin[17], psw_bin[17], mmr0_bin[17], mmr3_bin[17];
             
