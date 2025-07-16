@@ -25,8 +25,16 @@
 /* Include stdint.h for uint64_t and uintptr_t */
 #if defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
 #include <stdint.h>
+#include <kvm.h>
+#include <nlist.h>
+#include <limits.h>
 #elif defined(__APPLE__) || defined(__linux__)
 #include <stdint.h>
+#endif
+
+/* Define _POSIX2_LINE_MAX if not available */
+#ifndef _POSIX2_LINE_MAX
+#define _POSIX2_LINE_MAX 2048
 #endif
 
 /* Fallback for systems without uintptr_t */
@@ -94,13 +102,27 @@ struct panel_state {
 
 struct panel_state panel = { 0 };
 
+/* Global variables for kvm access */
+#if defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
+static kvm_t *kd = NULL;
+static struct nlist nl[] = {
+    { "_panel" },
+    { NULL }
+};
+#endif
+
 /* Function prototypes */
 int create_udp_socket(char *server_ip, struct sockaddr_in *server_addr);
 void send_frames(int sockfd, struct sockaddr_in *server_addr);
 void usage(char *progname);
 void precise_delay(long usec);
+#if defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
+int open_kvm_and_find_panel(void);
+int read_panel_from_kvm(struct panel_state *panel);
+#else
 int open_kmem_and_find_panel(void **panel_addr);
 int read_panel_from_kmem(int kmem_fd, void *panel_addr, struct panel_state *panel);
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -108,8 +130,12 @@ int main(int argc, char *argv[])
     int sockfd;
     int c;
     struct sockaddr_in server_addr;
+#if defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
+    /* NetBSD uses kvm library */
+#else
     void *panel_addr;
     int kmem_fd;
+#endif
     
     /* Parse command line arguments */
     while ((c = getopt(argc, argv, "s:h")) != -1) {
@@ -126,20 +152,36 @@ int main(int argc, char *argv[])
     
     printf("Connecting to server at %s:%d via UDP\n", server_ip, SERVER_PORT);
     
+#if defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
+    /* Open kvm and find panel symbol */
+    if (open_kvm_and_find_panel() < 0) {
+        fprintf(stderr, "Failed to open kvm or find panel symbol\n");
+        exit(1);
+    }
+#else
     /* Open /dev/kmem and find panel symbol */
     kmem_fd = open_kmem_and_find_panel(&panel_addr);
     if (kmem_fd < 0) {
         fprintf(stderr, "Failed to open /dev/kmem or find panel symbol\n");
         exit(1);
     }
+#endif
     
+#if defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
+    printf("Panel symbol found at address %p\n", (void*)nl[0].n_value);
+#else
     printf("Panel symbol found at address %p\n", panel_addr);
+#endif
     
     /* Create UDP socket and set up server address */
     sockfd = create_udp_socket(server_ip, &server_addr);
     if (sockfd < 0) {
         fprintf(stderr, "Failed to create UDP socket\n");
+#if defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
+        if (kd) kvm_close(kd);
+#else
         close(kmem_fd);
+#endif
         exit(1);
     }
     
@@ -151,7 +193,11 @@ int main(int argc, char *argv[])
     send_frames(sockfd, &server_addr);
     
     close(sockfd);
+#if defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
+    if (kd) kvm_close(kd);
+#else
     close(kmem_fd);
+#endif
     return 0;
 }
 
@@ -192,6 +238,9 @@ void send_frames(int sockfd, struct sockaddr_in *server_addr)
 {
     struct panel_state panel;
     int frame_count = 0;
+#if defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
+    /* NetBSD uses kvm library - no static variables needed */
+#else
     static void *panel_addr = NULL;
     static int kmem_fd = -1;
     
@@ -203,13 +252,21 @@ void send_frames(int sockfd, struct sockaddr_in *server_addr)
             return;
         }
     }
+#endif
     
     while (1) {
         /* Read panel structure from kernel memory */
+#if defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
+        if (read_panel_from_kvm(&panel) < 0) {
+            fprintf(stderr, "Failed to read panel data from kernel\n");
+            break;
+        }
+#else
         if (read_panel_from_kmem(kmem_fd, panel_addr, &panel) < 0) {
             fprintf(stderr, "Failed to read panel data from kernel\n");
             break;
         }
+#endif
         
         /* Send panel data via UDP */
         {
@@ -346,6 +403,54 @@ int read_panel_from_kmem(int kmem_fd, void *panel_addr, struct panel_state *pane
     
     return 0;
 }
+
+#if defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
+/* NetBSD kvm library functions */
+int open_kvm_and_find_panel(void)
+{
+    char errbuf[_POSIX2_LINE_MAX];
+    
+    /* Open kernel virtual memory */
+    kd = kvm_open(NULL, NULL, NULL, O_RDONLY, errbuf);
+    if (kd == NULL) {
+        fprintf(stderr, "kvm_open: %s\n", errbuf);
+        return -1;
+    }
+    
+    /* Look up the panel symbol */
+    if (kvm_nlist(kd, nl) != 0) {
+        fprintf(stderr, "kvm_nlist: %s\n", kvm_geterr(kd));
+        kvm_close(kd);
+        kd = NULL;
+        return -1;
+    }
+    
+    if (nl[0].n_value == 0) {
+        fprintf(stderr, "Panel symbol not found in kernel symbol table\n");
+        kvm_close(kd);
+        kd = NULL;
+        return -1;
+    }
+    
+    return 0;
+}
+
+int read_panel_from_kvm(struct panel_state *panel)
+{
+    if (kd == NULL) {
+        fprintf(stderr, "kvm not initialized\n");
+        return -1;
+    }
+    
+    /* Read panel structure from kernel memory using kvm_read */
+    if (kvm_read(kd, nl[0].n_value, panel, sizeof(*panel)) != sizeof(*panel)) {
+        fprintf(stderr, "kvm_read: %s\n", kvm_geterr(kd));
+        return -1;
+    }
+    
+    return 0;
+}
+#endif
 
 void precise_delay(long usec)
 {

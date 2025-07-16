@@ -68,6 +68,12 @@ struct panel_state {
 };
 #pragma pack()
 
+/* NetBSD panel structure - only 2 fields */
+struct netbsd_panel_state {
+    uint64_t ps_address;        /* panel switches - 64-bit address on NetBSD */
+    uint64_t ps_data;           /* panel lamps - 64-bit data on NetBSD */
+};
+
 /* Global variables for signal handling */
 static int server_sockfd = -1;
 
@@ -183,9 +189,9 @@ void handle_udp_clients(int sockfd)
             break;
         }
         
-        /* Check if we received a complete panel structure from PDP-11 */
+        /* Check if we received a complete panel structure */
         if (bytes_received == sizeof(panel)) {
-            /* Convert from little-endian to host byte order */
+            /* PDP-11 format - convert from little-endian to host byte order */
             panel.ps_address = le32toh(panel.ps_address);
             panel.ps_data = le16toh(panel.ps_data);
             panel.ps_psw = le16toh(panel.ps_psw);
@@ -204,15 +210,31 @@ void handle_udp_clients(int sockfd)
             format_binary(panel.ps_mmr3, 16, mmr3_bin);
             
             /* Print the frame data */
-            printf("ADDR: %s, DATA: %s, PSW: %s, MMR0: %s, MMR3: %s\n",
+            printf("PDP-11: ADDR: %s, DATA: %s, PSW: %s, MMR0: %s, MMR3: %s\n",
                    addr_bin, data_bin, psw_bin, mmr0_bin, mmr3_bin);
+            fflush(stdout);
+            
+            frame_count++;
+        } else if (bytes_received == sizeof(struct netbsd_panel_state)) {
+            /* NetBSD format - only 2 fields */
+            struct netbsd_panel_state netbsd_panel;
+            memcpy(&netbsd_panel, &panel, sizeof(netbsd_panel));
+            
+            char addr_bin[65], data_bin[65];  /* 64-bit fields */
+            
+            /* Format each field as binary (show lower 32 bits for readability) */
+            format_binary((uint32_t)(netbsd_panel.ps_address & 0xFFFFFFFF), 32, addr_bin);
+            format_binary((uint32_t)(netbsd_panel.ps_data & 0xFFFFFFFF), 32, data_bin);
+            
+            /* Print the frame data */
+            printf("NetBSD: ADDR: %s, DATA: %s\n", addr_bin, data_bin);
             fflush(stdout);
             
             frame_count++;
         } else {
             /* Incomplete panel data received - print diagnostic info */
-            printf("[Got %d bytes, expected %d bytes from %s:%d]\n",
-                   bytes_received, (int)sizeof(panel),
+            printf("[Got %d bytes, expected %d (PDP-11) or %d (NetBSD) bytes from %s:%d]\n",
+                   bytes_received, (int)sizeof(panel), (int)sizeof(struct netbsd_panel_state),
                    inet_ntoa(client_addr.sin_addr), 
                    ntohs(client_addr.sin_port));
             fflush(stdout);
