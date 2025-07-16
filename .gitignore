@@ -8,3 +8,5 @@ bsd/screensavers/sine2
 bsd/screensavers/stars
 bsd/screensavers/matrix
 bsd/screensavers/life
+bsd/socket/server
+bsd/socket/client

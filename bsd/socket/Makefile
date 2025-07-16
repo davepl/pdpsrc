@@ -4,24 +4,19 @@
 CC = cc
 CFLAGS = -O
 
-# Platform-specific libraries
-UNAME_S := $(shell uname -s)
-ifeq ($(UNAME_S),NetBSD)
-    CLIENT_LIBS = -lkvm
-    SERVER_LIBS = 
-else
-    CLIENT_LIBS = 
-    SERVER_LIBS = 
-endif
-
 # Default target
 all: client server
 
+# Use different targets for different platforms
 client: client.c
-	$(CC) $(CFLAGS) -o client client.c $(CLIENT_LIBS)
+	@if [ "`uname -s`" = "NetBSD" ]; then \
+		$(CC) $(CFLAGS) -o client client.c -lkvm; \
+	else \
+		$(CC) $(CFLAGS) -o client client.c; \
+	fi
 
 server: server.c
-	$(CC) $(CFLAGS) -o server server.c $(SERVER_LIBS)
+	$(CC) $(CFLAGS) -o server server.c
 
 clean:
 	rm -f client server
