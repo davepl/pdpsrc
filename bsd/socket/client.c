@@ -18,7 +18,7 @@
 #include <fcntl.h>
 
 /* Include unistd.h on modern systems for getopt and system calls */
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__NetBSD__)
 #include <unistd.h>
 #endif
 
@@ -35,7 +35,7 @@
 #endif
 
 /* Declare functions for 211BSD compatibility if not already declared */
-#ifndef __APPLE__  /* Only declare these on older systems */
+#if !defined(__APPLE__) && !defined(__NetBSD__)  /* Only declare these on older systems */
 extern int getopt();
 extern char *optarg;
 extern int optind;
