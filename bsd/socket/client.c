@@ -22,6 +22,11 @@
 #include <unistd.h>
 #endif
 
+/* Include stdint.h for uint64_t on NetBSD */
+#if defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
+#include <stdint.h>
+#endif
+
 /* Define SEEK constants if not available */
 #ifndef SEEK_SET
 #define SEEK_SET 0
@@ -51,15 +56,41 @@ typedef unsigned long  u32_t;   /* 32 bits on modern, but we'll mask appropriate
 
 /* Panel structure - must match kernel definition */
 /* PDP-11 uses natural alignment, so we'll send/receive as individual fields */
+
+#ifdef pdp11
 struct panel_state {
-	long ps_address;	/* panel switches - 32-bit address */
-	short ps_data;		/* panel lamps - 16-bit data */
+    long ps_address;	/* panel switches - 32-bit address */
+    short ps_data;		/* panel lamps - 16-bit data */
     short ps_psw;
     short ps_mser;
     short ps_cpu_err;
     short ps_mmr0;
     short ps_mmr3;
-} panel = { 0L, 0 };
+};
+#elif defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
+struct panel_state {
+    uint64_t ps_address;        /* panel switches - 64-bit address on NetBSD */
+    uint64_t ps_data;           /* panel lamps - 64-bit data on NetBSD */
+    uint64_t ps_psw;
+    uint64_t ps_mser;
+    uint64_t ps_cpu_err;
+    uint64_t ps_mmr0;
+    uint64_t ps_mmr3;
+};
+#else
+/* Default fallback for other systems (like macOS for development) */
+struct panel_state {
+    long ps_address;	/* panel switches - 32-bit address */
+    short ps_data;		/* panel lamps - 16-bit data */
+    short ps_psw;
+    short ps_mser;
+    short ps_cpu_err;
+    short ps_mmr0;
+    short ps_mmr3;
+};
+#endif
+
+struct panel_state panel = { 0 };
 
 /* Function prototypes */
 int create_udp_socket(char *server_ip, struct sockaddr_in *server_addr);
@@ -221,6 +252,8 @@ int open_kmem_and_find_panel(long *panel_addr)
     int kmem_fd;
     
     /* Try to find panel symbol in kernel symbol table */
+#ifdef pdp11
+    /* PDP-11 systems use /unix or /vmunix with octal addresses */
     fp = popen("nm /unix | grep panel", "r");
     if (fp == NULL) {
         fp = popen("nm /vmunix | grep panel", "r");
@@ -229,9 +262,31 @@ int open_kmem_and_find_panel(long *panel_addr)
             return -1;
         }
     }
+#elif defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
+    /* NetBSD/AMD64 systems use /netbsd with hex addresses */
+    fp = popen("nm /netbsd | grep panel", "r");
+    if (fp == NULL) {
+        fprintf(stderr, "Cannot run nm on /netbsd to find panel symbol\n");
+        return -1;
+    }
+#else
+    /* Default fallback - try common kernel locations */
+    fp = popen("nm /unix | grep panel", "r");
+    if (fp == NULL) {
+        fp = popen("nm /vmunix | grep panel", "r");
+        if (fp == NULL) {
+            fp = popen("nm /netbsd | grep panel", "r");
+            if (fp == NULL) {
+                fprintf(stderr, "Cannot run nm to find panel symbol\n");
+                return -1;
+            }
+        }
+    }
+#endif
     
     *panel_addr = 0;
     while (fgets(line, sizeof(line), fp)) {
+#ifdef pdp11
         /* Parse octal address format used by 211BSD nm */
         if (sscanf(line, "%lo %c %s", &addr, &type, symbol) == 3) {
             if (strcmp(symbol, "panel") == 0 || strcmp(symbol, "_panel") == 0) {
@@ -239,6 +294,24 @@ int open_kmem_and_find_panel(long *panel_addr)
                 break;
             }
         }
+#elif defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
+        /* Parse hex address format used by NetBSD nm */
+        if (sscanf(line, "%lx %c %s", &addr, &type, symbol) == 3) {
+            if (strcmp(symbol, "panel") == 0 || strcmp(symbol, "_panel") == 0) {
+                *panel_addr = addr;
+                break;
+            }
+        }
+#else
+        /* Default: try both octal and hex formats */
+        if (sscanf(line, "%lo %c %s", &addr, &type, symbol) == 3 ||
+            sscanf(line, "%lx %c %s", &addr, &type, symbol) == 3) {
+            if (strcmp(symbol, "panel") == 0 || strcmp(symbol, "_panel") == 0) {
+                *panel_addr = addr;
+                break;
+            }
+        }
+#endif
     }
     pclose(fp);
     
