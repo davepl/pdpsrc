@@ -76,8 +76,8 @@ struct panel_state {
 };
 #elif defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
 struct panel_state {
-    uint64_t ps_address;        /* panel switches - 32-bit address */
-    uint64_t ps_data;           /* panel lamps - 16-bit data */
+    uint64_t ps_address;        /* panel switches - 64-bit address on NetBSD */
+    uint64_t ps_data;           /* panel lamps - 64-bit data on NetBSD */
 };
 #else
 /* Default fallback for other systems (like macOS for development) */
@@ -308,7 +308,13 @@ int open_kmem_and_find_panel(void **panel_addr)
     kmem_fd = open("/dev/kmem", O_RDONLY);
     if (kmem_fd < 0) {
         perror("open /dev/kmem");
-        return -1;
+        /* On NetBSD, try /dev/mem as fallback */
+        kmem_fd = open("/dev/mem", O_RDONLY);
+        if (kmem_fd < 0) {
+            perror("open /dev/mem");
+            return -1;
+        }
+        printf("Using /dev/mem instead of /dev/kmem\n");
     }
     
     return kmem_fd;
@@ -316,7 +322,19 @@ int open_kmem_and_find_panel(void **panel_addr)
 
 int read_panel_from_kmem(int kmem_fd, void *panel_addr, struct panel_state *panel)
 {
-    if (lseek(kmem_fd, (off_t)(uintptr_t)panel_addr, SEEK_SET) < 0) {
+    off_t offset = (off_t)(uintptr_t)panel_addr;
+    
+    /* On NetBSD AMD64, kernel virtual addresses may not be directly accessible */
+    /* Check if this is a high kernel virtual address */
+    if (offset < 0 || (uintptr_t)panel_addr > 0xffffffff00000000ULL) {
+        /* Try to handle kernel virtual address mapping */
+        fprintf(stderr, "Warning: High kernel virtual address %p may not be accessible via /dev/kmem\n", panel_addr);
+        
+        /* On NetBSD, try using /dev/mem instead or adjust the address */
+        /* For now, we'll try the lseek anyway and see what happens */
+    }
+    
+    if (lseek(kmem_fd, offset, SEEK_SET) < 0) {
         perror("lseek");
         return -1;
     }
