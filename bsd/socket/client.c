@@ -22,9 +22,16 @@
 #include <unistd.h>
 #endif
 
-/* Include stdint.h for uint64_t on NetBSD */
+/* Include stdint.h for uint64_t and uintptr_t */
 #if defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
 #include <stdint.h>
+#elif defined(__APPLE__) || defined(__linux__)
+#include <stdint.h>
+#endif
+
+/* Fallback for systems without uintptr_t */
+#ifndef uintptr_t
+#define uintptr_t unsigned long
 #endif
 
 /* Define SEEK constants if not available */
@@ -69,14 +76,10 @@ struct panel_state {
 };
 #elif defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
 struct panel_state {
-    uint64_t ps_address;        /* panel switches - 64-bit address on NetBSD */
-    uint64_t ps_data;           /* panel lamps - 64-bit data on NetBSD */
-    uint64_t ps_psw;
-    uint64_t ps_mser;
-    uint64_t ps_cpu_err;
-    uint64_t ps_mmr0;
-    uint64_t ps_mmr3;
-};
+struct panel_state {
+    uint64_t ps_address;        /* panel switches - 32-bit address */
+    uint64_t ps_data;           /* panel lamps - 16-bit data */
+} panel = { 0L, 0 };};
 #else
 /* Default fallback for other systems (like macOS for development) */
 struct panel_state {
@@ -97,8 +100,8 @@ int create_udp_socket(char *server_ip, struct sockaddr_in *server_addr);
 void send_frames(int sockfd, struct sockaddr_in *server_addr);
 void usage(char *progname);
 void precise_delay(long usec);
-int open_kmem_and_find_panel(long *panel_addr);
-int read_panel_from_kmem(int kmem_fd, long panel_addr, struct panel_state *panel);
+int open_kmem_and_find_panel(void **panel_addr);
+int read_panel_from_kmem(int kmem_fd, void *panel_addr, struct panel_state *panel);
 
 int main(int argc, char *argv[])
 {
@@ -106,7 +109,7 @@ int main(int argc, char *argv[])
     int sockfd;
     int c;
     struct sockaddr_in server_addr;
-    long panel_addr;
+    void *panel_addr;
     int kmem_fd;
     
     /* Parse command line arguments */
@@ -131,7 +134,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
     
-    printf("Panel symbol found at address 0x%lx\n", panel_addr);
+    printf("Panel symbol found at address %p\n", panel_addr);
     
     /* Create UDP socket and set up server address */
     sockfd = create_udp_socket(server_ip, &server_addr);
@@ -190,7 +193,7 @@ void send_frames(int sockfd, struct sockaddr_in *server_addr)
 {
     struct panel_state panel;
     int frame_count = 0;
-    static long panel_addr = 0;
+    static void *panel_addr = NULL;
     static int kmem_fd = -1;
     
     /* Open /dev/kmem and find panel address if not already done */
@@ -222,7 +225,7 @@ void send_frames(int sockfd, struct sockaddr_in *server_addr)
         frame_count++;
         if (frame_count % (FRAMES_PER_SECOND * 1) == 0) {  /* Every 1 second */
             printf("Sent %d panel updates (addr=0x%lx, data=0x%x)\n", 
-                   frame_count, panel.ps_address, (unsigned short)panel.ps_data);
+                   frame_count, (unsigned long)panel.ps_address, (unsigned short)panel.ps_data);
         }
         
         /* Debug: Print first few sends */
@@ -242,12 +245,12 @@ void usage(char *progname)
     printf("  -h             Show this help\n");
 }
 
-int open_kmem_and_find_panel(long *panel_addr)
+int open_kmem_and_find_panel(void **panel_addr)
 {
     FILE *fp;
     char line[256];
     char symbol[64];
-    long addr;
+    uintptr_t addr;
     char type;
     int kmem_fd;
     
@@ -284,38 +287,20 @@ int open_kmem_and_find_panel(long *panel_addr)
     }
 #endif
     
-    *panel_addr = 0;
+    *panel_addr = NULL;
     while (fgets(line, sizeof(line), fp)) {
-#ifdef pdp11
-        /* Parse octal address format used by 211BSD nm */
-        if (sscanf(line, "%lo %c %s", &addr, &type, symbol) == 3) {
+        /* Try both octal and hex formats - sscanf will handle the parsing */
+        if (sscanf(line, "%lx %c %s", &addr, &type, symbol) == 3 ||
+            sscanf(line, "%lo %c %s", &addr, &type, symbol) == 3) {
             if (strcmp(symbol, "panel") == 0 || strcmp(symbol, "_panel") == 0) {
-                *panel_addr = addr;
+                *panel_addr = (void*)addr;
                 break;
             }
         }
-#elif defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
-        /* Parse hex address format used by NetBSD nm */
-        if (sscanf(line, "%lx %c %s", &addr, &type, symbol) == 3) {
-            if (strcmp(symbol, "panel") == 0 || strcmp(symbol, "_panel") == 0) {
-                *panel_addr = addr;
-                break;
-            }
-        }
-#else
-        /* Default: try both octal and hex formats */
-        if (sscanf(line, "%lo %c %s", &addr, &type, symbol) == 3 ||
-            sscanf(line, "%lx %c %s", &addr, &type, symbol) == 3) {
-            if (strcmp(symbol, "panel") == 0 || strcmp(symbol, "_panel") == 0) {
-                *panel_addr = addr;
-                break;
-            }
-        }
-#endif
     }
     pclose(fp);
     
-    if (*panel_addr == 0) {
+    if (*panel_addr == NULL) {
         fprintf(stderr, "Panel symbol not found in kernel symbol table\n");
         return -1;
     }
@@ -330,9 +315,9 @@ int open_kmem_and_find_panel(long *panel_addr)
     return kmem_fd;
 }
 
-int read_panel_from_kmem(int kmem_fd, long panel_addr, struct panel_state *panel)
+int read_panel_from_kmem(int kmem_fd, void *panel_addr, struct panel_state *panel)
 {
-    if (lseek(kmem_fd, panel_addr, SEEK_SET) < 0) {
+    if (lseek(kmem_fd, (off_t)(uintptr_t)panel_addr, SEEK_SET) < 0) {
         perror("lseek");
         return -1;
     }
