@@ -22,36 +22,56 @@
 #if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && defined(__ORDER_BIG_ENDIAN__)
 
     #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+        #ifndef le16toh
         #define le16toh(x) (x)
+        #endif
+        #ifndef le32toh
         #define le32toh(x) (x)
+        #endif
     #else
+        #ifndef le16toh
         #define le16toh(x) __builtin_bswap16(x)
+        #endif
+        #ifndef le32toh
         #define le32toh(x) __builtin_bswap32(x)
+        #endif
     #endif
 
 #elif defined(_WIN32)
     #include <stdlib.h>
+    #ifndef le16toh
     #define le16toh(x) (x)
+    #endif
+    #ifndef le32toh
     #define le32toh(x) (x)
+    #endif
 
 #elif defined(__APPLE__)
     #include <libkern/OSByteOrder.h>
+    #ifndef le16toh
     #define le16toh(x) OSSwapLittleToHostInt16(x)
+    #endif
+    #ifndef le32toh
     #define le32toh(x) OSSwapLittleToHostInt32(x)
+    #endif
 
 #else
     // Fallback: runtime check, safe but a bit slower
+    #ifndef le16toh
     static inline uint16_t le16toh(uint16_t x) {
         uint16_t test = 1;
         if (*(uint8_t*)&test == 1) return x;
         return (x << 8) | (x >> 8);
     }
+    #endif
+    #ifndef le32toh
     static inline uint32_t le32toh(uint32_t x) {
         uint16_t test = 1;
         if (*(uint8_t*)&test == 1) return x;
         return ((x & 0xFF) << 24) | ((x & 0xFF00) << 8) |
                ((x & 0xFF0000) >> 8) | ((x & 0xFF000000) >> 24);
     }
+    #endif
 #endif
 
 /* Panel structure - must match kernel definition */

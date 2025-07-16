@@ -168,7 +168,8 @@ int main(int argc, char *argv[])
 #endif
     
 #if defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
-    printf("Panel symbol found at address %p\n", (void*)nl[0].n_value);
+    printf("Panel symbol found at kernel address %p\n", (void*)nl[0].n_value);
+    printf("This is the ADDRESS OF the panel structure in kernel memory\n");
 #else
     printf("Panel symbol found at address %p\n", panel_addr);
 #endif
@@ -280,13 +281,17 @@ void send_frames(int sockfd, struct sockaddr_in *server_addr)
         
         frame_count++;
         if (frame_count % (FRAMES_PER_SECOND * 1) == 0) {  /* Every 1 second */
-            printf("Sent %d panel updates (addr=0x%lx, data=0x%x)\n", 
+            printf("Sent %d panel updates (CONTENTS: ps_address=0x%lx, ps_data=0x%x)\n", 
                    frame_count, (unsigned long)panel.ps_address, (unsigned short)panel.ps_data);
         }
         
         /* Debug: Print first few sends */
         if (frame_count <= 5) {
             printf("DEBUG: Sent packet #%d, size=%d bytes\n", frame_count, (int)sizeof(panel));
+            if (frame_count == 1) {
+                printf("DEBUG: Panel contents - ps_address=0x%lx, ps_data=0x%lx\n", 
+                       (unsigned long)panel.ps_address, (unsigned long)panel.ps_data);
+            }
         }
         
         /* Wait for next frame time */
@@ -437,6 +442,8 @@ int open_kvm_and_find_panel(void)
 
 int read_panel_from_kvm(struct panel_state *panel)
 {
+    static int first_read = 1;
+    
     if (kd == NULL) {
         fprintf(stderr, "kvm not initialized\n");
         return -1;
@@ -446,6 +453,17 @@ int read_panel_from_kvm(struct panel_state *panel)
     if (kvm_read(kd, nl[0].n_value, panel, sizeof(*panel)) != sizeof(*panel)) {
         fprintf(stderr, "kvm_read: %s\n", kvm_geterr(kd));
         return -1;
+    }
+    
+    /* Debug output for first few reads */
+    if (first_read) {
+        printf("DEBUG: Reading from kernel address 0x%lx\n", nl[0].n_value);
+        printf("DEBUG: Read %d bytes from kernel\n", (int)sizeof(*panel));
+        printf("DEBUG: Raw panel.ps_address = 0x%lx (CONTENTS of ps_address field)\n", 
+               (unsigned long)panel->ps_address);
+        printf("DEBUG: Raw panel.ps_data = 0x%lx (CONTENTS of ps_data field)\n", 
+               (unsigned long)panel->ps_data);
+        first_read = 0;
     }
     
     return 0;
