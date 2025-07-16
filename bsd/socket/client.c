@@ -78,7 +78,7 @@ struct panel_state {
 struct panel_state {
     uint64_t ps_address;        /* panel switches - 32-bit address */
     uint64_t ps_data;           /* panel lamps - 16-bit data */
-} panel = { 0L, 0 };};
+} panel = { 0L, 0 };
 #else
 /* Default fallback for other systems (like macOS for development) */
 struct panel_state {
