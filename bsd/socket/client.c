@@ -76,7 +76,6 @@ struct panel_state {
 };
 #elif defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
 struct panel_state {
-struct panel_state {
     uint64_t ps_address;        /* panel switches - 32-bit address */
     uint64_t ps_data;           /* panel lamps - 16-bit data */
 } panel = { 0L, 0 };};
