@@ -85,7 +85,7 @@ struct panel_state {
 };
 #elif defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
 struct panel_state {
-    struct clockframe;        /* panel switches - 64-bit address on NetBSD */
+    struct clockframe ps_frame;        /* panel switches - 64-bit address on NetBSD */
 };
 #else
 /* Default fallback for other systems (like macOS for development) */
