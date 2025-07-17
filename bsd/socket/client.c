@@ -28,7 +28,7 @@
 #include <kvm.h>
 #include <nlist.h>
 #include <limits.h>
-#include <amd64/frame.h>
+#include </usr/include/x86/cpu.h>
 #elif defined(__APPLE__) || defined(__linux__)
 #include <stdint.h>
 #endif
