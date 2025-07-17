@@ -16,9 +16,6 @@
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <amd64/frame.h>
-
-
 
 /* Include unistd.h on modern systems for getopt and system calls */
 #if defined(__APPLE__) || defined(__NetBSD__)
@@ -31,6 +28,7 @@
 #include <kvm.h>
 #include <nlist.h>
 #include <limits.h>
+#include <amd64/frame.h>
 #elif defined(__APPLE__) || defined(__linux__)
 #include <stdint.h>
 #endif
@@ -102,7 +100,7 @@ struct panel_state {
 };
 #endif
 
-struct panel_state panel = { 0 };
+struct panel_state panel;
 
 /* Global variables for kvm access */
 #if defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
