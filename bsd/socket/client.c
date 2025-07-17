@@ -16,6 +16,9 @@
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <amd64/frame.h>
+
+
 
 /* Include unistd.h on modern systems for getopt and system calls */
 #if defined(__APPLE__) || defined(__NetBSD__)
@@ -84,8 +87,7 @@ struct panel_state {
 };
 #elif defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
 struct panel_state {
-    uint64_t ps_address;        /* panel switches - 64-bit address on NetBSD */
-    uint64_t ps_data;           /* panel lamps - 64-bit data on NetBSD */
+    struct clockframe;        /* panel switches - 64-bit address on NetBSD */
 };
 #else
 /* Default fallback for other systems (like macOS for development) */
