@@ -10,3 +10,7 @@ bsd/screensavers/matrix
 bsd/screensavers/life
 bsd/socket/server
 bsd/socket/client
+bsd/socket/NetBSDVAX/client
+**/*.o
+
+bsd/socket/211BSD/client

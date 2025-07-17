@@ -1,0 +1,58 @@
+# Master Makefile for all platform clients
+# Builds client for all supported platforms
+
+# Subdirectories for each platform
+SUBDIRS = 211BSD NetBSDx64 NetBSDVAX
+
+# Default target - build all platforms
+all:
+	@echo "Building clients for all platforms..."
+	@for dir in $(SUBDIRS); do \
+		echo "Building $$dir..."; \
+		$(MAKE) -C $$dir all || exit 1; \
+	done
+	@echo "All platforms built successfully."
+
+# Clean all platforms
+clean:
+	@echo "Cleaning all platforms..."
+	@for dir in $(SUBDIRS); do \
+		echo "Cleaning $$dir..."; \
+		$(MAKE) -C $$dir clean; \
+	done
+	@echo "All platforms cleaned."
+
+# Build specific platform
+211bsd:
+	@echo "Building 211BSD client..."
+	@$(MAKE) -C 211BSD all
+
+netbsdx64:
+	@echo "Building NetBSD x64 client..."
+	@$(MAKE) -C NetBSDx64 all
+
+netbsdvax:
+	@echo "Building NetBSD VAX client..."
+	@$(MAKE) -C NetBSDVAX all
+
+# Install all platforms
+install:
+	@echo "Installing clients for all platforms..."
+	@for dir in $(SUBDIRS); do \
+		echo "Installing $$dir..."; \
+		$(MAKE) -C $$dir install || exit 1; \
+	done
+	@echo "All platforms installed."
+
+# Help
+help:
+	@echo "Available targets:"
+	@echo "  all        - Build all platform clients"
+	@echo "  clean      - Clean all platform builds"
+	@echo "  211bsd     - Build only 211BSD client"
+	@echo "  netbsdx64  - Build only NetBSD x64 client"
+	@echo "  netbsdvax  - Build only NetBSD VAX client"
+	@echo "  install    - Install all clients"
+	@echo "  help       - Show this help"
+
+.PHONY: all clean 211bsd netbsdx64 netbsdvax install help
