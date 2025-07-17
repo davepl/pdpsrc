@@ -28,7 +28,35 @@
 #include <kvm.h>
 #include <nlist.h>
 #include <limits.h>
-#include <amd64/frame.h>
+/* Define clockframe structure to match kernel definition */
+struct clockframe {
+	uint64_t cf_rdi;
+	uint64_t cf_rsi;
+	uint64_t cf_rdx;
+	uint64_t cf_rcx;
+	uint64_t cf_r8;
+	uint64_t cf_r9;
+	uint64_t cf_r10;
+	uint64_t cf_r11;
+	uint64_t cf_r12;
+	uint64_t cf_r13;
+	uint64_t cf_r14;
+	uint64_t cf_r15;
+	uint64_t cf_rbp;
+	uint64_t cf_rbx;
+	uint64_t cf_rax;
+	uint64_t cf_gs;
+	uint64_t cf_fs;
+	uint64_t cf_es;
+	uint64_t cf_ds;
+	uint64_t cf_trapno;	/* trap type (always T_PROTFLT for clock interrupts, but unused here) */
+	uint64_t cf_err;	/* error code (0 for clock interrupts) */
+	uint64_t cf_rip;	/* instruction pointer at interrupt */
+	uint64_t cf_cs;		/* code segment at interrupt */
+	uint64_t cf_rflags;	/* flags register at interrupt */
+	uint64_t cf_rsp;	/* stack pointer at interrupt */
+	uint64_t cf_ss;		/* stack segment at interrupt */
+};
 #elif defined(__APPLE__) || defined(__linux__)
 #include <stdint.h>
 #endif
@@ -85,7 +113,7 @@ struct panel_state {
 };
 #elif defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
 struct panel_state {
-    struct clockframe ps_frame;        /* panel switches - 64-bit address on NetBSD */
+    struct clockframe ps_frame;        /* panel switches - NetBSD clockframe structure */
 };
 #else
 /* Default fallback for other systems (like macOS for development) */
@@ -281,16 +309,26 @@ void send_frames(int sockfd, struct sockaddr_in *server_addr)
         
         frame_count++;
         if (frame_count % (FRAMES_PER_SECOND * 1) == 0) {  /* Every 1 second */
+#if defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
+            printf("Sent %d panel updates (CONTENTS: cf_rip=0x%lx, cf_rsp=0x%lx)\n", 
+                   frame_count, (unsigned long)panel.ps_frame.cf_rip, (unsigned long)panel.ps_frame.cf_rsp);
+#else
             printf("Sent %d panel updates (CONTENTS: ps_address=0x%lx, ps_data=0x%x)\n", 
                    frame_count, (unsigned long)panel.ps_address, (unsigned short)panel.ps_data);
+#endif
         }
         
         /* Debug: Print first few sends */
         if (frame_count <= 5) {
             printf("DEBUG: Sent packet #%d, size=%d bytes\n", frame_count, (int)sizeof(panel));
             if (frame_count == 1) {
+#if defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
+                printf("DEBUG: Panel contents - cf_rip=0x%lx, cf_rsp=0x%lx\n", 
+                       (unsigned long)panel.ps_frame.cf_rip, (unsigned long)panel.ps_frame.cf_rsp);
+#else
                 printf("DEBUG: Panel contents - ps_address=0x%lx, ps_data=0x%lx\n", 
                        (unsigned long)panel.ps_address, (unsigned long)panel.ps_data);
+#endif
             }
         }
         
@@ -459,10 +497,17 @@ int read_panel_from_kvm(struct panel_state *panel)
     if (first_read) {
         printf("DEBUG: Reading from kernel address 0x%lx\n", nl[0].n_value);
         printf("DEBUG: Read %d bytes from kernel\n", (int)sizeof(*panel));
+#if defined(__NetBSD__) && (defined(__x86_64__) || defined(__amd64__))
+        printf("DEBUG: Raw panel.ps_frame.cf_rip = 0x%lx (CONTENTS of cf_rip field)\n", 
+               (unsigned long)panel->ps_frame.cf_rip);
+        printf("DEBUG: Raw panel.ps_frame.cf_rsp = 0x%lx (CONTENTS of cf_rsp field)\n", 
+               (unsigned long)panel->ps_frame.cf_rsp);
+#else
         printf("DEBUG: Raw panel.ps_address = 0x%lx (CONTENTS of ps_address field)\n", 
                (unsigned long)panel->ps_address);
         printf("DEBUG: Raw panel.ps_data = 0x%lx (CONTENTS of ps_data field)\n", 
                (unsigned long)panel->ps_data);
+#endif
         first_read = 0;
     }
     
