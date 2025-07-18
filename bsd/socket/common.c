@@ -29,7 +29,8 @@ extern int close();
 typedef enum {
     PANEL_PDP1170 = 1,      /* PDP-11/70 2.11BSD panel */
     PANEL_VAX = 2,          /* VAX NetBSD panel */
-    PANEL_NETBSDX64 = 3     /* NetBSD x64 panel */
+    PANEL_NETBSDX64 = 3,    /* NetBSD x64 panel */
+    PANEL_MACOS = 4         /* macOS panel */
 } panel_type_t;
 
 /* Function implementations */

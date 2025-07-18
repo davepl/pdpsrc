@@ -1,7 +1,7 @@
 /*
- * server.c - Socket server for PDP-11 load testing
- * Receives 16-word frames from clients and prints * for each frame
- * Compatible with K&R C and 211BSD
+ * server.c - Cross-platform socket server for panel data
+ * Receives panel data from PDP-11, NetBSD x64, and NetBSD VAX clients
+ * Uses common packet header to distinguish client types
  */
 
 #include <sys/types.h>
@@ -16,86 +16,32 @@
 #include <signal.h>
 #include <stdint.h>
 
+/* Include common packet header and panel type definitions */
+#include "panel_packet.h"
+#include "common.c"
+
+/* Include platform-specific panel definitions */
+#include "211BSD/panel_state.h"
+#include "NetBSDx64/panel_state.h"
+#include "NetBSDVAX/panel_state.h"
+#include "macOS/panel_state.h"
+
 #define SERVER_PORT 8080
-
-// Detect endianness at compile-time, fallback to runtime check if needed.
-#if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__) && defined(__ORDER_BIG_ENDIAN__)
-
-    #if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-        #ifndef le16toh
-        #define le16toh(x) (x)
-        #endif
-        #ifndef le32toh
-        #define le32toh(x) (x)
-        #endif
-    #else
-        #ifndef le16toh
-        #define le16toh(x) __builtin_bswap16(x)
-        #endif
-        #ifndef le32toh
-        #define le32toh(x) __builtin_bswap32(x)
-        #endif
-    #endif
-
-#elif defined(_WIN32)
-    #include <stdlib.h>
-    #ifndef le16toh
-    #define le16toh(x) (x)
-    #endif
-    #ifndef le32toh
-    #define le32toh(x) (x)
-    #endif
-
-#elif defined(__APPLE__)
-    #include <libkern/OSByteOrder.h>
-    #ifndef le16toh
-    #define le16toh(x) OSSwapLittleToHostInt16(x)
-    #endif
-    #ifndef le32toh
-    #define le32toh(x) OSSwapLittleToHostInt32(x)
-    #endif
-
-#else
-    // Fallback: runtime check, safe but a bit slower
-    #ifndef le16toh
-    static inline uint16_t le16toh(uint16_t x) {
-        uint16_t test = 1;
-        if (*(uint8_t*)&test == 1) return x;
-        return (x << 8) | (x >> 8);
-    }
-    #endif
-    #ifndef le32toh
-    static inline uint32_t le32toh(uint32_t x) {
-        uint16_t test = 1;
-        if (*(uint8_t*)&test == 1) return x;
-        return ((x & 0xFF) << 24) | ((x & 0xFF00) << 8) |
-               ((x & 0xFF0000) >> 8) | ((x & 0xFF000000) >> 24);
-    }
-    #endif
-#endif
-
-/* Panel structure - must match kernel definition */
-/* Use pragma pack(1) to match PDP-11's natural 6-byte layout */
-#pragma pack(1)
-struct panel_state {
-	uint32_t ps_address;	/* panel switches - 32-bit address */
-	uint16_t ps_data;		/* panel lamps - 16-bit data */
-    uint16_t ps_psw;
-    uint16_t ps_mser;
-    uint16_t ps_cpu_err;
-    uint16_t ps_mmr0;
-    uint16_t ps_mmr3;
-};
-#pragma pack()
-
-/* NetBSD panel structure - only 2 fields */
-struct netbsd_panel_state {
-    uint64_t ps_address;        /* panel switches - 64-bit address on NetBSD */
-    uint64_t ps_data;           /* panel lamps - 64-bit data on NetBSD */
-};
 
 /* Global variables for signal handling */
 static int server_sockfd = -1;
+
+/* Function prototypes */
+int create_udp_server_socket(void);
+void handle_udp_clients(int sockfd);
+void signal_handler(int sig);
+void setup_signal_handlers(void);
+void format_binary(uint32_t value, int bits, char *buffer);
+void display_pdp_panel(struct pdp_panel_state *panel);
+void display_netbsdx64_panel(struct netbsdx64_panel_state *panel);
+void display_vax_panel(struct vax_panel_state *panel);
+void display_macos_panel(struct macos_panel_state *panel);
+const char* get_panel_type_name(u32_t flags);
 
 /* Function prototypes */
 int create_udp_server_socket(void);
@@ -112,6 +58,78 @@ void format_binary(uint32_t value, int bits, char *buffer)
         buffer[bits - 1 - i] = ((value >> i) & 1) ? 'O' : '.';
     }
     buffer[bits] = '\0';
+}
+
+/* Get panel type name from flags */
+const char* get_panel_type_name(u32_t flags)
+{
+    switch (flags) {
+        case PANEL_PDP1170: return "PDP-11/70";
+        case PANEL_VAX: return "VAX";
+        case PANEL_NETBSDX64: return "NetBSD x64";
+        case PANEL_MACOS: return "macOS";
+        default: return "Unknown";
+    }
+}
+
+/* Display PDP-11 panel data */
+void display_pdp_panel(struct pdp_panel_state *panel)
+{
+    char addr_bin[23], data_bin[17], psw_bin[17], mmr0_bin[17], mmr3_bin[17];
+    
+    /* Format each field as binary */
+    format_binary(panel->ps_address & 0x3FFFFF, 22, addr_bin);  /* 22-bit address */
+    format_binary(panel->ps_data, 16, data_bin);
+    format_binary(panel->ps_psw, 16, psw_bin);
+    format_binary(panel->ps_mmr0, 16, mmr0_bin);
+    format_binary(panel->ps_mmr3, 16, mmr3_bin);
+    
+    printf("PDP-11: ADDR: %s, DATA: %s, PSW: %s, MMR0: %s, MMR3: %s\n",
+           addr_bin, data_bin, psw_bin, mmr0_bin, mmr3_bin);
+}
+
+/* Display NetBSD x64 panel data */
+void display_netbsdx64_panel(struct netbsdx64_panel_state *panel)
+{
+    char rip_bin[33], rax_bin[33];
+    
+    /* Format key registers as binary (show lower 32 bits for readability) */
+    format_binary((uint32_t)(panel->ps_frame.cf_rip & 0xFFFFFFFF), 32, rip_bin);
+    format_binary((uint32_t)(panel->ps_frame.cf_rax & 0xFFFFFFFF), 32, rax_bin);
+    
+    printf("NetBSD x64: RIP: %s, RAX: %s\n", rip_bin, rax_bin);
+}
+
+/* Display NetBSD VAX panel data */
+void display_vax_panel(struct vax_panel_state *panel)
+{
+    char addr_bin[33], data_bin[17], psw_bin[17], mmr0_bin[17], mmr3_bin[17];
+    
+    /* Format each field as binary */
+    format_binary(panel->ps_address, 32, addr_bin);  /* 32-bit address */
+    format_binary(panel->ps_data, 16, data_bin);
+    format_binary(panel->ps_psw, 16, psw_bin);
+    format_binary(panel->ps_mmr0, 16, mmr0_bin);
+    format_binary(panel->ps_mmr3, 16, mmr3_bin);
+    
+    printf("VAX: ADDR: %s, DATA: %s, PSW: %s, MMR0: %s, MMR3: %s\n",
+           addr_bin, data_bin, psw_bin, mmr0_bin, mmr3_bin);
+}
+
+/* Display macOS panel data */
+void display_macos_panel(struct macos_panel_state *panel)
+{
+    char pc_bin[33], sp_bin[33], cpu_bin[8], mem_bin[8];
+    
+    /* Format key values as binary (show lower 32 bits for readability) */
+    format_binary((uint32_t)(panel->pc & 0xFFFFFFFF), 32, pc_bin);
+    format_binary((uint32_t)(panel->sp & 0xFFFFFFFF), 32, sp_bin);
+    format_binary(panel->cpu_usage, 7, cpu_bin);  /* 0-100 fits in 7 bits */
+    format_binary(panel->memory_usage, 7, mem_bin);
+    
+    printf("macOS (ARM64): PC: %s, SP: %s, CPU: %s%%, MEM: %s%%, LOAD: %.2f, THR: %d\n",
+           pc_bin, sp_bin, cpu_bin, mem_bin, 
+           panel->load_average / 100.0, panel->thread_count);
 }
 
 int main(int argc, char *argv[])
@@ -182,83 +200,112 @@ int create_udp_server_socket(void)
 
 void handle_udp_clients(int sockfd)
 {
-    struct panel_state panel;
+    struct panel_packet_header header;
+    char buffer[1024];  /* Buffer for panel data */
     int bytes_received;
     int frame_count = 0;
     struct sockaddr_in client_addr;
     socklen_t client_addr_len;
     
-    printf("Receiving UDP panel data:\n");
-    printf("Expected packet size: %d bytes (packed structure from PDP-11)\n", 
-           (int)sizeof(panel));
-    printf("Format: ADDR (22-bit), DATA (16-bit), PSW (16-bit), MMR0 (16-bit), MMR3 (16-bit)\n");
+    printf("Receiving UDP panel data with header protocol:\n");
+    printf("Header size: %d bytes (2 bytes count + 4 bytes flags)\n", 
+           (int)sizeof(header));
+    printf("Panel type flags: PDP1170=%d, VAX=%d, NetBSDx64=%d, macOS=%d\n",
+           PANEL_PDP1170, PANEL_VAX, PANEL_NETBSDX64, PANEL_MACOS);
     printf("Binary format: O=1, .=0\n\n");
     
     while (1) {
-        /* Receive UDP panel data */
+        /* First, receive the packet header */
         client_addr_len = sizeof(client_addr);
-        bytes_received = recvfrom(sockfd, &panel, sizeof(panel), 0,
+        bytes_received = recvfrom(sockfd, &header, sizeof(header), MSG_PEEK,
                                   (struct sockaddr *)&client_addr, &client_addr_len);
         
         if (bytes_received < 0) {
             if (errno == EINTR) {
-                /* Interrupted by signal, continue */
                 continue;
             }
-            perror("recvfrom");
+            perror("recvfrom header");
             break;
         }
         
-        /* Check if we received a complete panel structure */
-        if (bytes_received == sizeof(panel)) {
-            /* PDP-11 format - convert from little-endian to host byte order */
-            panel.ps_address = le32toh(panel.ps_address);
-            panel.ps_data = le16toh(panel.ps_data);
-            panel.ps_psw = le16toh(panel.ps_psw);
-            panel.ps_mser = le16toh(panel.ps_mser);
-            panel.ps_cpu_err = le16toh(panel.ps_cpu_err);
-            panel.ps_mmr0 = le16toh(panel.ps_mmr0);
-            panel.ps_mmr3 = le16toh(panel.ps_mmr3);
-            
-            char addr_bin[23], data_bin[17], psw_bin[17], mmr0_bin[17], mmr3_bin[17];
-            
-            /* Format each field as binary */
-            format_binary(panel.ps_address & 0x3FFFFF, 22, addr_bin);  /* 22-bit address */
-            format_binary(panel.ps_data, 16, data_bin);
-            format_binary(panel.ps_psw, 16, psw_bin);
-            format_binary(panel.ps_mmr0, 16, mmr0_bin);
-            format_binary(panel.ps_mmr3, 16, mmr3_bin);
-            
-            /* Print the frame data */
-            printf("PDP-11: ADDR: %s, DATA: %s, PSW: %s, MMR0: %s, MMR3: %s\n",
-                   addr_bin, data_bin, psw_bin, mmr0_bin, mmr3_bin);
-            fflush(stdout);
-            
-            frame_count++;
-        } else if (bytes_received == sizeof(struct netbsd_panel_state)) {
-            /* NetBSD format - only 2 fields */
-            struct netbsd_panel_state netbsd_panel;
-            memcpy(&netbsd_panel, &panel, sizeof(netbsd_panel));
-            
-            char addr_bin[65], data_bin[65];  /* 64-bit fields */
-            
-            /* Format each field as binary (show lower 32 bits for readability) */
-            format_binary((uint32_t)(netbsd_panel.ps_address & 0xFFFFFFFF), 32, addr_bin);
-            format_binary((uint32_t)(netbsd_panel.ps_data & 0xFFFFFFFF), 32, data_bin);
-            
-            /* Print the frame data */
-            printf("NetBSD: ADDR: %s, DATA: %s\n", addr_bin, data_bin);
-            fflush(stdout);
-            
-            frame_count++;
-        } else {
-            /* Incomplete panel data received - print diagnostic info */
-            printf("[Got %d bytes, expected %d (PDP-11) or %d (NetBSD) bytes from %s:%d]\n",
-                   bytes_received, (int)sizeof(panel), (int)sizeof(struct netbsd_panel_state),
-                   inet_ntoa(client_addr.sin_addr), 
-                   ntohs(client_addr.sin_port));
-            fflush(stdout);
+        if (bytes_received < sizeof(header)) {
+            printf("[Incomplete header: got %d bytes, expected %d]\n",
+                   bytes_received, (int)sizeof(header));
+            continue;
         }
+        
+        /* Now receive the complete packet */
+        int total_packet_size = sizeof(header) + header.pp_byte_count;
+        if (total_packet_size > sizeof(buffer)) {
+            printf("[Packet too large: %d bytes, max %d]\n",
+                   total_packet_size, (int)sizeof(buffer));
+            continue;
+        }
+        
+        bytes_received = recvfrom(sockfd, buffer, total_packet_size, 0,
+                                  (struct sockaddr *)&client_addr, &client_addr_len);
+        
+        if (bytes_received < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            perror("recvfrom packet");
+            break;
+        }
+        
+        if (bytes_received != total_packet_size) {
+            printf("[Incomplete packet: got %d bytes, expected %d from %s:%d]\n",
+                   bytes_received, total_packet_size,
+                   inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+            continue;
+        }
+        
+        /* Parse the header from the received buffer */
+        memcpy(&header, buffer, sizeof(header));
+        
+        /* Process based on panel type */
+        switch (header.pp_byte_flags) {
+            case PANEL_PDP1170: {
+                struct pdp_panel_packet *packet = (struct pdp_panel_packet *)buffer;
+                printf("[%s] ", get_panel_type_name(header.pp_byte_flags));
+                display_pdp_panel(&packet->panel_state);
+                break;
+            }
+            
+            case PANEL_VAX: {
+                struct vax_panel_packet *packet = (struct vax_panel_packet *)buffer;
+                printf("[%s] ", get_panel_type_name(header.pp_byte_flags));
+                display_vax_panel(&packet->panel_state);
+                break;
+            }
+            
+            case PANEL_NETBSDX64: {
+                struct netbsdx64_panel_packet *packet = (struct netbsdx64_panel_packet *)buffer;
+                printf("[%s] ", get_panel_type_name(header.pp_byte_flags));
+                display_netbsdx64_panel(&packet->panel_state);
+                break;
+            }
+            
+            case PANEL_MACOS: {
+                struct macos_panel_packet *packet = (struct macos_panel_packet *)buffer;
+                printf("[%s] ", get_panel_type_name(header.pp_byte_flags));
+                display_macos_panel(&packet->panel_state);
+                break;
+            }
+            
+            default:
+                printf("[Unknown panel type: 0x%08lx, %d bytes from %s:%d]\n",
+                       (unsigned long)header.pp_byte_flags, header.pp_byte_count,
+                       inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+                break;
+        }
+        
+        frame_count++;
+        if (frame_count % 30 == 0) {  /* Every second at 30 Hz */
+            printf("--- Received %d frames ---\n", frame_count);
+        }
+        
+        fflush(stdout);
     }
     
     printf("\nTotal panel updates received: %d\n", frame_count);
