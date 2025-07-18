@@ -15,3 +15,4 @@ bsd/socket/NetBSDVAX/client
 
 bsd/socket/211BSD/client
 bsd/socket/macOS/client
+bsd/socket/arch/NetBSDVAX/client

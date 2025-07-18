@@ -95,6 +95,7 @@ int open_kmem_and_find_panel(void **panel_addr)
     uintptr_t addr;
     char type;
     int kmem_fd;
+    int found_panel_symbols = 0;
     
     /* NetBSD VAX systems use /netbsd with hex addresses */
     fp = popen("nm /netbsd | grep panel", "r");
@@ -103,21 +104,35 @@ int open_kmem_and_find_panel(void **panel_addr)
         return -1;
     }
     
+    printf("Searching for panel symbol in /netbsd...\n");
     *panel_addr = NULL;
     while (fgets(line, sizeof(line), fp)) {
+        found_panel_symbols++;
+        printf("Found panel-related symbol: %s", line);
+        
         /* Try both octal and hex formats */
         if (sscanf(line, "%lx %c %s", &addr, &type, symbol) == 3 ||
             sscanf(line, "%lo %c %s", &addr, &type, symbol) == 3) {
+            printf("  -> Parsed: addr=0x%lx, type='%c', symbol='%s'\n", 
+                   (unsigned long)addr, type, symbol);
+            
             if (strcmp(symbol, "panel") == 0 || strcmp(symbol, "_panel") == 0) {
+                printf("  -> MATCH! Using symbol '%s' at address 0x%lx\n", 
+                       symbol, (unsigned long)addr);
                 *panel_addr = (void*)addr;
                 break;
             }
+        } else {
+            printf("  -> Failed to parse line\n");
         }
     }
     pclose(fp);
     
+    printf("Total panel-related symbols found: %d\n", found_panel_symbols);
+    
     if (*panel_addr == NULL) {
         fprintf(stderr, "Panel symbol not found in kernel symbol table\n");
+        fprintf(stderr, "Looking specifically for symbol named 'panel' or '_panel'\n");
         return -1;
     }
     
