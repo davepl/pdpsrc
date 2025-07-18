@@ -14,7 +14,7 @@ all: $(TARGET)
 $(TARGET): $(OBJECTS)
 	$(CC) $(CFLAGS) -o $(TARGET) $(OBJECTS) $(LDFLAGS)
 
-client.o: client.c panel_state.h ../common.c ../panel_packet.h
+client.o: client.c panel_state.h ../../common.c ../../panel_packet.h
 	$(CC) $(CFLAGS) -c client.c
 
 clean:

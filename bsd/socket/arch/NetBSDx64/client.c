@@ -23,7 +23,7 @@
 #include <limits.h>
 
 /* Include common functions */
-#include "../common.c"
+#include "../../common.c"
 
 /* Include panel state definitions */
 #include "panel_state.h"

@@ -7,7 +7,7 @@
 #define PDP_PANEL_STATE_H
 
 /* Include common packet header */
-#include "../panel_packet.h"
+#include "../../panel_packet.h"
 
 /* PDP-11 Panel structure */
 struct pdp_panel_state {

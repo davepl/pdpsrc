@@ -9,7 +9,7 @@
 #include <stdint.h>
 
 /* Include common packet header */
-#include "../panel_packet.h"
+#include "../../panel_packet.h"
 
 /* macOS ARM64 Panel structure - CPU registers and system state */
 struct macos_panel_state {

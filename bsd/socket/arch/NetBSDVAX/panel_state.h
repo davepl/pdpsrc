@@ -7,7 +7,7 @@
 #define VAX_PANEL_STATE_H
 
 /* Include common packet header */
-#include "../panel_packet.h"
+#include "../../panel_packet.h"
 
 /* NetBSD VAX Panel structure - similar to PDP-11 but for VAX */
 struct vax_panel_state {

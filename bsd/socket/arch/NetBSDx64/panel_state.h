@@ -9,7 +9,7 @@
 #include <stdint.h>
 
 /* Include common packet header */
-#include "../panel_packet.h"
+#include "../../panel_packet.h"
 
 /* Define clockframe structure to match kernel definition */
 struct clockframe {
