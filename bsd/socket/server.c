@@ -21,10 +21,10 @@
 #include "common.c"
 
 /* Include platform-specific panel definitions */
-#include "211BSD/panel_state.h"
-#include "NetBSDx64/panel_state.h"
-#include "NetBSDVAX/panel_state.h"
-#include "macOS/panel_state.h"
+#include "arch/211BSD/panel_state.h"
+#include "arch/NetBSDx64/panel_state.h"
+#include "arch/NetBSDVAX/panel_state.h"
+#include "arch/macOS/panel_state.h"
 
 #define SERVER_PORT 8080
 
