@@ -10,6 +10,7 @@
 #include "../../panel_packet.h"
 
 /* NetBSD VAX Panel structure - similar to PDP-11 but for VAX */
+#pragma pack(1)
 struct vax_panel_state {
     long ps_address;	/* panel switches - 32-bit address */
     short ps_data;		/* panel lamps - 16-bit data */
@@ -19,6 +20,7 @@ struct vax_panel_state {
     short ps_mmr0;      /* memory management register 0 */
     short ps_mmr3;      /* memory management register 3 */
 };
+#pragma pack()
 
 /* VAX Panel packet structure */
 struct vax_panel_packet {

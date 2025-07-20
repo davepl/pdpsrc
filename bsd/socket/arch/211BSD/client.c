@@ -17,11 +17,17 @@
 #include <errno.h>
 #include <fcntl.h>
 
-/* Include common functions */
-#include "../../common.c"
+/* Don't include unistd.h on 211BSD - it may reference stdint.h */
+#ifndef __pdp11__
+#include <unistd.h>
+#endif
 
-/* Include panel state definitions */
+/* Include panel state definitions first, before common.c */
 #include "panel_state.h"
+
+/* Include common functions - but we need to prevent double-include of headers */
+#define COMMON_HEADERS_INCLUDED
+#include "../../common.c"
 
 /* Define SEEK constants if not available */
 #ifndef SEEK_SET
@@ -96,8 +102,10 @@ int main(int argc, char *argv[])
         exit(1);
     }
     
-    printf("Connected successfully. Sending panel data at %d Hz...\n", FRAMES_PER_SECOND);
+    printf("UDP socket created. Sending panel data to %s:%d at %d Hz...\n", 
+           server_ip, SERVER_PORT, FRAMES_PER_SECOND);
     printf("Packet size: %d bytes\n", (int)sizeof(struct pdp_panel_packet));
+    printf("Note: UDP is connectionless - errors will be reported during transmission\n");
     
     /* Send frames continuously */
     send_frames(sockfd, &server_addr);
@@ -129,8 +137,8 @@ int open_kmem_and_find_panel(void **panel_addr)
     *panel_addr = NULL;
     while (fgets(line, sizeof(line), fp)) {
         /* Try both octal and hex formats */
-        if (sscanf(line, "%lx %c %s", &addr, &type, symbol) == 3 ||
-            sscanf(line, "%lo %c %s", &addr, &type, symbol) == 3) {
+        if (sscanf(line, "%lo %c %s", &addr, &type, symbol) == 3 ||
+            sscanf(line, "%lx %c %s", &addr, &type, symbol) == 3) {
             if (strcmp(symbol, "panel") == 0 || strcmp(symbol, "_panel") == 0) {
                 *panel_addr = (void*)addr;
                 break;
@@ -157,15 +165,35 @@ int open_kmem_and_find_panel(void **panel_addr)
 int read_panel_from_kmem(int kmem_fd, void *panel_addr, struct pdp_panel_state *panel)
 {
     off_t offset = (off_t)(uintptr_t)panel_addr;
+    static int read_count = 0;
+    struct pdp_panel_state prev_panel;
+    int bytes_read;
+    
+    /* Save previous panel state for comparison */
+    if (read_count > 0) {
+        prev_panel = *panel;
+    }
     
     if (lseek(kmem_fd, offset, SEEK_SET) < 0) {
         perror("lseek");
         return -1;
     }
     
-    if (read(kmem_fd, panel, sizeof(*panel)) != sizeof(*panel)) {
+    bytes_read = read(kmem_fd, panel, sizeof(*panel));
+    if (bytes_read != sizeof(*panel)) {
         perror("read");
+        printf("Expected %d bytes, got %d bytes\n", (int)sizeof(*panel), bytes_read);
         return -1;
+    }
+    
+    read_count++;
+    
+   
+    /* Every 100 reads, show if data has been static */
+    if (read_count % 100 == 0 && read_count > 1) {
+        if (panel->ps_address == prev_panel.ps_address && panel->ps_data == prev_panel.ps_data) {
+            printf("WARNING: Panel data has been static for last 100 reads (read #%d)\n", read_count);
+        }
     }
     
     return 0;
@@ -178,15 +206,55 @@ void send_frames(int sockfd, struct sockaddr_in *server_addr)
     int frame_count = 0;
     static void *panel_addr = NULL;
     static int kmem_fd = -1;
+    int send_result;
+    
+    printf("Entering send_frames function...\n");
+    printf("Socket fd: %d\n", sockfd);
+    printf("Server address: %s:%d\n", inet_ntoa(server_addr->sin_addr), ntohs(server_addr->sin_port));
     
     /* Open /dev/kmem and find panel address if not already done */
     if (kmem_fd < 0) {
+        printf("Opening kmem and finding panel address...\n");
         kmem_fd = open_kmem_and_find_panel(&panel_addr);
         if (kmem_fd < 0) {
             fprintf(stderr, "Cannot access kernel memory\n");
             return;
         }
+    printf("Kmem opened successfully, panel at %p\n", panel_addr);
+        
+        /* Test: Read a few different memory locations to verify our read mechanism works */
+        printf("Testing memory read mechanism...\n");
+        {
+            char test_buf1[16], test_buf2[16];
+            off_t test_addr1 = (off_t)(uintptr_t)panel_addr;
+            off_t test_addr2 = test_addr1 + 32;  /* Read 32 bytes away */
+            
+            /* Read from panel address */
+            if (lseek(kmem_fd, test_addr1, SEEK_SET) >= 0 && 
+                read(kmem_fd, test_buf1, 16) == 16) {
+                printf("  Test read 1 (panel addr): %02x %02x %02x %02x %02x %02x %02x %02x\n",
+                       test_buf1[0]&0xff, test_buf1[1]&0xff, test_buf1[2]&0xff, test_buf1[3]&0xff,
+                       test_buf1[4]&0xff, test_buf1[5]&0xff, test_buf1[6]&0xff, test_buf1[7]&0xff);
+            }
+            
+            /* Read from nearby address */
+            if (lseek(kmem_fd, test_addr2, SEEK_SET) >= 0 && 
+                read(kmem_fd, test_buf2, 16) == 16) {
+                printf("  Test read 2 (+32 bytes): %02x %02x %02x %02x %02x %02x %02x %02x\n",
+                       test_buf2[0]&0xff, test_buf2[1]&0xff, test_buf2[2]&0xff, test_buf2[3]&0xff,
+                       test_buf2[4]&0xff, test_buf2[5]&0xff, test_buf2[6]&0xff, test_buf2[7]&0xff);
+            }
+            
+            /* Compare to see if we get different data */
+            if (memcmp(test_buf1, test_buf2, 16) == 0) {
+                printf("  WARNING: Both memory locations contain identical data!\n");
+            } else {
+                printf("  Good: Memory locations contain different data\n");
+            }
+        }
     }
+    
+    printf("Starting packet transmission loop...\n");
     
     while (1) {
         /* Read panel structure from kernel memory */
@@ -201,25 +269,19 @@ void send_frames(int sockfd, struct sockaddr_in *server_addr)
         packet.panel_state = panel;
         
         /* Send panel packet via UDP */
-        if (sendto(sockfd, &packet, sizeof(packet), 0,
-                   (struct sockaddr *)server_addr, sizeof(*server_addr)) < 0) {
-            perror("sendto");
+        send_result = sendto(sockfd, &packet, sizeof(packet), 0,
+                            (struct sockaddr *)server_addr, sizeof(*server_addr));
+        if (send_result < 0) {
+            fprintf(stderr, "sendto failed after %d packets (errno=%d): ", frame_count, errno);
+            perror("");
             break;
         }
         
         frame_count++;
+        
         if (frame_count % (FRAMES_PER_SECOND * 1) == 0) {  /* Every 1 second */
             printf("Sent %d panel updates (ps_address=0x%lx, ps_data=0x%x)\n", 
                    frame_count, (unsigned long)panel.ps_address, (unsigned short)panel.ps_data);
-        }
-        
-        /* Debug: Print first few sends */
-        if (frame_count <= 5) {
-            printf("DEBUG: Sent packet #%d, size=%d bytes\n", frame_count, (int)sizeof(packet));
-            if (frame_count == 1) {
-                printf("DEBUG: Panel contents - ps_address=0x%lx, ps_data=0x%x\n", 
-                       (unsigned long)panel.ps_address, (unsigned short)panel.ps_data);
-            }
         }
         
         /* Wait for next frame time */

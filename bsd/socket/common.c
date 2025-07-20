@@ -3,6 +3,7 @@
  * Compatible with K&R C, 211BSD, NetBSD x64, and NetBSD VAX
  */
 
+#ifndef COMMON_HEADERS_INCLUDED
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -13,15 +14,17 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#endif
 
 /* Add close() declaration for older systems */
 #ifdef __pdp11__
 extern int close();
-#endif
+#else
 #include <unistd.h>  /* For close() */
+#endif
 
 /* Common definitions */
-#define SERVER_PORT 8080
+#define SERVER_PORT 4000
 #define FRAMES_PER_SECOND 30
 #define USEC_PER_FRAME (1000000 / FRAMES_PER_SECOND)
 

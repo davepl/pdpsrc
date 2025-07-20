@@ -76,8 +76,10 @@ int main(int argc, char *argv[])
         exit(1);
     }
     
-    printf("Connected successfully. Sending panel data at %d Hz...\n", FRAMES_PER_SECOND);
+    printf("UDP socket created. Sending panel data to %s:%d at %d Hz...\n", 
+           server_ip, SERVER_PORT, FRAMES_PER_SECOND);
     printf("Packet size: %d bytes\n", (int)sizeof(struct vax_panel_packet));
+    printf("Note: UDP is connectionless - errors will be reported during transmission\n");
     
     /* Send frames continuously */
     send_frames(sockfd, &server_addr);
@@ -96,23 +98,51 @@ int open_kmem_and_find_panel(void **panel_addr)
     char type;
     int kmem_fd;
     int found_panel_symbols = 0;
+    int found_any_symbols = 0;
     
-    /* NetBSD VAX systems use /netbsd with hex addresses */
+    /* First, test if nm works at all */
+    printf("Testing nm command on /netbsd...\n");
+    printf("Kernel info: ");
+    fflush(stdout);
+    system("uname -a");
+    printf("Kernel file: ");
+    fflush(stdout);
+    system("ls -la /netbsd");
+    
+    fp = popen("nm /netbsd | head -5", "r");
+    if (fp == NULL) {
+        fprintf(stderr, "Cannot run nm on /netbsd\n");
+        return -1;
+    }
+    
+    printf("First 5 symbols from nm:\n");
+    while (fgets(line, sizeof(line), fp) && found_any_symbols < 5) {
+        printf("  %s", line);
+        found_any_symbols++;
+    }
+    pclose(fp);
+    
+    if (found_any_symbols == 0) {
+        fprintf(stderr, "nm command returned no output - kernel symbol table may not be available\n");
+        return -1;
+    }
+    
+    /* Now search specifically for panel */
+    printf("\nSearching for panel symbol...\n");
     fp = popen("nm /netbsd | grep panel", "r");
     if (fp == NULL) {
         fprintf(stderr, "Cannot run nm on /netbsd to find panel symbol\n");
         return -1;
     }
     
-    printf("Searching for panel symbol in /netbsd...\n");
     *panel_addr = NULL;
     while (fgets(line, sizeof(line), fp)) {
         found_panel_symbols++;
         printf("Found panel-related symbol: %s", line);
         
         /* Try both octal and hex formats */
-        if (sscanf(line, "%lx %c %s", &addr, &type, symbol) == 3 ||
-            sscanf(line, "%lo %c %s", &addr, &type, symbol) == 3) {
+        if (sscanf(line, "%lo %c %s", &addr, &type, symbol) == 3 ||
+            sscanf(line, "%lx %c %s", &addr, &type, symbol) == 3) {
             printf("  -> Parsed: addr=0x%lx, type='%c', symbol='%s'\n", 
                    (unsigned long)addr, type, symbol);
             
@@ -131,8 +161,13 @@ int open_kmem_and_find_panel(void **panel_addr)
     printf("Total panel-related symbols found: %d\n", found_panel_symbols);
     
     if (*panel_addr == NULL) {
-        fprintf(stderr, "Panel symbol not found in kernel symbol table\n");
-        fprintf(stderr, "Looking specifically for symbol named 'panel' or '_panel'\n");
+        if (found_panel_symbols == 0) {
+            fprintf(stderr, "No panel symbols found in kernel - the kernel may not have panel support compiled in\n");
+            fprintf(stderr, "Try checking: nm /netbsd | grep panel\n");
+        } else {
+            fprintf(stderr, "Panel symbol not found in kernel symbol table\n");
+            fprintf(stderr, "Looking specifically for symbol named 'panel' or '_panel'\n");
+        }
         return -1;
     }
     
@@ -229,7 +264,15 @@ void send_frames(int sockfd, struct sockaddr_in *server_addr)
         /* Send panel packet via UDP */
         if (sendto(sockfd, &packet, sizeof(packet), 0,
                    (struct sockaddr *)server_addr, sizeof(*server_addr)) < 0) {
-            perror("sendto");
+            fprintf(stderr, "sendto failed after %d packets: ", frame_count);
+            perror("");
+            if (errno == ENETUNREACH) {
+                fprintf(stderr, "Network unreachable - check server IP address\n");
+            } else if (errno == EHOSTUNREACH) {
+                fprintf(stderr, "Host unreachable - server may be down\n");
+            } else if (errno == ECONNREFUSED) {
+                fprintf(stderr, "Connection refused - server not listening on port %d\n", SERVER_PORT);
+            }
             break;
         }
         
@@ -245,6 +288,7 @@ void send_frames(int sockfd, struct sockaddr_in *server_addr)
             if (frame_count == 1) {
                 printf("DEBUG: Panel contents - ps_address=0x%lx, ps_data=0x%x\n", 
                        (unsigned long)panel.ps_address, (unsigned short)panel.ps_data);
+                printf("First packet sent successfully - server appears reachable\n");
             }
         }
         

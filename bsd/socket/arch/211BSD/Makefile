@@ -6,32 +6,60 @@ CFLAGS = -O
 LDFLAGS = 
 LIBS = 
 
-# Target
-TARGET = client
+# Targets
+all: client paneldump symboltest memtest endiantest clocktest allcounters memdiag
 
-# Source files
-SRCS = client.c
+client: client.o
+	$(CC) $(CFLAGS) -o client client.o $(LDFLAGS) $(LIBS)
 
-# Object files
-OBJS = $(SRCS:.c=.o)
+paneldump: paneldump.o
+	$(CC) $(CFLAGS) -o paneldump paneldump.o $(LDFLAGS) $(LIBS)
 
-# Default target
-all: $(TARGET)
+symboltest: symboltest.o
+	$(CC) $(CFLAGS) -o symboltest symboltest.o $(LDFLAGS) $(LIBS)
 
-# Build the client
-$(TARGET): $(OBJS)
-	$(CC) $(LDFLAGS) -o $(TARGET) $(OBJS) $(LIBS)
+memtest: memtest.o
+	$(CC) $(CFLAGS) -o memtest memtest.o $(LDFLAGS) $(LIBS)
+
+endiantest: endiantest.o
+	$(CC) $(CFLAGS) -o endiantest endiantest.o $(LDFLAGS) $(LIBS)
+
+clocktest: clocktest.o
+	$(CC) $(CFLAGS) -o clocktest clocktest.o $(LDFLAGS) $(LIBS)
+
+allcounters: allcounters.o
+	$(CC) $(CFLAGS) -o allcounters allcounters.o $(LDFLAGS) $(LIBS)
+
+memdiag: memdiag.o
+	$(CC) $(CFLAGS) -o memdiag memdiag.o $(LDFLAGS) $(LIBS)
 
 # Compile source files
-.c.o:
-	$(CC) $(CFLAGS) -c $<
+client.o: client.c panel_state.h ../../common.c ../../panel_packet.h
+	$(CC) $(CFLAGS) -c client.c
+
+paneldump.o: paneldump.c panel_state.h
+	$(CC) $(CFLAGS) -c paneldump.c
+
+symboltest.o: symboltest.c
+	$(CC) $(CFLAGS) -c symboltest.c
+
+memtest.o: memtest.c
+	$(CC) $(CFLAGS) -c memtest.c
+
+endiantest.o: endiantest.c
+	$(CC) $(CFLAGS) -c endiantest.c
+
+clocktest.o: clocktest.c
+	$(CC) $(CFLAGS) -c clocktest.c
+
+allcounters.o: allcounters.c
+	$(CC) $(CFLAGS) -c allcounters.c
+
+memdiag.o: memdiag.c
+	$(CC) $(CFLAGS) -c memdiag.c
 
 # Clean up
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f client.o paneldump.o symboltest.o memtest.o endiantest.o clocktest.o allcounters.o memdiag.o client paneldump symboltest memtest endiantest clocktest allcounters memdiag
 
-# Install
-install: $(TARGET)
-	cp $(TARGET) /usr/local/bin/
-
-.PHONY: all clean install
+.PHONY: all clean

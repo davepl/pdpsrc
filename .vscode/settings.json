@@ -4,6 +4,7 @@
         "time.h": "c",
         "unistd.h": "c",
         "file.h": "c",
-        "stdint.h": "c"
+        "stdint.h": "c",
+        "panel_state.h": "c"
     }
 }

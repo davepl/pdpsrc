@@ -9,7 +9,7 @@
 /* Include common packet header */
 #include "../../panel_packet.h"
 
-/* PDP-11 Panel structure */
+/* PDP-11 Panel structure - must match kernel exactly */
 struct pdp_panel_state {
     long ps_address;	/* panel switches - 32-bit address */
     short ps_data;		/* panel lamps - 16-bit data */
