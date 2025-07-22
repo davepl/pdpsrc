@@ -17,6 +17,8 @@
 #include <errno.h>
 #include <fcntl.h>
 
+extern int wait_for_panel(void);
+
 /* Don't include unistd.h on 211BSD - it may reference stdint.h */
 #ifndef __pdp11__
 #include <unistd.h>
@@ -279,12 +281,7 @@ void send_frames(int sockfd, struct sockaddr_in *server_addr)
         
         frame_count++;
         
-        if (frame_count % (FRAMES_PER_SECOND * 1) == 0) {  /* Every 1 second */
-            printf("Sent %d panel updates (ps_address=0x%lx, ps_data=0x%x)\n", 
-                   frame_count, (unsigned long)panel.ps_address, (unsigned short)panel.ps_data);
-        }
-        
         /* Wait for next frame time */
-        precise_delay(USEC_PER_FRAME);
+        wait_for_panel();
     }
 }

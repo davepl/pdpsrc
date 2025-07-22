@@ -32,6 +32,8 @@ struct panel_state {
     short ps_mmr3;
 } panel = { 0L, 0 };
 
+int panel_seq = 0;
+
 /*
  * The hz hardware interval timer.
  * We update the events relating to real time.
@@ -165,12 +167,23 @@ hardclock(dev,sp,r1,ov,nps,r0,pc,ps)
     panel.ps_cpu_err = *(short *)017777766;
     panel.ps_mmr0    = *(short *)017777572;
     panel.ps_mmr3    = *(short *)017777516;
-	
+    panel_seq++;
+    wakeup((caddr_t)&panel_seq);
+
 	if (needsoft && BASEPRI(ps)) {	/* if ps is high, just return */
 		(void) _splsoftclock();
 		softclock(pc,ps);
 	}
 	restormap(map);
+}
+
+sys_wait_for_panel()
+{
+    while (last_seq == panel_seq)
+        tsleep((caddr_t)&panel_seq, PZERO | PCATCH, "waitseq", 0);
+
+    last_seq = panel_seq;
+    return last_seq;
 }
 
 #ifdef UCB_METER

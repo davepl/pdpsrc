@@ -9,8 +9,8 @@ LIBS =
 # Targets
 all: client paneldump symboltest memtest endiantest clocktest allcounters memdiag
 
-client: client.o
-	$(CC) $(CFLAGS) -o client client.o $(LDFLAGS) $(LIBS)
+client: client.o wait_for_panel.o
+	$(CC) $(CFLAGS) -o client client.o wait_for_panel.o $(LDFLAGS) $(LIBS)
 
 paneldump: paneldump.o
 	$(CC) $(CFLAGS) -o paneldump paneldump.o $(LDFLAGS) $(LIBS)
@@ -37,6 +37,9 @@ memdiag: memdiag.o
 client.o: client.c panel_state.h ../../common.c ../../panel_packet.h
 	$(CC) $(CFLAGS) -c client.c
 
+wait_for_panel.o: wait_for_panel.s
+	as -o wait_for_panel.o wait_for_panel.s
+
 paneldump.o: paneldump.c panel_state.h
 	$(CC) $(CFLAGS) -c paneldump.c
 
@@ -60,6 +63,6 @@ memdiag.o: memdiag.c
 
 # Clean up
 clean:
-	rm -f client.o paneldump.o symboltest.o memtest.o endiantest.o clocktest.o allcounters.o memdiag.o client paneldump symboltest memtest endiantest clocktest allcounters memdiag
+	rm -f client.o wait_for_panel.o paneldump.o symboltest.o memtest.o endiantest.o clocktest.o allcounters.o memdiag.o client paneldump symboltest memtest endiantest clocktest allcounters memdiag
 
 .PHONY: all clean

@@ -277,10 +277,6 @@ void send_frames(int sockfd, struct sockaddr_in *server_addr)
         }
         
         frame_count++;
-        if (frame_count % (FRAMES_PER_SECOND * 1) == 0) {  /* Every 1 second */
-            printf("Sent %d panel updates (ps_address=0x%lx, ps_data=0x%x)\n", 
-                   frame_count, (unsigned long)panel.ps_address, (unsigned short)panel.ps_data);
-        }
         
         /* Debug: Print first few sends */
         if (frame_count <= 5) {
