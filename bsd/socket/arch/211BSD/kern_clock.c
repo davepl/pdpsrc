@@ -17,6 +17,8 @@
 #include "kernel.h"
 #include "systm.h"
 
+sys_wait_for_panel();
+
 /*
  * Panel state - holds values that would be used to simulate a front panel
  * Structure should be 6 bytes total (4 + 2) with tight packing
@@ -163,10 +165,12 @@ hardclock(dev,sp,r1,ov,nps,r0,pc,ps)
 	panel.ps_address = (long)pc;
 	panel.ps_data    = (short)(r0 & 0xFFFF);	
     panel.ps_psw     = (short)(ps & 0xFFFF);
-    panel.ps_mser    = *(short *)017777744;
+	/*
+	panel.ps_mser    = *(short *)017777744;
     panel.ps_cpu_err = *(short *)017777766;
     panel.ps_mmr0    = *(short *)017777572;
     panel.ps_mmr3    = *(short *)017777516;
+	*/
     panel_seq++;
     wakeup((caddr_t)&panel_seq);
 
@@ -179,6 +183,7 @@ hardclock(dev,sp,r1,ov,nps,r0,pc,ps)
 
 sys_wait_for_panel()
 {
+	static int last_seq = 0;
     while (last_seq == panel_seq)
         tsleep((caddr_t)&panel_seq, PZERO | PCATCH, "waitseq", 0);
 
