@@ -17,7 +17,7 @@
 #include <errno.h>
 #include <fcntl.h>
 
-extern int wait_for_panel(void);
+wait_for_panel();
 
 /* Don't include unistd.h on 211BSD - it may reference stdint.h */
 #ifndef __pdp11__
