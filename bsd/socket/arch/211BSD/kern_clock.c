@@ -19,6 +19,64 @@
 
 sys_wait_for_panel();
 
+#define APR_BASE   0172300
+#define APR_MASK   077777
+#define OFFSET_MASK 07777
+
+/* 
+ * Returns 22-bit physical address for the given virtual pc and ps.
+ * Must be called from kernel context. 
+ * Returns 0 if mode unknown.
+ */
+unsigned long
+decode_phys_addr(pc, ps)
+    unsigned short pc;
+    unsigned short ps;
+{
+    register int mode;
+    register int segnum;
+    register int apr_index;
+    register unsigned short *apr_regs;
+    register unsigned short seg_reg;
+    register unsigned long seg_base;
+    register unsigned short offset;
+    register unsigned long phys_addr;
+
+    /* APRs are memory-mapped at 0172300 */
+    apr_regs = (unsigned short *)APR_BASE;
+
+    /* Get processor mode: bits 14-15 of PS */
+    mode = (ps >> 14) & 03;
+
+    /* Segment number: bits 13-15 of PC */
+    segnum = (pc >> 13) & 07;
+
+    /* Default: use I-space (segments 0-7) for PC */
+    if (mode == 0)           /* kernel */
+        apr_index = segnum;
+    else if (mode == 1)      /* supervisor */
+        apr_index = 8 + segnum;
+    else if (mode == 3)      /* user */
+        apr_index = 8 + segnum;
+    else
+        return 0L;
+
+    /* Read segment register, mask to 18 bits (as 2.11BSD expects) */
+    seg_reg = apr_regs[apr_index] & APR_MASK;
+
+    seg_base = (unsigned long)seg_reg;
+
+    offset = pc & OFFSET_MASK;
+
+    /* 22-bit physical address: (segment base << 6) | offset */
+    phys_addr = (seg_base << 6) | offset;
+
+    /* Mask to 22 bits just to be sure */
+    phys_addr = phys_addr & 07777777L;
+
+    return phys_addr;
+}
+
 /*
  * Panel state - holds values that would be used to simulate a front panel
  * Structure should be 6 bytes total (4 + 2) with tight packing
@@ -162,9 +220,10 @@ hardclock(dev,sp,r1,ov,nps,r0,pc,ps)
 	 * Update front panel display with current execution state.
 	 * Keep this simple and safe - just use the pc parameter directly.
 	 */
-	panel.ps_address = (long)pc;
+	panel.ps_address = decode_phys_addr((unsigned short)pc, (unsigned short)ps);
 	panel.ps_data    = (short)(r0 & 0xFFFF);	
     panel.ps_psw     = (short)(ps & 0xFFFF);
+
 	/*
 	panel.ps_mser    = *(short *)017777744;
     panel.ps_cpu_err = *(short *)017777766;
