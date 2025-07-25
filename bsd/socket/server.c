@@ -26,7 +26,7 @@
 #include "arch/NetBSDVAX/panel_state.h"
 #include "arch/macOS/panel_state.h"
 
-#define SERVER_PORT 8080
+#define SERVER_PORT 4000
 
 /* Global variables for signal handling */
 static int server_sockfd = -1;
@@ -37,6 +37,7 @@ void handle_udp_clients(int sockfd);
 void signal_handler(int sig);
 void setup_signal_handlers(void);
 void format_binary(uint32_t value, int bits, char *buffer);
+void format_binary64(uint64_t value, int bits, char *buffer);
 void display_pdp_panel(struct pdp_panel_state *panel);
 void display_netbsdx64_panel(struct netbsdx64_panel_state *panel);
 void display_vax_panel(struct vax_panel_state *panel);
@@ -91,13 +92,55 @@ void display_pdp_panel(struct pdp_panel_state *panel)
 /* Display NetBSD x64 panel data */
 void display_netbsdx64_panel(struct netbsdx64_panel_state *panel)
 {
-    char rip_bin[33], rax_bin[33];
+    /* Clear screen and move cursor to home position every frame */
+    printf("\033[2J\033[H");
+    fflush(stdout);
+
+    struct clockframe *cf = &panel->ps_frame;
+    char bin[65];
     
-    /* Format key registers as binary (show lower 32 bits for readability) */
-    format_binary((uint32_t)(panel->ps_frame.cf_rip & 0xFFFFFFFF), 32, rip_bin);
-    format_binary((uint32_t)(panel->ps_frame.cf_rax & 0xFFFFFFFF), 32, rax_bin);
-    
-    printf("NetBSD x64: RIP: %s, RAX: %s\n", rip_bin, rax_bin);
+    #define PRINT_REG(name, val) do { \
+        format_binary64((uint64_t)(val), 64, bin); \
+        printf("%-6s= %016llx %s\n", name, (unsigned long long)(val), bin); \
+    } while(0)
+
+    PRINT_REG("ESP", cf->cf_rsp);
+    PRINT_REG("EIP", cf->cf_rip);
+    PRINT_REG("RAX", cf->cf_rax);
+    PRINT_REG("RBX", cf->cf_rbx);
+    PRINT_REG("RCX", cf->cf_rcx);
+    PRINT_REG("RDX", cf->cf_rdx);
+    PRINT_REG("RSI", cf->cf_rsi);
+    PRINT_REG("RDI", cf->cf_rdi);
+    PRINT_REG("RBP", cf->cf_rbp);
+    PRINT_REG("R8",  cf->cf_r8);
+    PRINT_REG("R9",  cf->cf_r9);
+    PRINT_REG("R10", cf->cf_r10);
+    PRINT_REG("R11", cf->cf_r11);
+    PRINT_REG("R12", cf->cf_r12);
+    PRINT_REG("R13", cf->cf_r13);
+    PRINT_REG("R14", cf->cf_r14);
+    PRINT_REG("R15", cf->cf_r15);
+    PRINT_REG("FLAGS", cf->cf_rflags);
+    PRINT_REG("CS", cf->cf_cs);
+    PRINT_REG("SS", cf->cf_ss);
+    PRINT_REG("GS", cf->cf_gs);
+    PRINT_REG("FS", cf->cf_fs);
+    PRINT_REG("ES", cf->cf_es);
+    PRINT_REG("DS", cf->cf_ds);
+    PRINT_REG("TRAPNO", cf->cf_trapno);
+    PRINT_REG("ERR", cf->cf_err);
+    fflush(stdout);
+    #undef PRINT_REG
+}
+/* Format a 64-bit value as binary string using * for 1 and . for 0 */
+void format_binary64(uint64_t value, int bits, char *buffer)
+{
+    int i;
+    for (i = bits - 1; i >= 0; i--) {
+        buffer[bits - 1 - i] = ((value >> i) & 1) ? '*' : '.';
+    }
+    buffer[bits] = '\0';
 }
 
 /* Display NetBSD VAX panel data */

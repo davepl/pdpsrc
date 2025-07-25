@@ -66,7 +66,6 @@ typedef unsigned short u16_t;   /* Always 16 bits */
 typedef unsigned long  u32_t;   /* 32 bits on modern, but we'll mask appropriately */
 
 #define SERVER_PORT 4000
-#define FRAME_SIZE 16
 #define FRAMES_PER_SECOND 30
 #define USEC_PER_FRAME (1000000 / FRAMES_PER_SECOND)
 
