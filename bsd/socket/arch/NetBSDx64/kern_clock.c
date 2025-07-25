@@ -308,14 +308,16 @@ hardclock(struct clockframe *frame)
 	struct lwp *l;
 	struct cpu_info *ci;
 
-	memcpy(&panel.ps_frame, frame, sizeof(struct clockframe));
-
 	clockrnd_sample(&hardclockrnd);
 
 	ci = curcpu();
 	l = ci->ci_onproc;
 
 	ptimer_tick(l, CLKF_USERMODE(frame));
+
+    if (CPU_IS_PRIMARY(ci)) {
+        memcpy(&panel.ps_frame, frame, sizeof(struct clockframe));
+    }
 
 	/*
 	 * If no separate statistics clock is available, run it from here.
