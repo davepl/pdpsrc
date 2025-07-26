@@ -12,6 +12,7 @@
 #include "../../panel_packet.h"
 
 /* Define clockframe structure to match kernel definition */
+#pragma pack(push, 1)
 struct clockframe {
 	uint64_t cf_rdi;
 	uint64_t cf_rsi;
@@ -51,5 +52,7 @@ struct netbsdx64_panel_packet {
     struct panel_packet_header header;
     struct netbsdx64_panel_state panel_state;
 };
+
+#pragma pack(pop)
 
 #endif /* NETBSDX64_PANEL_STATE_H */
