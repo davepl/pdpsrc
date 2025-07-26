@@ -33,7 +33,6 @@ extern int optind, optopt;
 
 /* Function prototypes */
 int capture_cpu_state(struct linuxx64_panel_state *panel);
-int get_system_stats(struct linuxx64_panel_state *panel);
 void send_frames(int sockfd, struct sockaddr_in *server_addr);
 
 int main(int argc, char *argv[])
@@ -76,48 +75,57 @@ int main(int argc, char *argv[])
 
 int capture_cpu_state(struct linuxx64_panel_state *panel)
 {
-    /* For demonstration purposes, we'll generate simulated register values
-     * In a real implementation, this would use ptrace or kernel modules 
-     * to capture actual CPU state from interrupt context */
-    static uint64_t counter = 0;
+    FILE *fp;
     struct pt_regs *regs = &panel->ps_regs;
+    char buffer[512];
+    int ret;
     
-    /* Generate some varying register values for demonstration */
-    counter++;
+    /* Try to read real register data from kernel module */
+    fp = fopen("/proc/panel_regs", "r");
+    if (fp == NULL) {
+        fprintf(stderr, "Error: Cannot access /proc/panel_regs\n");
+        fprintf(stderr, "Please load the kernel module first: sudo make load\n");
+        exit(1);
+    }
     
-    /* Simulate some realistic register values */
-    regs->rip = 0x400000 + (counter * 0x10) % 0x10000;     /* Instruction pointer */
-    regs->rsp = 0x7fffffffe000 - (counter * 8) % 0x1000;   /* Stack pointer */
-    regs->rbp = regs->rsp + 0x100;                          /* Base pointer */
-    regs->rax = counter;                                    /* Accumulator */
-    regs->rbx = counter * 2;                               /* Base register */
-    regs->rcx = counter * 3;                               /* Counter register */
-    regs->rdx = counter * 4;                               /* Data register */
-    regs->rsi = counter * 5;                               /* Source index */
-    regs->rdi = counter * 6;                               /* Destination index */
-    regs->r8  = counter * 7;                               /* Extended registers */
-    regs->r9  = counter * 8;
-    regs->r10 = counter * 9;
-    regs->r11 = counter * 10;
-    regs->r12 = counter * 11;
-    regs->r13 = counter * 12;
-    regs->r14 = counter * 13;
-    regs->r15 = counter * 14;
-    regs->eflags = 0x202 | ((counter % 2) << 6);          /* Flags with some variation */
-    regs->cs = 0x33;                                       /* Code segment */
-    regs->ss = 0x2b;                                       /* Stack segment */
-    regs->orig_rax = (counter % 256);                      /* Original system call number */
+    /* Read the first line to check if data is available */
+    if (fgets(buffer, sizeof(buffer), fp) == NULL) {
+        fprintf(stderr, "Error: Could not read from /proc/panel_regs\n");
+        fclose(fp);
+        exit(1);
+    }
     
-    return 0;
-}
-
-int get_system_stats(struct linuxx64_panel_state *panel)
-{
-    /* Linux pt_regs structure only contains register values
-     * No additional system stats are stored in this structure
-     * This function is kept for compatibility but doesn't modify
-     * the panel structure beyond what capture_cpu_state does */
+    /* Check if no data has been captured yet */
+    if (strncmp(buffer, "No register data captured yet", 29) == 0) {
+        fprintf(stderr, "Waiting for kernel module to capture register data...\n");
+        fclose(fp);
+        /* Return error to retry */
+        return -1;
+    }
     
+    /* Debug: Show what we're trying to parse */
+    printf("DEBUG: Parsing line: %s", buffer);
+    
+    /* Parse register data directly from the buffer we already read */
+    printf("DEBUG: Parsing buffer: %.100s...\n", buffer);
+    
+    /* Parse all registers from the buffer */
+    ret = sscanf(buffer, "RIP=0x%lx RSP=0x%lx RBP=0x%lx RAX=0x%lx RBX=0x%lx RCX=0x%lx RDX=0x%lx RSI=0x%lx RDI=0x%lx R8=0x%lx R9=0x%lx R10=0x%lx R11=0x%lx R12=0x%lx R13=0x%lx R14=0x%lx R15=0x%lx EFLAGS=0x%lx CS=0x%lx SS=0x%lx ORIG_RAX=0x%lx",
+             &regs->rip, &regs->rsp, &regs->rbp, &regs->rax, &regs->rbx, &regs->rcx, &regs->rdx,
+             &regs->rsi, &regs->rdi, &regs->r8, &regs->r9, &regs->r10, &regs->r11, &regs->r12,
+             &regs->r13, &regs->r14, &regs->r15, &regs->eflags, &regs->cs, &regs->ss, &regs->orig_rax);
+    printf("DEBUG: sscanf complete! ret=%d\n", ret);
+    
+    fclose(fp);
+    
+    if (ret != 21) {
+        fprintf(stderr, "Error: Could not parse register data (got %d fields)\n", ret);
+        return -1;
+    }
+    
+    printf("DEBUG: Sample values - RIP=0x%lx, RSP=0x%lx, RBP=0x%lx\n", regs->rip, regs->rsp, regs->rbp);
+    
+    printf("SUCCESS: Parsed all 21 register values!\n");
     return 0;
 }
 
@@ -128,14 +136,11 @@ void send_frames(int sockfd, struct sockaddr_in *server_addr)
     int frame_count = 0;
     
     while (1) {
-        /* Capture current CPU state and system stats */
+        /* Capture current CPU state - retry if no data available yet */
         if (capture_cpu_state(&panel) < 0) {
-            fprintf(stderr, "Failed to capture CPU state\n");
-            /* Continue with system stats only */
-        }
-        
-        if (get_system_stats(&panel) < 0) {
-            fprintf(stderr, "Failed to get system stats\n");
+            /* Wait a bit and try again */
+            precise_delay(USEC_PER_FRAME);
+            continue;
         }
         
         /* Populate packet structure */
@@ -152,7 +157,7 @@ void send_frames(int sockfd, struct sockaddr_in *server_addr)
         
         frame_count++;
         if (frame_count % (FRAMES_PER_SECOND * 2) == 0) {  /* Every 2 seconds */
-            printf("Frame %d: RIP=0x%llx, RSP=0x%llx, RAX=0x%llx, RBX=0x%llx\n", 
+            printf("Frame %d: RIP=0x%lx, RSP=0x%lx, RAX=0x%lx, RBX=0x%lx\n", 
                    frame_count, panel.ps_regs.rip, panel.ps_regs.rsp, 
                    panel.ps_regs.rax, panel.ps_regs.rbx);
         }
@@ -160,7 +165,7 @@ void send_frames(int sockfd, struct sockaddr_in *server_addr)
         /* Debug: Print first few sends */
         if (frame_count <= 5) {
             printf("DEBUG: Sent packet #%d, size=%d bytes\n", frame_count, (int)sizeof(packet));
-            printf("DEBUG: RIP=0x%llx, RAX=0x%llx, RBX=0x%llx\n", 
+            printf("DEBUG: RIP=0x%lx, RAX=0x%lx, RBX=0x%lx\n", 
                    panel.ps_regs.rip, panel.ps_regs.rax, panel.ps_regs.rbx);
         }
         
