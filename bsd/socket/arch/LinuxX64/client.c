@@ -97,24 +97,16 @@ int capture_cpu_state(struct linuxx64_panel_state *panel)
     
     /* Check if no data has been captured yet */
     if (strncmp(buffer, "No register data captured yet", 29) == 0) {
-        fprintf(stderr, "Waiting for kernel module to capture register data...\n");
         fclose(fp);
         /* Return error to retry */
         return -1;
     }
-    
-    /* Debug: Show what we're trying to parse */
-    printf("DEBUG: Parsing line: %s", buffer);
-    
-    /* Parse register data directly from the buffer we already read */
-    printf("DEBUG: Parsing buffer: %.100s...\n", buffer);
     
     /* Parse all registers from the buffer */
     ret = sscanf(buffer, "RIP=0x%lx RSP=0x%lx RBP=0x%lx RAX=0x%lx RBX=0x%lx RCX=0x%lx RDX=0x%lx RSI=0x%lx RDI=0x%lx R8=0x%lx R9=0x%lx R10=0x%lx R11=0x%lx R12=0x%lx R13=0x%lx R14=0x%lx R15=0x%lx EFLAGS=0x%lx CS=0x%lx SS=0x%lx ORIG_RAX=0x%lx",
              &regs->rip, &regs->rsp, &regs->rbp, &regs->rax, &regs->rbx, &regs->rcx, &regs->rdx,
              &regs->rsi, &regs->rdi, &regs->r8, &regs->r9, &regs->r10, &regs->r11, &regs->r12,
              &regs->r13, &regs->r14, &regs->r15, &regs->eflags, &regs->cs, &regs->ss, &regs->orig_rax);
-    printf("DEBUG: sscanf complete! ret=%d\n", ret);
     
     fclose(fp);
     
@@ -123,9 +115,6 @@ int capture_cpu_state(struct linuxx64_panel_state *panel)
         return -1;
     }
     
-    printf("DEBUG: Sample values - RIP=0x%lx, RSP=0x%lx, RBP=0x%lx\n", regs->rip, regs->rsp, regs->rbp);
-    
-    printf("SUCCESS: Parsed all 21 register values!\n");
     return 0;
 }
 
@@ -160,13 +149,6 @@ void send_frames(int sockfd, struct sockaddr_in *server_addr)
             printf("Frame %d: RIP=0x%lx, RSP=0x%lx, RAX=0x%lx, RBX=0x%lx\n", 
                    frame_count, panel.ps_regs.rip, panel.ps_regs.rsp, 
                    panel.ps_regs.rax, panel.ps_regs.rbx);
-        }
-        
-        /* Debug: Print first few sends */
-        if (frame_count <= 5) {
-            printf("DEBUG: Sent packet #%d, size=%d bytes\n", frame_count, (int)sizeof(packet));
-            printf("DEBUG: RIP=0x%lx, RAX=0x%lx, RBX=0x%lx\n", 
-                   panel.ps_regs.rip, panel.ps_regs.rax, panel.ps_regs.rbx);
         }
         
         /* Wait for next frame time */
