@@ -17,3 +17,5 @@ bsd/socket/211BSD/client
 bsd/socket/macOS/client
 bsd/socket/arch/NetBSDVAX/client
 bsd/socket/arch/211BSD/client
+bsd/socket/arch/LinuxX64/client
+bsd/dry/dry29

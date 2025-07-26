@@ -25,6 +25,10 @@ client:
 			cd arch/NetBSDVAX && $(MAKE) && cd ../..; \
 			cp arch/NetBSDVAX/client client; \
 		fi; \
+	elif [ "`uname -s`" = "Linux" ]; then \
+		echo "Building Linux x64 client..."; \
+		cd arch/LinuxX64 && $(MAKE) && cd ../..; \
+		cp arch/LinuxX64/client client; \
 	elif [ -f /usr/include/pdp11 ] || [ "`uname -s`" = "2.11BSD" ]; then \
 		echo "Building 2.11BSD client..."; \
 		cd arch/211BSD && $(MAKE) && cd ../..; \

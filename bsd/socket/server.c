@@ -25,6 +25,7 @@
 #include "arch/NetBSDx64/panel_state.h"
 #include "arch/NetBSDVAX/panel_state.h"
 #include "arch/macOS/panel_state.h"
+#include "arch/LinuxX64/panel_state.h"
 
 #define SERVER_PORT 4000
 
@@ -42,6 +43,7 @@ void display_pdp_panel(struct pdp_panel_state *panel);
 void display_netbsdx64_panel(struct netbsdx64_panel_state *panel);
 void display_vax_panel(struct vax_panel_state *panel);
 void display_macos_panel(struct macos_panel_state *panel);
+void display_linuxx64_panel(struct linuxx64_panel_state *panel);
 const char* get_panel_type_name(u32_t flags);
 
 /* Function prototypes */
@@ -69,6 +71,7 @@ const char* get_panel_type_name(u32_t flags)
         case PANEL_VAX: return "VAX";
         case PANEL_NETBSDX64: return "NetBSD x64";
         case PANEL_MACOS: return "macOS";
+        case PANEL_LINUXX64: return "Linux x64";
         default: return "Unknown";
     }
 }
@@ -141,6 +144,46 @@ void format_binary64(uint64_t value, int bits, char *buffer)
         buffer[bits - 1 - i] = ((value >> i) & 1) ? '*' : '.';
     }
     buffer[bits] = '\0';
+}
+
+/* Display Linux x64 panel data */
+void display_linuxx64_panel(struct linuxx64_panel_state *panel)
+{
+    /* Clear screen and move cursor to home position every frame */
+    printf("\033[2J\033[H");
+    fflush(stdout);
+
+    struct pt_regs *regs = &panel->ps_regs;
+    char bin[65];
+    
+    #define PRINT_REG(name, val) do { \
+        format_binary64((uint64_t)(val), 64, bin); \
+        printf("%-6s= %016llx %s\n", name, (unsigned long long)(val), bin); \
+    } while(0)
+
+    PRINT_REG("RSP", regs->rsp);
+    PRINT_REG("RIP", regs->rip);
+    PRINT_REG("RAX", regs->rax);
+    PRINT_REG("RBX", regs->rbx);
+    PRINT_REG("RCX", regs->rcx);
+    PRINT_REG("RDX", regs->rdx);
+    PRINT_REG("RSI", regs->rsi);
+    PRINT_REG("RDI", regs->rdi);
+    PRINT_REG("RBP", regs->rbp);
+    PRINT_REG("R8",  regs->r8);
+    PRINT_REG("R9",  regs->r9);
+    PRINT_REG("R10", regs->r10);
+    PRINT_REG("R11", regs->r11);
+    PRINT_REG("R12", regs->r12);
+    PRINT_REG("R13", regs->r13);
+    PRINT_REG("R14", regs->r14);
+    PRINT_REG("R15", regs->r15);
+    PRINT_REG("FLAGS", regs->eflags);
+    PRINT_REG("CS", regs->cs);
+    PRINT_REG("SS", regs->ss);
+    PRINT_REG("ORIGAX", regs->orig_rax);
+    fflush(stdout);
+    #undef PRINT_REG
 }
 
 /* Display NetBSD VAX panel data */
@@ -253,8 +296,8 @@ void handle_udp_clients(int sockfd)
     printf("Receiving UDP panel data with header protocol:\n");
     printf("Header size: %d bytes (2 bytes count + 4 bytes flags)\n", 
            (int)sizeof(header));
-    printf("Panel type flags: PDP1170=%d, VAX=%d, NetBSDx64=%d, macOS=%d\n",
-           PANEL_PDP1170, PANEL_VAX, PANEL_NETBSDX64, PANEL_MACOS);
+    printf("Panel type flags: PDP1170=%d, VAX=%d, NetBSDx64=%d, macOS=%d, LinuxX64=%d\n",
+           PANEL_PDP1170, PANEL_VAX, PANEL_NETBSDX64, PANEL_MACOS, PANEL_LINUXX64);
     printf("Binary format: O=1, .=0\n\n");
     
     while (1) {
@@ -333,6 +376,13 @@ void handle_udp_clients(int sockfd)
                 struct macos_panel_packet *packet = (struct macos_panel_packet *)buffer;
                 printf("[%s] ", get_panel_type_name(header.pp_byte_flags));
                 display_macos_panel(&packet->panel_state);
+                break;
+            }
+            
+            case PANEL_LINUXX64: {
+                struct linuxx64_panel_packet *packet = (struct linuxx64_panel_packet *)buffer;
+                printf("[%s] ", get_panel_type_name(header.pp_byte_flags));
+                display_linuxx64_panel(&packet->panel_state);
                 break;
             }
             
