@@ -20,8 +20,9 @@
 #include <stdint.h>
 
 /* Include common functions */
+#define SERVER_PORT 4002
 #include "../../common.c"
-#define SERVER_PORT 4000
+
 
 /* Include panel state definitions */
 #include "panel_state.h"
