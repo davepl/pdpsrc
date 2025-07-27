@@ -24,6 +24,7 @@
 
 /* Include common functions */
 #include "../../common.c"
+#define SERVER_PORT 4001
 
 /* Include panel state definitions */
 #include "panel_state.h"

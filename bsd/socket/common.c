@@ -24,7 +24,6 @@ extern int close();
 #endif
 
 /* Common definitions */
-#define SERVER_PORT 4000
 #define FRAMES_PER_SECOND 30
 #define USEC_PER_FRAME (1000000 / FRAMES_PER_SECOND)
 
