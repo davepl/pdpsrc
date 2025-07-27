@@ -207,31 +207,19 @@ int read_panel_from_kmem(int kmem_fd, void *panel_addr, struct vax_panel_state *
         perror("read");
         return -1;
     }
+
     
     /* Get current time for dynamic data */
     gettimeofday(&tv, NULL);
     
-    /* Convert raw clockframe data to VAX panel format */
-    /* Since we can't easily parse the clockframe structure across platforms,
-     * we'll use the raw memory contents as a source of realistic data */
+    /* Convert raw kernel data to VAX panel format */
+    /* Since we're on the same architecture, we can directly extract values */
     
-    /* Use first 4 bytes as address (big endian interpretation) */
-    panel->ps_address = ((uint32_t)raw_data[0] << 24) | 
-                       ((uint32_t)raw_data[1] << 16) | 
-                       ((uint32_t)raw_data[2] << 8) | 
-                       (uint32_t)raw_data[3];
+    /* Extract address and data directly from raw memory */
+    panel->ps_address = *(uint32_t*)&raw_data[0];
+    panel->ps_data = *(uint32_t*)&raw_data[4];
     
-    /* Use next 2 bytes as data register */
-    panel->ps_data = (uint16_t)((raw_data[4] << 8) | raw_data[5]);
-    
-    /* Use various bytes for different registers, with time-based variation */
-    panel->ps_psw = (uint16_t)((raw_data[6] << 8) | raw_data[7]) ^ (uint16_t)(tv.tv_usec & 0xFFFF);
-    panel->ps_mser = (uint16_t)((raw_data[8] << 8) | raw_data[9]);
-    panel->ps_cpu_err = (uint16_t)((raw_data[10] << 8) | raw_data[11]);
-    panel->ps_mmr0 = (uint16_t)((raw_data[12] << 8) | raw_data[13]) ^ (uint16_t)(tv.tv_sec & 0xFFFF);
-    panel->ps_mmr3 = (uint16_t)((raw_data[14] << 8) | raw_data[15]);
-    
-    return 0;
+    return 0;    return 0;
 }
 
 void send_frames(int sockfd, struct sockaddr_in *server_addr, int kmem_fd, void *panel_addr)
