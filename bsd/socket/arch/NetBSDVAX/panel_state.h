@@ -15,12 +15,7 @@
 #pragma pack(push, 1)
 struct vax_panel_state {
     uint32_t ps_address;	/* panel switches - 32-bit address */
-    uint16_t ps_data;		/* panel lamps - 16-bit data */
-    uint16_t ps_psw;        /* processor status word */
-    uint16_t ps_mser;       /* machine status register */
-    uint16_t ps_cpu_err;    /* CPU error register */
-    uint16_t ps_mmr0;       /* memory management register 0 */
-    uint16_t ps_mmr3;       /* memory management register 3 */
+    uint32_t ps_data;		/* panel lamps - 16-bit data */
 };
 #pragma pack(pop)
 
