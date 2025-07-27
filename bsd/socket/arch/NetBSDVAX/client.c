@@ -17,6 +17,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdint.h>
 
 /* Include common functions */
 #include "../../common.c"
@@ -214,20 +215,20 @@ int read_panel_from_kmem(int kmem_fd, void *panel_addr, struct vax_panel_state *
      * we'll use the raw memory contents as a source of realistic data */
     
     /* Use first 4 bytes as address (big endian interpretation) */
-    panel->ps_address = ((long)raw_data[0] << 24) | 
-                       ((long)raw_data[1] << 16) | 
-                       ((long)raw_data[2] << 8) | 
-                       (long)raw_data[3];
+    panel->ps_address = ((uint32_t)raw_data[0] << 24) | 
+                       ((uint32_t)raw_data[1] << 16) | 
+                       ((uint32_t)raw_data[2] << 8) | 
+                       (uint32_t)raw_data[3];
     
     /* Use next 2 bytes as data register */
-    panel->ps_data = (short)((raw_data[4] << 8) | raw_data[5]);
+    panel->ps_data = (uint16_t)((raw_data[4] << 8) | raw_data[5]);
     
     /* Use various bytes for different registers, with time-based variation */
-    panel->ps_psw = (short)((raw_data[6] << 8) | raw_data[7]) ^ (short)(tv.tv_usec & 0xFFFF);
-    panel->ps_mser = (short)((raw_data[8] << 8) | raw_data[9]);
-    panel->ps_cpu_err = (short)((raw_data[10] << 8) | raw_data[11]);
-    panel->ps_mmr0 = (short)((raw_data[12] << 8) | raw_data[13]) ^ (short)(tv.tv_sec & 0xFFFF);
-    panel->ps_mmr3 = (short)((raw_data[14] << 8) | raw_data[15]);
+    panel->ps_psw = (uint16_t)((raw_data[6] << 8) | raw_data[7]) ^ (uint16_t)(tv.tv_usec & 0xFFFF);
+    panel->ps_mser = (uint16_t)((raw_data[8] << 8) | raw_data[9]);
+    panel->ps_cpu_err = (uint16_t)((raw_data[10] << 8) | raw_data[11]);
+    panel->ps_mmr0 = (uint16_t)((raw_data[12] << 8) | raw_data[13]) ^ (uint16_t)(tv.tv_sec & 0xFFFF);
+    panel->ps_mmr3 = (uint16_t)((raw_data[14] << 8) | raw_data[15]);
     
     return 0;
 }

@@ -44,7 +44,7 @@ void display_netbsdx64_panel(struct netbsdx64_panel_state *panel);
 void display_vax_panel(struct vax_panel_state *panel);
 void display_macos_panel(struct macos_panel_state *panel);
 void display_linuxx64_panel(struct linuxx64_panel_state *panel);
-const char* get_panel_type_name(u32_t flags);
+const char* get_panel_type_name(uint32_t flags);
 
 /* Function prototypes */
 int create_udp_server_socket(void);
@@ -64,7 +64,7 @@ void format_binary(uint32_t value, int bits, char *buffer)
 }
 
 /* Get panel type name from flags */
-const char* get_panel_type_name(u32_t flags)
+const char* get_panel_type_name(uint32_t flags)
 {
     switch (flags) {
         case PANEL_PDP1170: return "PDP-11/70";
