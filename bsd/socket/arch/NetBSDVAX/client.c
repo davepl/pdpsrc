@@ -32,7 +32,7 @@
 /* Function prototypes */
 int open_kmem_and_find_panel(void **panel_addr);
 int read_panel_from_kmem(int kmem_fd, void *panel_addr, struct vax_panel_state *panel);
-void send_frames(int sockfd, struct sockaddr_in *server_addr);
+void send_frames(int sockfd, struct sockaddr_in *server_addr, int kmem_fd, void *panel_addr);
 
 int main(int argc, char *argv[])
 {
@@ -82,7 +82,7 @@ int main(int argc, char *argv[])
     printf("Note: UDP is connectionless - errors will be reported during transmission\n");
     
     /* Send frames continuously */
-    send_frames(sockfd, &server_addr);
+    send_frames(sockfd, &server_addr, kmem_fd, panel_addr);
     
     close(sockfd);
     close(kmem_fd);
@@ -232,22 +232,11 @@ int read_panel_from_kmem(int kmem_fd, void *panel_addr, struct vax_panel_state *
     return 0;
 }
 
-void send_frames(int sockfd, struct sockaddr_in *server_addr)
+void send_frames(int sockfd, struct sockaddr_in *server_addr, int kmem_fd, void *panel_addr)
 {
     struct vax_panel_state panel;
     struct vax_panel_packet packet;
     int frame_count = 0;
-    static void *panel_addr = NULL;
-    static int kmem_fd = -1;
-    
-    /* Open /dev/kmem and find panel address if not already done */
-    if (kmem_fd < 0) {
-        kmem_fd = open_kmem_and_find_panel(&panel_addr);
-        if (kmem_fd < 0) {
-            fprintf(stderr, "Cannot access kernel memory\n");
-            return;
-        }
-    }
     
     while (1) {
         /* Read panel structure from kernel memory */
