@@ -246,7 +246,7 @@ void send_frames(int sockfd, struct sockaddr_in *server_addr, int kmem_fd, void 
         }
         
         /* Populate packet structure */
-        packet.header.pp_byte_count = sizeof(struct vax_panel_packet);
+        packet.header.pp_byte_count = sizeof(struct vax_panel_state);
         packet.header.pp_byte_flags = PANEL_VAX;  /* Set panel type flag */
         packet.panel_state = panel;
         

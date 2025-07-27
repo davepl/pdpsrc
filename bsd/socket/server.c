@@ -321,7 +321,7 @@ void handle_udp_clients(int sockfd)
         }
         
         /* Now receive the complete packet */
-        int total_packet_size = sizeof(header) + header.pp_byte_count;
+        int total_packet_size = header.pp_byte_count;
         if (total_packet_size > sizeof(buffer)) {
             printf("[Packet too large: %d bytes, max %d]\n",
                    total_packet_size, (int)sizeof(buffer));
