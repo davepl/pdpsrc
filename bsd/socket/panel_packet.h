@@ -8,7 +8,7 @@
 
 /* Portable type definitions */
 typedef unsigned short u16_t;   /* Always 16 bits */
-typedef unsigned long  u32_t;   /* 32 bits */
+typedef unsigned int   u32_t;   /* Always 32 bits */
 
 /* Common packet header structure */
 

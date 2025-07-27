@@ -12,7 +12,7 @@
 /* NetBSD VAX Panel structure - similar to PDP-11 but for VAX */
 #pragma pack(1)
 struct vax_panel_state {
-    long ps_address;	/* panel switches - 32-bit address */
+    unsigned int ps_address;	/* panel switches - 32-bit address */
     short ps_data;		/* panel lamps - 16-bit data */
     short ps_psw;       /* processor status word */
     short ps_mser;      /* machine status register */

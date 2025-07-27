@@ -301,34 +301,9 @@ void handle_udp_clients(int sockfd)
     printf("Binary format: O=1, .=0\n\n");
     
     while (1) {
-        /* First, receive the packet header */
+        /* Receive the complete packet */
         client_addr_len = sizeof(client_addr);
-        bytes_received = recvfrom(sockfd, &header, sizeof(header), MSG_PEEK,
-                                  (struct sockaddr *)&client_addr, &client_addr_len);
-        
-        if (bytes_received < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            perror("recvfrom header");
-            break;
-        }
-        
-        if (bytes_received < sizeof(header)) {
-            printf("[Incomplete header: got %d bytes, expected %d]\n",
-                   bytes_received, (int)sizeof(header));
-            continue;
-        }
-        
-        /* Now receive the complete packet */
-        int total_packet_size = header.pp_byte_count;
-        if (total_packet_size > sizeof(buffer)) {
-            printf("[Packet too large: %d bytes, max %d]\n",
-                   total_packet_size, (int)sizeof(buffer));
-            continue;
-        }
-        
-        bytes_received = recvfrom(sockfd, buffer, total_packet_size, 0,
+        bytes_received = recvfrom(sockfd, buffer, sizeof(buffer), 0,
                                   (struct sockaddr *)&client_addr, &client_addr_len);
         
         if (bytes_received < 0) {
@@ -339,15 +314,24 @@ void handle_udp_clients(int sockfd)
             break;
         }
         
-        if (bytes_received != total_packet_size) {
-            printf("[Incomplete packet: got %d bytes, expected %d from %s:%d]\n",
-                   bytes_received, total_packet_size,
-                   inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+        /* Check if we have at least a complete header */
+        if (bytes_received < sizeof(header)) {
+            printf("[Incomplete header: got %d bytes, expected at least %d]\n",
+                   bytes_received, (int)sizeof(header));
             continue;
         }
         
         /* Parse the header from the received buffer */
         memcpy(&header, buffer, sizeof(header));
+        
+        /* Calculate expected total packet size */
+        int expected_packet_size = sizeof(header) + header.pp_byte_count;
+        if (bytes_received != expected_packet_size) {
+            printf("[Packet size mismatch: got %d bytes, expected %d from %s:%d]\n",
+                   bytes_received, expected_packet_size,
+                   inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
+            continue;
+        }
         
         /* Process based on panel type */
         switch (header.pp_byte_flags) {
