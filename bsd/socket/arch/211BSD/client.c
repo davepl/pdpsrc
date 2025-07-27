@@ -29,8 +29,9 @@ wait_for_panel();
 
 /* Include common functions - but we need to prevent double-include of headers */
 #define COMMON_HEADERS_INCLUDED
-#include "../../common.c"
 #define SERVER_PORT 4000
+#include "../../common.c"
+
 
 /* Define SEEK constants if not available */
 #ifndef SEEK_SET

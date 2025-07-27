@@ -26,8 +26,8 @@ extern char *optarg;
 extern int optind, optopt;
 
 /* Include common functions */
-#include "../../common.c"
 #define SERVER_PORT 4000
+#include "../../common.c"
 
 /* Include panel state definitions */
 #include "panel_state.h"
