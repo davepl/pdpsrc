@@ -9,6 +9,7 @@
 #include <sys/time.h>
 #include <sys/file.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <stdio.h>
@@ -18,6 +19,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdint.h>
+
+/* External getopt declarations for compatibility */
+extern char *optarg;
+extern int optind, optopt;
 
 /* Include common functions */
 #define SERVER_PORT 4002
@@ -78,6 +83,19 @@ int main(int argc, char *argv[])
         close(kmem_fd);
         exit(1);
     }
+    
+    /* Configure socket for immediate transmission - disable batching */
+    /* Disable socket send buffering for immediate transmission */
+    int sndbuf = 0;
+    if (setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf)) < 0) {
+        /* If we can't disable buffering completely, try minimal buffer */
+        sndbuf = 1024;
+        setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &sndbuf, sizeof(sndbuf));
+    }
+    
+    /* Set low latency socket option if available */
+    int lowdelay = 1;
+    setsockopt(sockfd, IPPROTO_IP, IP_TOS, &lowdelay, sizeof(lowdelay));
     
     printf("UDP socket created. Sending panel data to %s:%d at %d Hz...\n", 
            server_ip, SERVER_PORT, FRAMES_PER_SECOND);
@@ -241,8 +259,8 @@ void send_frames(int sockfd, struct sockaddr_in *server_addr, int kmem_fd, void 
         packet.header.pp_byte_flags = PANEL_VAX;  /* Set panel type flag */
         packet.panel_state = panel;
         
-        /* Send panel packet via UDP */
-        if (sendto(sockfd, &packet, sizeof(packet), 0,
+        /* Send panel packet via UDP with immediate transmission */
+        if (sendto(sockfd, &packet, sizeof(packet), MSG_DONTWAIT,
                    (struct sockaddr *)server_addr, sizeof(*server_addr)) < 0) {
             fprintf(stderr, "sendto failed after %d packets: ", frame_count);
             perror("");
@@ -252,8 +270,13 @@ void send_frames(int sockfd, struct sockaddr_in *server_addr, int kmem_fd, void 
                 fprintf(stderr, "Host unreachable - server may be down\n");
             } else if (errno == ECONNREFUSED) {
                 fprintf(stderr, "Connection refused - server not listening on port %d\n", SERVER_PORT);
+            } else if (errno == EWOULDBLOCK || errno == EAGAIN) {
+                /* Non-blocking send would block, continue anyway */
+                fprintf(stderr, "Warning: UDP send would block (frame %d)\n", frame_count);
             }
-            break;
+            else {
+                break;
+            }
         }
         
         frame_count++;

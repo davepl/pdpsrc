@@ -24,7 +24,7 @@ extern int close();
 #endif
 
 /* Common definitions */
-#define FRAMES_PER_SECOND 30
+#define FRAMES_PER_SECOND 60
 #define USEC_PER_FRAME (1000000 / FRAMES_PER_SECOND)
 
 /* Panel type enumeration for packet flags */
