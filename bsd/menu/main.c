@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <stdarg.h>
 #include <curses.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -48,24 +49,7 @@ extern unsigned sleep();
 #ifndef remove
 #define remove unlink
 #endif
-#define curs_set legacy_curs_set
-#define attron legacy_attron
-#define attroff legacy_attroff
-static int legacy_curs_set(int visible);
-static int legacy_attron(int attr);
-static int legacy_attroff(int attr);
 static int legacy_mvgetnstr(int y, int x, char *buf, int maxlen);
-
-/* VT220 line drawing characters using DEC special graphics set */
-/* These are the VT100/VT220 line drawing characters in alternate charset mode */
-#define ACS_ULCORNER 'l'  /* upper left corner */
-#define ACS_LLCORNER 'm'  /* lower left corner */
-#define ACS_URCORNER 'k'  /* upper right corner */
-#define ACS_LRCORNER 'j'  /* lower right corner */
-#define ACS_LTEE     't'  /* left tee */
-#define ACS_RTEE     'u'  /* right tee */
-#define ACS_HLINE    'q'  /* horizontal line */
-#define ACS_VLINE    'x'  /* vertical line */
 #endif
 
 #define DATA_DIR "bbsdata"
@@ -283,6 +267,12 @@ static void lock_guard(void);
 static void unlock_guard(void);
 static int read_key(void);
 static int input_has_data(void);
+static void platform_set_cursor(int visible);
+static void platform_draw_border(void);
+static void platform_draw_header_line(const char *left, const char *right);
+static void platform_draw_separator(int row);
+static void platform_read_input(int y, int x, char *buf, int maxlen);
+static void draw_highlighted_text(int row, int col, int width, int highlighted, const char *fmt, ...);
 
 static int g_pending_key = -1;
 
@@ -384,40 +374,70 @@ safe_append_two_digit(char *dst, size_t dstlen, int value)
 }
 
 #ifdef LEGACY_CURSES
-static int
-legacy_curs_set(int visible)
+static void
+platform_set_cursor(int visible)
 {
-    const char *seq;
-
-    if (visible)
-        seq = "\033[?25h";
-    else
-        seq = "\033[?25l";
+    const char *seq = visible ? "\033[?25h" : "\033[?25l";
     fputs(seq, stdout);
     fflush(stdout);
-    return 0;
 }
 
-static int
-legacy_attron(int attr)
+static void
+platform_draw_border(void)
 {
-    if (attr & A_REVERSE) {
-        /* Use ANSI escape codes directly since standout() doesn't work reliably */
-        fputs("\033[7m", stdout);
-        fflush(stdout);
+    int col;
+    for (col = 0; col < COLS; ++col) {
+        mvaddch(0, col, '-');
+        mvaddch(LINES - 1, col, '-');
     }
-    return 0;
+    for (col = 0; col < LINES; ++col) {
+        mvaddch(col, 0, '|');
+        mvaddch(col, COLS - 1, '|');
+    }
+    mvaddch(0, 0, '+');
+    mvaddch(0, COLS - 1, '+');
+    mvaddch(LINES - 1, 0, '+');
+    mvaddch(LINES - 1, COLS - 1, '+');
 }
 
-static int
-legacy_attroff(int attr)
+static void
+platform_draw_header_line(const char *left, const char *right)
 {
-    if (attr & A_REVERSE) {
-        /* Use ANSI escape codes directly since standend() doesn't work reliably */
-        fputs("\033[0m", stdout);
-        fflush(stdout);
-    }
-    return 0;
+    int i;
+    int gap;
+    int right_len;
+
+    move(1, 1);
+    for (i = 1; i < COLS - 1; ++i)
+        addch(' ');
+    mvprintw(1, 2, "%s", left);
+    mvprintw(1, COLS - (int)strlen(right) - 2, "%s", right);
+    refresh();
+
+    printf("\033[2;2H\033[7m %s", left);
+    gap = COLS - (int)strlen(right) - 3 - (int)strlen(left) - 1;
+    if (gap < 0)
+        gap = 0;
+    for (i = 0; i < gap; ++i)
+        putchar(' ');
+    printf("%s \033[0m", right);
+    fflush(stdout);
+}
+
+static void
+platform_draw_separator(int row)
+{
+    int col;
+    for (col = 1; col < COLS - 1; ++col)
+        mvaddch(row, col, '=');
+}
+
+static void
+platform_read_input(int y, int x, char *buf, int maxlen)
+{
+    noecho();
+    legacy_mvgetnstr(y, x, buf, maxlen);
+    noecho();
 }
 
 static int
@@ -467,7 +487,97 @@ legacy_mvgetnstr(int y, int x, char *buf, int maxlen)
     buf[len] = '\0';
     return len;
 }
+#else
+static void
+platform_set_cursor(int visible)
+{
+    curs_set(visible);
+}
+
+static void
+platform_draw_border(void)
+{
+    int col;
+    for (col = 0; col < COLS; ++col) {
+        mvaddch(0, col, ACS_HLINE);
+        mvaddch(LINES - 1, col, ACS_HLINE);
+    }
+    for (col = 0; col < LINES; ++col) {
+        mvaddch(col, 0, ACS_VLINE);
+        mvaddch(col, COLS - 1, ACS_VLINE);
+    }
+    mvaddch(0, 0, ACS_ULCORNER);
+    mvaddch(0, COLS - 1, ACS_URCORNER);
+    mvaddch(LINES - 1, 0, ACS_LLCORNER);
+    mvaddch(LINES - 1, COLS - 1, ACS_LRCORNER);
+}
+
+static void
+platform_draw_header_line(const char *left, const char *right)
+{
+    int col;
+    attron(A_REVERSE);
+    move(1, 1);
+    for (col = 1; col < COLS - 1; ++col)
+        addch(' ');
+    mvprintw(1, 2, "%s", left);
+    mvprintw(1, COLS - (int)strlen(right) - 2, "%s", right);
+    attroff(A_REVERSE);
+}
+
+static void
+platform_draw_separator(int row)
+{
+    int col;
+    mvaddch(row, 0, ACS_LTEE);
+    for (col = 1; col < COLS - 1; ++col)
+        mvaddch(row, col, ACS_HLINE);
+    mvaddch(row, COLS - 1, ACS_RTEE);
+}
+
+static void
+platform_read_input(int y, int x, char *buf, int maxlen)
+{
+    echo();
+    mvgetnstr(y, x, buf, maxlen);
+    noecho();
+}
 #endif
+
+static void
+draw_highlighted_text(int row, int col, int width, int highlighted, const char *fmt, ...)
+{
+    char buf[256];
+    va_list ap;
+
+    va_start(ap, fmt);
+    vsprintf(buf, fmt, ap);
+    va_end(ap);
+
+#ifdef LEGACY_CURSES
+    {
+        int i;
+        int fill = width > 0 ? width : (int)strlen(buf);
+        move(row, col);
+        for (i = 0; i < fill; ++i)
+            addch(' ');
+        move(row, col);
+        if (highlighted)
+            printw("\033[7m%s\033[0m", buf);
+        else
+            printw("%s", buf);
+    }
+#else
+    if (highlighted)
+        attron(A_REVERSE);
+    if (width > 0)
+        mvprintw(row, col, "%-*s", width, buf);
+    else
+        mvprintw(row, col, "%s", buf);
+    if (highlighted)
+        attroff(A_REVERSE);
+#endif
+}
 
 int
 main(int argc, char **argv)
@@ -560,14 +670,14 @@ start_ui(void)
 #ifdef NCURSES_VERSION
     keypad(stdscr, TRUE);
 #endif
-    curs_set(0);
+    platform_set_cursor(0);
     g_ui_ready = 1;
 }
 
 static void
 stop_ui(void)
 {
-    curs_set(1);
+    platform_set_cursor(1);
     endwin();
     g_ui_ready = 0;
 }
@@ -603,106 +713,29 @@ logout_session(void)
 static void
 draw_layout(const char *title, const char *status)
 {
-    int col;
     int menu_bar;
+    char header_left[80];
+    char header_right[80];
 
     clear();
-    
-    /* Use VT220 line drawing characters */
-#ifdef LEGACY_CURSES
-    /* On legacy curses, use simple ASCII box drawing */
-    /* Draw top border */
-    for (col = 0; col < COLS; ++col) {
-        mvaddch(0, col, '-');
-        mvaddch(LINES - 1, col, '-');
-    }
-    for (col = 0; col < LINES; ++col) {
-        mvaddch(col, 0, '|');
-        mvaddch(col, COLS - 1, '|');
-    }
-    mvaddch(0, 0, '+');
-    mvaddch(0, COLS - 1, '+');
-    mvaddch(LINES - 1, 0, '+');
-    mvaddch(LINES - 1, COLS - 1, '+');
-#else
-    /* Modern ncurses has proper ACS support */
-    for (col = 0; col < COLS; ++col) {
-        mvaddch(0, col, ACS_HLINE);
-        mvaddch(LINES - 1, col, ACS_HLINE);
-    }
-    for (col = 0; col < LINES; ++col) {
-        mvaddch(col, 0, ACS_VLINE);
-        mvaddch(col, COLS - 1, ACS_VLINE);
-    }
-    mvaddch(0, 0, ACS_ULCORNER);
-    mvaddch(0, COLS - 1, ACS_URCORNER);
-    mvaddch(LINES - 1, 0, ACS_LLCORNER);
-    mvaddch(LINES - 1, COLS - 1, ACS_LRCORNER);
-#endif
+    platform_draw_border();
 
-    /* Draw entire line 1 in reverse video */
-    /* First draw the line normally through curses */
-    move(1, 1);
-    for (col = 1; col < COLS - 1; ++col)
-        addch(' ');
-    mvprintw(1, 2, "%s %s", PROGRAM_TITLE, PROGRAM_VERSION);
-    mvprintw(1, COLS - 25, "User: %s%s",
-        g_session.username[0] ? g_session.username : "(not logged)",
-        g_session.is_admin ? " (admin)" : "");
-    
-#ifdef LEGACY_CURSES
-    /* After drawing through curses, overlay reverse video with direct output */
-    refresh();  /* Make sure curses content is visible first */
-    {
-        char userinfo[80];
-        int i;
-        int title_len;
-        int user_len;
-        
-        sprintf(userinfo, "User: %s%s",
-            g_session.username[0] ? g_session.username : "(not logged)",
-            g_session.is_admin ? " (admin)" : "");
-        
-        /* Position cursor and output reverse video line */
-        printf("\033[2;2H\033[7m %s %s", PROGRAM_TITLE, PROGRAM_VERSION);
-        title_len = strlen(PROGRAM_TITLE) + strlen(PROGRAM_VERSION) + 3;
-        
-        /* Fill middle with spaces */
-        user_len = strlen(userinfo);
-        for (i = title_len; i < COLS - user_len - 3; ++i)
-            putchar(' ');
-        
-        /* Add user info, end reverse video */
-        printf("%s \033[0m", userinfo);
-        fflush(stdout);
-    }
-#else
-    attron(A_REVERSE);
-    move(1, 1);
-    for (col = 1; col < COLS - 1; ++col)
-        addch(' ');
-    mvprintw(1, 2, "%s %s", PROGRAM_TITLE, PROGRAM_VERSION);
-    mvprintw(1, COLS - 25, "User: %s%s",
-        g_session.username[0] ? g_session.username : "(not logged)",
-        g_session.is_admin ? " (admin)" : "");
-    attroff(A_REVERSE);
-#endif
+    safe_copy(header_left, sizeof header_left, PROGRAM_TITLE);
+    safe_append(header_left, sizeof header_left, " ");
+    safe_append(header_left, sizeof header_left, PROGRAM_VERSION);
+    safe_copy(header_right, sizeof header_right, "User: ");
+    safe_append(header_right, sizeof header_right,
+        g_session.username[0] ? g_session.username : "(not logged)");
+    if (g_session.is_admin)
+        safe_append(header_right, sizeof header_right, " (admin)");
+    platform_draw_header_line(header_left, header_right);
 
     mvprintw(2, 2, "%s", title);
     if (status && *status)
         mvprintw(2, COLS - (int)strlen(status) - 2, "%s", status);
 
-    /* Draw menu separator bar with T-junctions */
     menu_bar = LINES - MENU_ROWS - 1;
-#ifdef LEGACY_CURSES
-    for (col = 1; col < COLS - 1; ++col)
-        mvaddch(menu_bar, col, '=');
-#else
-    mvaddch(menu_bar, 0, ACS_LTEE);
-    for (col = 1; col < COLS - 1; ++col)
-        mvaddch(menu_bar, col, ACS_HLINE);
-    mvaddch(menu_bar, COLS - 1, ACS_RTEE);
-#endif
+    platform_draw_separator(menu_bar);
 }
 
 static void
@@ -739,18 +772,9 @@ prompt_string(const char *label, char *buffer, int maxlen)
     row = LINES - MENU_ROWS - 3;
     mvprintw(row, 2, "%-*s", COLS - 4, "");
     mvprintw(row, 2, "%s", label);
-#ifdef LEGACY_CURSES
-    noecho();
-#endif
-    curs_set(1);
-#ifdef LEGACY_CURSES
-    legacy_mvgetnstr(row + 1, 4, buffer, maxlen - 1);
-#else
-    echo();
-    mvgetnstr(row + 1, 4, buffer, maxlen - 1);
-#endif
-    noecho();
-    curs_set(0);
+    platform_set_cursor(1);
+    platform_read_input(row + 1, 4, buffer, maxlen - 1);
+    platform_set_cursor(0);
     trim_newline(buffer);
 }
 
@@ -913,7 +937,6 @@ draw_main_options(int highlight)
     int count;
     int i;
     int row;
-    char buf[128];
 
     count = g_main_menu_option_count;
     row = 6;
@@ -921,23 +944,8 @@ draw_main_options(int highlight)
     /* Initial full render */
     if (!initialized) {
         for (i = 0; i < count; ++i) {
-#ifdef LEGACY_CURSES
-            if (i == highlight) {
-                sprintf(buf, "\033[7m%c) %s\033[0m", g_main_menu_options[i].key,
-                    g_main_menu_options[i].label);
-            } else {
-                sprintf(buf, "%c) %s", g_main_menu_options[i].key,
-                    g_main_menu_options[i].label);
-            }
-            mvprintw(row + i, 6, "%-*s", COLS - 8, buf);
-#else
-            if (i == highlight)
-                attron(A_REVERSE);
-            mvprintw(row + i, 6, "%c) %s", g_main_menu_options[i].key,
-                g_main_menu_options[i].label);
-            if (i == highlight)
-                attroff(A_REVERSE);
-#endif
+            draw_highlighted_text(row + i, 6, COLS - 8, i == highlight,
+                "%c) %s", g_main_menu_options[i].key, g_main_menu_options[i].label);
         }
         last_highlight = highlight;
         initialized = 1;
@@ -946,28 +954,16 @@ draw_main_options(int highlight)
     else if (last_highlight != highlight) {
         /* Clear and redraw old highlighted line as normal */
         if (last_highlight >= 0 && last_highlight < count) {
-#ifdef LEGACY_CURSES
-            sprintf(buf, "%c) %s", g_main_menu_options[last_highlight].key,
+            draw_highlighted_text(row + last_highlight, 6, COLS - 8, 0,
+                "%c) %s", g_main_menu_options[last_highlight].key,
                 g_main_menu_options[last_highlight].label);
-            mvprintw(row + last_highlight, 6, "%-*s", COLS - 8, buf);
-#else
-            mvprintw(row + last_highlight, 6, "%c) %s", g_main_menu_options[last_highlight].key,
-                g_main_menu_options[last_highlight].label);
-#endif
         }
         
         /* Clear and redraw new highlighted line with reverse video */
         if (highlight >= 0 && highlight < count) {
-#ifdef LEGACY_CURSES
-            sprintf(buf, "\033[7m%c) %s\033[0m", g_main_menu_options[highlight].key,
+            draw_highlighted_text(row + highlight, 6, COLS - 8, 1,
+                "%c) %s", g_main_menu_options[highlight].key,
                 g_main_menu_options[highlight].label);
-            mvprintw(row + highlight, 6, "%-*s", COLS - 8, buf);
-#else
-            attron(A_REVERSE);
-            mvprintw(row + highlight, 6, "%c) %s", g_main_menu_options[highlight].key,
-                g_main_menu_options[highlight].label);
-            attroff(A_REVERSE);
-#endif
         }
         
         last_highlight = highlight;
@@ -1178,71 +1174,17 @@ whereis_group(void)
 static void
 draw_group_rows(int highlight)
 {
-    static int last_highlight = -1;
-    static int initialized = 0;
     int row;
     int i;
     const char *flag;
-    char buf[256];
 
     row = 5;
     mvprintw(row - 1, 4, "%-4s %-24s %-40s", "No.", "Group", "Description");
-    
-    /* Initial full render */
-    if (!initialized) {
-        for (i = 0; i < g_group_count && i < LINES - MENU_ROWS - 2; ++i) {
-            flag = g_groups[i].deleted ? "D" : " ";
-#ifdef LEGACY_CURSES
-            if (i == highlight) {
-                sprintf(buf, "\033[7m%-4d %-24s %-40s %s\033[0m", i + 1, g_groups[i].name,
-                    g_groups[i].description, flag);
-            } else {
-                sprintf(buf, "%-4d %-24s %-40s %s", i + 1, g_groups[i].name,
-                    g_groups[i].description, flag);
-            }
-            mvprintw(row + i, 4, "%-*s", COLS - 6, buf);
-#else
-            if (i == highlight)
-                attron(A_REVERSE);
-            mvprintw(row + i, 4, "%-4d %-24s %-40s %s", i + 1, g_groups[i].name,
-                g_groups[i].description, flag);
-            if (i == highlight)
-                attroff(A_REVERSE);
-#endif
-        }
-        last_highlight = highlight;
-        initialized = 1;
-    }
-    else if (last_highlight != highlight) {
-        /* Clear and redraw old highlight as normal */
-        if (last_highlight >= 0 && last_highlight < g_group_count) {
-            flag = g_groups[last_highlight].deleted ? "D" : " ";
-#ifdef LEGACY_CURSES
-            sprintf(buf, "%-4d %-24s %-40s %s", last_highlight + 1, g_groups[last_highlight].name,
-                g_groups[last_highlight].description, flag);
-            mvprintw(5 + last_highlight, 4, "%-*s", COLS - 6, buf);
-#else
-            mvprintw(5 + last_highlight, 4, "%-4d %-24s %-40s %s", last_highlight + 1, g_groups[last_highlight].name,
-                g_groups[last_highlight].description, flag);
-#endif
-        }
-        
-        /* Clear and draw new highlight */
-        if (highlight >= 0 && highlight < g_group_count) {
-            flag = g_groups[highlight].deleted ? "D" : " ";
-#ifdef LEGACY_CURSES
-            sprintf(buf, "\033[7m%-4d %-24s %-40s %s\033[0m", highlight + 1, g_groups[highlight].name,
-                g_groups[highlight].description, flag);
-            mvprintw(5 + highlight, 4, "%-*s", COLS - 6, buf);
-#else
-            attron(A_REVERSE);
-            mvprintw(5 + highlight, 4, "%-4d %-24s %-40s %s", highlight + 1, g_groups[highlight].name,
-                g_groups[highlight].description, flag);
-            attroff(A_REVERSE);
-#endif
-        }
-        
-        last_highlight = highlight;
+    for (i = 0; i < g_group_count && row < LINES - MENU_ROWS - 2; ++i, ++row) {
+        flag = g_groups[i].deleted ? "D" : " ";
+        draw_highlighted_text(row, 4, COLS - 6, i == highlight,
+            "%-4d %-24s %-40s %s", i + 1, g_groups[i].name,
+            g_groups[i].description, flag);
     }
 }
 
@@ -1365,79 +1307,19 @@ format_time(time_t t, char *buf, int buflen)
 static void
 draw_post_rows(int highlight)
 {
-    static int last_highlight = -1;
-    static int initialized = 0;
     int row;
     int i;
     char stamp[32];
     char status;
-    char buf[256];
 
     row = 5;
     mvprintw(row - 1, 2, "%-4s %-2s %-5s %-16s %-40s", "No", "St", "ID", "Poster", "Subject");
-    
-    /* Initial full render */
-    if (!initialized) {
-        for (i = 0; i < g_cached_message_count && i < LINES - MENU_ROWS - 2; ++i) {
-            status = g_cached_messages[i].deleted ? 'D' : (g_cached_messages[i].answered ? 'A' : 'N');
-#ifdef LEGACY_CURSES
-            if (i == highlight) {
-                sprintf(buf, "\033[7m%-4d %-2c %-5d %-16.16s %-40.40s\033[0m",
-                    i + 1, status, g_cached_messages[i].id,
-                    g_cached_messages[i].author, g_cached_messages[i].subject);
-            } else {
-                sprintf(buf, "%-4d %-2c %-5d %-16.16s %-40.40s",
-                    i + 1, status, g_cached_messages[i].id,
-                    g_cached_messages[i].author, g_cached_messages[i].subject);
-            }
-            mvprintw(row + i, 2, "%-*s", COLS - 4, buf);
-#else
-            if (i == highlight)
-                attron(A_REVERSE);
-            mvprintw(row + i, 2, "%-4d %-2c %-5d %-16.16s %-40.40s",
-                i + 1, status, g_cached_messages[i].id,
-                g_cached_messages[i].author, g_cached_messages[i].subject);
-            if (i == highlight)
-                attroff(A_REVERSE);
-#endif
-        }
-        last_highlight = highlight;
-        initialized = 1;
-    }
-    else if (last_highlight != highlight) {
-        /* Clear and redraw old highlight as normal */
-        if (last_highlight >= 0 && last_highlight < g_cached_message_count) {
-            status = g_cached_messages[last_highlight].deleted ? 'D' : (g_cached_messages[last_highlight].answered ? 'A' : 'N');
-#ifdef LEGACY_CURSES
-            sprintf(buf, "%-4d %-2c %-5d %-16.16s %-40.40s",
-                last_highlight + 1, status, g_cached_messages[last_highlight].id,
-                g_cached_messages[last_highlight].author, g_cached_messages[last_highlight].subject);
-            mvprintw(5 + last_highlight, 2, "%-*s", COLS - 4, buf);
-#else
-            mvprintw(5 + last_highlight, 2, "%-4d %-2c %-5d %-16.16s %-40.40s",
-                last_highlight + 1, status, g_cached_messages[last_highlight].id,
-                g_cached_messages[last_highlight].author, g_cached_messages[last_highlight].subject);
-#endif
-        }
-        
-        /* Clear and draw new highlight */
-        if (highlight >= 0 && highlight < g_cached_message_count) {
-            status = g_cached_messages[highlight].deleted ? 'D' : (g_cached_messages[highlight].answered ? 'A' : 'N');
-#ifdef LEGACY_CURSES
-            sprintf(buf, "\033[7m%-4d %-2c %-5d %-16.16s %-40.40s\033[0m",
-                highlight + 1, status, g_cached_messages[highlight].id,
-                g_cached_messages[highlight].author, g_cached_messages[highlight].subject);
-            mvprintw(5 + highlight, 2, "%-*s", COLS - 4, buf);
-#else
-            attron(A_REVERSE);
-            mvprintw(5 + highlight, 2, "%-4d %-2c %-5d %-16.16s %-40.40s",
-                highlight + 1, status, g_cached_messages[highlight].id,
-                g_cached_messages[highlight].author, g_cached_messages[highlight].subject);
-            attroff(A_REVERSE);
-#endif
-        }
-        
-        last_highlight = highlight;
+    for (i = 0; i < g_cached_message_count && row < LINES - MENU_ROWS - 2; ++i, ++row) {
+        status = g_cached_messages[i].deleted ? 'D' : (g_cached_messages[i].answered ? 'A' : 'N');
+        draw_highlighted_text(row, 2, COLS - 4, i == highlight,
+            "%-4d %-2c %-5d %-16.16s %-40.40s",
+            i + 1, status, g_cached_messages[i].id,
+            g_cached_messages[i].author, g_cached_messages[i].subject);
     }
 }
 
@@ -1864,74 +1746,16 @@ search_messages(void)
 static void
 draw_address_rows(int highlight)
 {
-    static int last_highlight = -1;
-    static int initialized = 0;
     int row;
     int i;
-    char buf[256];
 
     row = 5;
     mvprintw(row - 1, 3, "%-4s %-12s %-20s %-32s", "No", "Nick", "Fullname", "Address/List");
-    
-    /* Initial full render */
-    if (!initialized) {
-        for (i = 0; i < g_addr_count && i < LINES - MENU_ROWS - 2; ++i) {
-#ifdef LEGACY_CURSES
-            if (i == highlight) {
-                sprintf(buf, "\033[7m%-4d %-12s %-20.20s %-32.32s%s\033[0m", i + 1, g_addrbook[i].nickname,
-                    g_addrbook[i].fullname, g_addrbook[i].address,
-                    g_addrbook[i].is_list ? " (list)" : "");
-            } else {
-                sprintf(buf, "%-4d %-12s %-20.20s %-32.32s%s", i + 1, g_addrbook[i].nickname,
-                    g_addrbook[i].fullname, g_addrbook[i].address,
-                    g_addrbook[i].is_list ? " (list)" : "");
-            }
-            mvprintw(row + i, 3, "%-*s", COLS - 5, buf);
-#else
-            if (i == highlight)
-                attron(A_REVERSE);
-            mvprintw(row + i, 3, "%-4d %-12s %-20.20s %-32.32s%s", i + 1, g_addrbook[i].nickname,
-                g_addrbook[i].fullname, g_addrbook[i].address,
-                g_addrbook[i].is_list ? " (list)" : "");
-            if (i == highlight)
-                attroff(A_REVERSE);
-#endif
-        }
-        last_highlight = highlight;
-        initialized = 1;
-    }
-    else if (last_highlight != highlight) {
-        /* Clear and redraw old highlight as normal */
-        if (last_highlight >= 0 && last_highlight < g_addr_count) {
-#ifdef LEGACY_CURSES
-            sprintf(buf, "%-4d %-12s %-20.20s %-32.32s%s", last_highlight + 1, g_addrbook[last_highlight].nickname,
-                g_addrbook[last_highlight].fullname, g_addrbook[last_highlight].address,
-                g_addrbook[last_highlight].is_list ? " (list)" : "");
-            mvprintw(5 + last_highlight, 3, "%-*s", COLS - 5, buf);
-#else
-            mvprintw(5 + last_highlight, 3, "%-4d %-12s %-20.20s %-32.32s%s", last_highlight + 1, g_addrbook[last_highlight].nickname,
-                g_addrbook[last_highlight].fullname, g_addrbook[last_highlight].address,
-                g_addrbook[last_highlight].is_list ? " (list)" : "");
-#endif
-        }
-        
-        /* Clear and draw new highlight */
-        if (highlight >= 0 && highlight < g_addr_count) {
-#ifdef LEGACY_CURSES
-            sprintf(buf, "\033[7m%-4d %-12s %-20.20s %-32.32s%s\033[0m", highlight + 1, g_addrbook[highlight].nickname,
-                g_addrbook[highlight].fullname, g_addrbook[highlight].address,
-                g_addrbook[highlight].is_list ? " (list)" : "");
-            mvprintw(5 + highlight, 3, "%-*s", COLS - 5, buf);
-#else
-            attron(A_REVERSE);
-            mvprintw(5 + highlight, 3, "%-4d %-12s %-20.20s %-32.32s%s", highlight + 1, g_addrbook[highlight].nickname,
-                g_addrbook[highlight].fullname, g_addrbook[highlight].address,
-                g_addrbook[highlight].is_list ? " (list)" : "");
-            attroff(A_REVERSE);
-#endif
-        }
-        
-        last_highlight = highlight;
+    for (i = 0; i < g_addr_count && row < LINES - MENU_ROWS - 2; ++i, ++row) {
+        draw_highlighted_text(row, 3, COLS - 5, i == highlight,
+            "%-4d %-12s %-20.20s %-32.32s%s", i + 1, g_addrbook[i].nickname,
+            g_addrbook[i].fullname, g_addrbook[i].address,
+            g_addrbook[i].is_list ? " (list)" : "");
     }
 }
 
