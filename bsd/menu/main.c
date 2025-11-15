@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <ctype.h>
+#include <sys/ioctl.h>
 #include <time.h>
 
 #if defined(__APPLE__) || defined(__MACH__) || defined(__linux__)
@@ -32,6 +33,12 @@ extern unsigned sleep();
 #endif
 #ifndef KEY_DOWN
 #define KEY_DOWN 0402
+#endif
+#ifndef KEY_LEFT
+#define KEY_LEFT 0404
+#endif
+#ifndef KEY_RIGHT
+#define KEY_RIGHT 0405
 #endif
 #ifndef KEY_BACKSPACE
 #define KEY_BACKSPACE 0407
@@ -61,7 +68,7 @@ static int legacy_mvgetnstr(int y, int x, char *buf, int maxlen);
 #define ADMIN_PASS "2326"
 
 #define MIN_COLS 80
-#define MIN_ROWS 28
+#define MIN_ROWS 24
 #define MENU_ROWS 5
 
 /* Reduce memory usage significantly on PDP-11 */
@@ -196,6 +203,7 @@ static void require_screen_size(void);
 static void logout_session(void);
 static void draw_layout(const char *title, const char *status);
 static void draw_menu_lines(const char *line1, const char *line2, const char *line3);
+static void draw_menu_line_row(int row, const char *text, int preserve_border);
 static void show_status(const char *msg);
 static void wait_for_ack(const char *msg);
 static void prompt_string(const char *label, char *buffer, int maxlen);
@@ -263,6 +271,10 @@ static int acquire_lock(void);
 static void release_lock(void);
 static void lock_guard(void);
 static void unlock_guard(void);
+static int read_key(void);
+static int input_has_data(void);
+
+static int g_pending_key = -1;
 
 static void
 trim_newline(char *text)
@@ -604,10 +616,35 @@ draw_menu_lines(const char *line1, const char *line2, const char *line3)
     int start;
 
     start = LINES - MENU_ROWS + 1;
-    mvprintw(start, 2, "%-*s", COLS - 4, line1 ? line1 : "");
-    mvprintw(start + 1, 2, "%-*s", COLS - 4, line2 ? line2 : "");
-    mvprintw(start + 2, 2, "%-*s", COLS - 4, line3 ? line3 : "");
-    mvprintw(start + 3, 2, "%-*s", COLS - 4, "Arrows move  Return selects  ESC=Back  Letter=command");
+    draw_menu_line_row(start, line1, 0);
+    draw_menu_line_row(start + 1, line2, 0);
+    draw_menu_line_row(start + 2, line3, 0);
+    draw_menu_line_row(start + 3, "Arrows move  Return selects  ESC=Back  Letter=command", 1);
+}
+
+static void
+draw_menu_line_row(int row, const char *text, int preserve_border)
+{
+    const char *msg;
+    int col;
+    int len;
+    int maxcols;
+    int i;
+
+    msg = text ? text : "";
+    col = 2;
+    maxcols = COLS - 2;
+    len = (int)strlen(msg);
+    if (len > maxcols - col)
+        len = maxcols - col;
+    move(row, col);
+    for (i = 0; i < len; ++i)
+        addch(msg[i]);
+    if (!preserve_border) {
+        int blank = maxcols - (col + len);
+        while (blank-- > 0)
+            addch(' ');
+    }
 }
 
 static void
@@ -632,7 +669,7 @@ prompt_string(const char *label, char *buffer, int maxlen)
 {
     int row;
 
-    row = LINES - MENU_ROWS - 2;
+    row = LINES - MENU_ROWS - 3;
     mvprintw(row, 2, "%-*s", COLS - 4, "");
     mvprintw(row, 2, "%s", label);
 #ifdef LEGACY_CURSES
@@ -659,6 +696,86 @@ prompt_yesno(const char *question)
     if (buf[0] == 'y' || buf[0] == 'Y')
         return 1;
     return 0;
+}
+
+static int
+read_key(void)
+{
+    int ch;
+    int next;
+    int dir;
+
+    if (g_pending_key != -1) {
+        ch = g_pending_key;
+        g_pending_key = -1;
+        return ch;
+    }
+
+    ch = getch();
+    if (ch != ESC_KEY)
+        return ch;
+    if (!g_ui_ready)
+        return ch;
+
+    /* Got ESC - always try to read escape sequence for arrow keys */
+    next = getch();
+    if (next == ERR)
+        return ERR;
+    
+    if (next == '[' || next == 'O') {
+        /* For VT220/ANSI sequences: ESC [ A or ESC O A */
+        dir = getch();
+        
+        if (dir == ERR) {
+            g_pending_key = next;
+            return ch;
+        }
+        if (dir == 'A')
+            return KEY_UP;
+        if (dir == 'B')
+            return KEY_DOWN;
+        if (dir == 'C')
+            return KEY_RIGHT;
+        if (dir == 'D')
+            return KEY_LEFT;
+        /* Unknown escape sequence */
+        g_pending_key = dir;
+        return ch;
+    }
+    /* Not an arrow key sequence */
+    g_pending_key = next;
+    return ch;
+}
+
+static int
+input_has_data_timeout(int usec)
+{
+#if defined(__unix__)
+    /* Use select() with a timeout to check for input */
+    struct timeval tv;
+    fd_set readfds;
+    int fd;
+    int result;
+
+    fd = fileno(stdin);
+    FD_ZERO(&readfds);
+    FD_SET(fd, &readfds);
+    
+    tv.tv_sec = 0;
+    tv.tv_usec = usec;
+    
+    result = select(fd + 1, &readfds, NULL, NULL, &tv);
+    return (result > 0);
+#else
+    return 0;
+#endif
+}
+
+static int
+input_has_data(void)
+{
+    /* Use a longer timeout for slower serial terminals like VT220 on 211BSD */
+    return input_has_data_timeout(500000); /* 500ms - generous for slow terminals */
 }
 
 static void
@@ -724,19 +841,54 @@ update_status_line(void)
 static void
 draw_main_options(int highlight)
 {
+    static int last_highlight = -1;
+    static int initialized = 0;
     int count;
     int i;
     int row;
+    char buf[128];
 
     count = g_main_menu_option_count;
     row = 6;
-    for (i = 0; i < count; ++i) {
-        if (i == highlight)
-            attron(A_REVERSE);
-        mvprintw(row + i, 6, "%c) %s", g_main_menu_options[i].key,
-            g_main_menu_options[i].label);
-        if (i == highlight)
-            attroff(A_REVERSE);
+    
+    /* Initial full render */
+    if (!initialized) {
+        for (i = 0; i < count; ++i) {
+            move(row + i, 6);
+            clrtoeol();
+            if (i == highlight) {
+                sprintf(buf, "\033[7m%c) %s\033[0m", g_main_menu_options[i].key,
+                    g_main_menu_options[i].label);
+            } else {
+                sprintf(buf, "%c) %s", g_main_menu_options[i].key,
+                    g_main_menu_options[i].label);
+            }
+            mvprintw(row + i, 6, "%s", buf);
+        }
+        last_highlight = highlight;
+        initialized = 1;
+    }
+    /* Only redraw changed lines for efficiency */
+    else if (last_highlight != highlight) {
+        /* Clear and redraw old highlighted line as normal */
+        if (last_highlight >= 0 && last_highlight < count) {
+            move(row + last_highlight, 6);
+            clrtoeol();
+            sprintf(buf, "%c) %s", g_main_menu_options[last_highlight].key,
+                g_main_menu_options[last_highlight].label);
+            mvprintw(row + last_highlight, 6, "%s", buf);
+        }
+        
+        /* Clear and redraw new highlighted line with reverse video */
+        if (highlight >= 0 && highlight < count) {
+            move(row + highlight, 6);
+            clrtoeol();
+            sprintf(buf, "\033[7m%c) %s\033[0m", g_main_menu_options[highlight].key,
+                g_main_menu_options[highlight].label);
+            mvprintw(row + highlight, 6, "%s", buf);
+        }
+        
+        last_highlight = highlight;
     }
     if (g_show_extras) {
         mvprintw(row + count + 2, 6, "Extras: Release notes (TODO), Print Help (TODO)");
@@ -763,7 +915,7 @@ main_menu_screen(void)
     refresh();
 
     while (1) {
-        ch = getch();
+        ch = read_key();
         if (ch == KEY_UP) {
             if (highlight > 0)
                 --highlight;
@@ -776,9 +928,11 @@ main_menu_screen(void)
             if (ch == 'O' || ch == 'o') {
                 toggle_extras();
             } else if (ch == 'Q' || ch == 'q') {
-                if (prompt_yesno("Quit? y/n")) {
-                    g_running = 0;
-                    return;
+                if (prompt_yesno("Logout? y/n")) {
+                    logout_session();
+                    g_screen = SCREEN_LOGIN;
+                    highlight = 0;
+                    break;
                 }
             } else if (ch == 'I' || ch == 'i') {
                 g_screen = SCREEN_POST_INDEX;
@@ -798,15 +952,9 @@ main_menu_screen(void)
             } else if (ch == '?') {
                 show_help("Main Menu Help", "Use letter keys to trigger commands. Extras toggle additional commands.");
                 break;
-            } else if (ch == ESC_KEY) {
-                logout_session();
-                g_screen = SCREEN_LOGIN;
-                highlight = 0;
-                break;
             }
         }
-        draw_layout("Main Menu", "");
-        update_status_line();
+        /* Only redraw the menu options, not the entire layout */
         draw_main_options(highlight);
         refresh();
     }
@@ -948,20 +1096,56 @@ whereis_group(void)
 static void
 draw_group_rows(int highlight)
 {
+    static int last_highlight = -1;
+    static int initialized = 0;
     int row;
     int i;
     const char *flag;
+    char buf[256];
 
     row = 5;
     mvprintw(row - 1, 4, "%-4s %-24s %-40s", "No.", "Group", "Description");
-    for (i = 0; i < g_group_count && row < LINES - MENU_ROWS - 2; ++i, ++row) {
-        flag = g_groups[i].deleted ? "D" : " ";
-        if (i == highlight)
-            attron(A_REVERSE);
-        mvprintw(row, 4, "%-4d %-24s %-40s %s", i + 1, g_groups[i].name,
-            g_groups[i].description, flag);
-        if (i == highlight)
-            attroff(A_REVERSE);
+    
+    /* Initial full render */
+    if (!initialized) {
+        for (i = 0; i < g_group_count && i < LINES - MENU_ROWS - 2; ++i) {
+            flag = g_groups[i].deleted ? "D" : " ";
+            move(row + i, 4);
+            clrtoeol();
+            if (i == highlight) {
+                sprintf(buf, "\033[7m%-4d %-24s %-40s %s\033[0m", i + 1, g_groups[i].name,
+                    g_groups[i].description, flag);
+            } else {
+                sprintf(buf, "%-4d %-24s %-40s %s", i + 1, g_groups[i].name,
+                    g_groups[i].description, flag);
+            }
+            mvprintw(row + i, 4, "%s", buf);
+        }
+        last_highlight = highlight;
+        initialized = 1;
+    }
+    else if (last_highlight != highlight) {
+        /* Clear and redraw old highlight as normal */
+        if (last_highlight >= 0 && last_highlight < g_group_count) {
+            flag = g_groups[last_highlight].deleted ? "D" : " ";
+            move(5 + last_highlight, 4);
+            clrtoeol();
+            sprintf(buf, "%-4d %-24s %-40s %s", last_highlight + 1, g_groups[last_highlight].name,
+                g_groups[last_highlight].description, flag);
+            mvprintw(5 + last_highlight, 4, "%s", buf);
+        }
+        
+        /* Clear and draw new highlight */
+        if (highlight >= 0 && highlight < g_group_count) {
+            flag = g_groups[highlight].deleted ? "D" : " ";
+            move(5 + highlight, 4);
+            clrtoeol();
+            sprintf(buf, "\033[7m%-4d %-24s %-40s %s\033[0m", highlight + 1, g_groups[highlight].name,
+                g_groups[highlight].description, flag);
+            mvprintw(5 + highlight, 4, "%s", buf);
+        }
+        
+        last_highlight = highlight;
     }
 }
 
@@ -977,12 +1161,13 @@ group_list_screen(void)
     if (highlight < 0)
         highlight = 0;
 
+    draw_layout("Group List", "");
+    draw_group_rows(highlight);
+    draw_menu_lines("V View  C Create  D Delete  R Rename  E Expunge", "N Next  P Prev  G Goto  < Main  O Other  S Select", "W WhereIs  ? Help");
+    refresh();
+
     while (1) {
-        draw_layout("Group List", "");
-        draw_group_rows(highlight);
-        draw_menu_lines("V View  C Create  D Delete  R Rename  E Expunge", "N Next  P Prev  G Goto  < Main  O Other  S Select", "W WhereIs  ? Help");
-        refresh();
-        ch = getch();
+        ch = read_key();
         if (ch == KEY_UP) {
             if (highlight > 0)
                 --highlight;
@@ -1016,14 +1201,18 @@ group_list_screen(void)
             wait_for_ack("Group selected.");
         } else if (ch == 'W' || ch == 'w') {
             whereis_group();
-        } else if (ch == '<' || ch == ESC_KEY) {
-            g_screen = SCREEN_MAIN;
-            break;
+        } else if (ch == 'Q' || ch == 'q') {
+            if (prompt_yesno("Return to main menu? y/n")) {
+                g_screen = SCREEN_MAIN;
+                break;
+            }
         } else if (ch == '?') {
             show_help("Group List Help", "Use commands displayed to manage groups. Deleted groups show D flag until expunged.");
         } else if (ch == 'O' || ch == 'o') {
             toggle_extras();
         }
+        draw_group_rows(highlight);
+        refresh();
     }
     g_last_highlight = highlight;
 }
@@ -1079,23 +1268,61 @@ format_time(time_t t, char *buf, int buflen)
 static void
 draw_post_rows(int highlight)
 {
+    static int last_highlight = -1;
+    static int initialized = 0;
     int row;
     int i;
     char stamp[32];
     char status;
+    char buf[256];
 
     row = 5;
     mvprintw(row - 1, 2, "%-4s %-2s %-5s %-16s %-40s", "No", "St", "ID", "Poster", "Subject");
-    for (i = 0; i < g_cached_message_count && row < LINES - MENU_ROWS - 2; ++i, ++row) {
-        status = g_cached_messages[i].deleted ? 'D' : (g_cached_messages[i].answered ? 'A' : 'N');
-        format_time(g_cached_messages[i].created, stamp, sizeof stamp);
-        if (i == highlight)
-            attron(A_REVERSE);
-        mvprintw(row, 2, "%-4d %-2c %-5d %-16.16s %-40.40s",
-            i + 1, status, g_cached_messages[i].id,
-            g_cached_messages[i].author, g_cached_messages[i].subject);
-        if (i == highlight)
-            attroff(A_REVERSE);
+    
+    /* Initial full render */
+    if (!initialized) {
+        for (i = 0; i < g_cached_message_count && i < LINES - MENU_ROWS - 2; ++i) {
+            status = g_cached_messages[i].deleted ? 'D' : (g_cached_messages[i].answered ? 'A' : 'N');
+            move(row + i, 2);
+            clrtoeol();
+            if (i == highlight) {
+                sprintf(buf, "\033[7m%-4d %-2c %-5d %-16.16s %-40.40s\033[0m",
+                    i + 1, status, g_cached_messages[i].id,
+                    g_cached_messages[i].author, g_cached_messages[i].subject);
+            } else {
+                sprintf(buf, "%-4d %-2c %-5d %-16.16s %-40.40s",
+                    i + 1, status, g_cached_messages[i].id,
+                    g_cached_messages[i].author, g_cached_messages[i].subject);
+            }
+            mvprintw(row + i, 2, "%s", buf);
+        }
+        last_highlight = highlight;
+        initialized = 1;
+    }
+    else if (last_highlight != highlight) {
+        /* Clear and redraw old highlight as normal */
+        if (last_highlight >= 0 && last_highlight < g_cached_message_count) {
+            status = g_cached_messages[last_highlight].deleted ? 'D' : (g_cached_messages[last_highlight].answered ? 'A' : 'N');
+            move(5 + last_highlight, 2);
+            clrtoeol();
+            sprintf(buf, "%-4d %-2c %-5d %-16.16s %-40.40s",
+                last_highlight + 1, status, g_cached_messages[last_highlight].id,
+                g_cached_messages[last_highlight].author, g_cached_messages[last_highlight].subject);
+            mvprintw(5 + last_highlight, 2, "%s", buf);
+        }
+        
+        /* Clear and draw new highlight */
+        if (highlight >= 0 && highlight < g_cached_message_count) {
+            status = g_cached_messages[highlight].deleted ? 'D' : (g_cached_messages[highlight].answered ? 'A' : 'N');
+            move(5 + highlight, 2);
+            clrtoeol();
+            sprintf(buf, "\033[7m%-4d %-2c %-5d %-16.16s %-40.40s\033[0m",
+                highlight + 1, status, g_cached_messages[highlight].id,
+                g_cached_messages[highlight].author, g_cached_messages[highlight].subject);
+            mvprintw(5 + highlight, 2, "%s", buf);
+        }
+        
+        last_highlight = highlight;
     }
 }
 
@@ -1135,12 +1362,13 @@ post_index_screen(void)
 
     group = current_group_name();
 
+    draw_layout("Post Index", group ? group : "");
+    draw_post_rows(highlight);
+    draw_menu_lines("V View  D Delete  U Undelete  R Reply  F Forward", "S Save  X Expunge  T Take Addr  Y Print (TODO)  W WhereIs", "O Other  < Groups  ? Help");
+    refresh();
+
     while (1) {
-        draw_layout("Post Index", group ? group : "");
-        draw_post_rows(highlight);
-        draw_menu_lines("V View  D Delete  U Undelete  R Reply  F Forward", "S Save  X Expunge  T Take Addr  Y Print (TODO)  W WhereIs", "O Other  < Groups  ? Help");
-        refresh();
-        ch = getch();
+        ch = read_key();
         if (ch == KEY_UP) {
             if (highlight > 0)
                 --highlight;
@@ -1176,12 +1404,16 @@ post_index_screen(void)
             search_messages();
         } else if (ch == 'O' || ch == 'o') {
             toggle_extras();
-        } else if (ch == '<' || ch == ESC_KEY) {
-            g_screen = SCREEN_GROUP_LIST;
-            break;
+        } else if (ch == 'Q' || ch == 'q') {
+            if (prompt_yesno("Return to group list? y/n")) {
+                g_screen = SCREEN_GROUP_LIST;
+                break;
+            }
         } else if (ch == '?') {
             show_help("Post Index Help", "Use commands to manage posts. Deleted posts are expunged with X.");
         }
+        draw_post_rows(highlight);
+        refresh();
     }
     g_last_highlight = highlight;
 }
@@ -1207,7 +1439,7 @@ post_view_screen(int message_index)
         render_body_text(msg->body, 10, LINES - MENU_ROWS - 12);
         draw_menu_lines("D Delete  U Undelete  R Reply  F Forward  S Save", "T Take Addr  V View Attach (TODO)  E Exit Attach (TODO)", "< Index  ? Help");
         refresh();
-        ch = getch();
+        ch = read_key();
         if (ch == 'D' || ch == 'd') {
             delete_or_undelete(msg, 1);
         } else if (ch == 'U' || ch == 'u') {
@@ -1220,8 +1452,11 @@ post_view_screen(int message_index)
             save_message_to_group(msg);
         } else if (ch == 'T' || ch == 't') {
             take_address_from_message(msg);
-        } else if (ch == '<' || ch == 'E' || ch == 'e' || ch == ESC_KEY) {
+        } else if (ch == 'E' || ch == 'e') {
             break;
+        } else if (ch == 'Q' || ch == 'q') {
+            if (prompt_yesno("Return to index? y/n"))
+                break;
         } else if (ch == '?') {
             show_help("Post View Help", "Use commands to reply, forward, or save the current message.");
         }
@@ -1358,7 +1593,7 @@ compose_screen(struct message *reply_source, int forward_mode)
         render_body_text(body, 11, LINES - MENU_ROWS - 13);
         draw_menu_lines("^X Send  ^C Cancel  ^O Postpone (TODO)  ^R Read File (TODO)", "^J Justify (TODO)  ^W WhereIs (TODO)  ^T Add Addr", "Enter edits field  Arrows move field");
         refresh();
-        ch = getch();
+        ch = read_key();
         if (ch == KEY_UP) {
             if (field > 0)
                 --field;
@@ -1406,7 +1641,10 @@ compose_screen(struct message *reply_source, int forward_mode)
                 wait_for_ack("Out of memory.");
             }
             done = 1;
-        } else if (ch == CTRL_KEY('C') || ch == ESC_KEY) {
+        } else if (ch == CTRL_KEY('C')) {
+            if (prompt_yesno("Discard draft? y/n"))
+                done = 1;
+        } else if (ch == 'Q' || ch == 'q') {
             if (prompt_yesno("Discard draft? y/n"))
                 done = 1;
         } else if (ch == CTRL_KEY('T')) {
@@ -1511,19 +1749,56 @@ search_messages(void)
 static void
 draw_address_rows(int highlight)
 {
+    static int last_highlight = -1;
+    static int initialized = 0;
     int row;
     int i;
+    char buf[256];
 
     row = 5;
     mvprintw(row - 1, 3, "%-4s %-12s %-20s %-32s", "No", "Nick", "Fullname", "Address/List");
-    for (i = 0; i < g_addr_count && row < LINES - MENU_ROWS - 2; ++i, ++row) {
-        if (i == highlight)
-            attron(A_REVERSE);
-        mvprintw(row, 3, "%-4d %-12s %-20.20s %-32.32s%s", i + 1, g_addrbook[i].nickname,
-            g_addrbook[i].fullname, g_addrbook[i].address,
-            g_addrbook[i].is_list ? " (list)" : "");
-        if (i == highlight)
-            attroff(A_REVERSE);
+    
+    /* Initial full render */
+    if (!initialized) {
+        for (i = 0; i < g_addr_count && i < LINES - MENU_ROWS - 2; ++i) {
+            move(row + i, 3);
+            clrtoeol();
+            if (i == highlight) {
+                sprintf(buf, "\033[7m%-4d %-12s %-20.20s %-32.32s%s\033[0m", i + 1, g_addrbook[i].nickname,
+                    g_addrbook[i].fullname, g_addrbook[i].address,
+                    g_addrbook[i].is_list ? " (list)" : "");
+            } else {
+                sprintf(buf, "%-4d %-12s %-20.20s %-32.32s%s", i + 1, g_addrbook[i].nickname,
+                    g_addrbook[i].fullname, g_addrbook[i].address,
+                    g_addrbook[i].is_list ? " (list)" : "");
+            }
+            mvprintw(row + i, 3, "%s", buf);
+        }
+        last_highlight = highlight;
+        initialized = 1;
+    }
+    else if (last_highlight != highlight) {
+        /* Clear and redraw old highlight as normal */
+        if (last_highlight >= 0 && last_highlight < g_addr_count) {
+            move(5 + last_highlight, 3);
+            clrtoeol();
+            sprintf(buf, "%-4d %-12s %-20.20s %-32.32s%s", last_highlight + 1, g_addrbook[last_highlight].nickname,
+                g_addrbook[last_highlight].fullname, g_addrbook[last_highlight].address,
+                g_addrbook[last_highlight].is_list ? " (list)" : "");
+            mvprintw(5 + last_highlight, 3, "%s", buf);
+        }
+        
+        /* Clear and draw new highlight */
+        if (highlight >= 0 && highlight < g_addr_count) {
+            move(5 + highlight, 3);
+            clrtoeol();
+            sprintf(buf, "\033[7m%-4d %-12s %-20.20s %-32.32s%s\033[0m", highlight + 1, g_addrbook[highlight].nickname,
+                g_addrbook[highlight].fullname, g_addrbook[highlight].address,
+                g_addrbook[highlight].is_list ? " (list)" : "");
+            mvprintw(5 + highlight, 3, "%s", buf);
+        }
+        
+        last_highlight = highlight;
     }
 }
 
@@ -1534,12 +1809,13 @@ address_book_screen(void)
     int ch;
 
     highlight = 0;
+    draw_layout("Address Book", "");
+    draw_address_rows(highlight);
+    draw_menu_lines("A Add  S Create List  V View/Update  D Delete", "C Compose To  T Take (TODO)  O Other", "< Main  ? Help");
+    refresh();
+
     while (1) {
-        draw_layout("Address Book", "");
-        draw_address_rows(highlight);
-        draw_menu_lines("A Add  S Create List  V View/Update  D Delete", "C Compose To  T Take (TODO)  O Other", "< Main  ? Help");
-        refresh();
-        ch = getch();
+        ch = read_key();
         if (ch == KEY_UP) {
             if (highlight > 0)
                 --highlight;
@@ -1557,12 +1833,16 @@ address_book_screen(void)
         } else if (ch == 'C' || ch == 'c') {
             compose_to_entry(highlight);
             break;
-        } else if (ch == '<' || ch == ESC_KEY) {
-            g_screen = SCREEN_MAIN;
-            break;
+        } else if (ch == 'Q' || ch == 'q') {
+            if (prompt_yesno("Return to main menu? y/n")) {
+                g_screen = SCREEN_MAIN;
+                break;
+            }
         } else if (ch == '?') {
             show_help("Address Book Help", "Manage nicknames and distribution lists from this screen.");
         }
+        draw_address_rows(highlight);
+        refresh();
     }
 }
 
@@ -1628,16 +1908,18 @@ setup_screen(void)
         mvprintw(8, 4, "Other options (C Config, K Color, R Roles, F Rules, L LDAP) are TODO");
         draw_menu_lines("P Printer  G Signature  N Password", "C Config (TODO)  K Color (TODO)  R Roles (TODO)  F Rules (TODO)  L LDAP (TODO)", "< Main  ? Help");
         refresh();
-        ch = getch();
+        ch = read_key();
         if (ch == 'P' || ch == 'p') {
             edit_printer();
         } else if (ch == 'G' || ch == 'g') {
             edit_signature();
         } else if (ch == 'N' || ch == 'n') {
             change_password();
-        } else if (ch == '<' || ch == ESC_KEY) {
-            g_screen = SCREEN_MAIN;
-            return;
+        } else if (ch == 'Q' || ch == 'q') {
+            if (prompt_yesno("Return to main menu? y/n")) {
+                g_screen = SCREEN_MAIN;
+                return;
+            }
         } else if (ch == '?') {
             show_help("Setup Help", "Configure printer, signature, and future options from here.");
         }
