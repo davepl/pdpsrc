@@ -18,7 +18,6 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <string.h>
-#include <unistd.h>
 #include <time.h>
 #include <sys/ioctl.h>
 
@@ -123,7 +122,10 @@ char *argv[];
         copy_grid(next_grid, current_grid, SCREEN_HEIGHT, SCREEN_WIDTH);
 
         /* Small delay: Adjust to taste. */
-        usleep(50000);
+        {
+            volatile int i;
+            for (i = 0; i < 100000; i++) ;  /* Busy loop delay */
+        }
     }
 
     /* Normally never reached, but just in case */
