@@ -609,26 +609,22 @@ draw_highlighted_text(int row, int col, int width, int highlighted, const char *
 
 #ifdef LEGACY_CURSES
     {
-        int i;
         int fill = width > 0 ? width : (int)strlen(buf);
-        move(row, col);
-        for (i = 0; i < fill; ++i)
-            addch(' ');
-        refresh();
-        printf("\033[%d;%dH", row + 1, col + 1);
         if (highlighted)
-            printf("\033[7m%-*s\033[0m", fill, buf);
+            printf("\033[%d;%dH\033[7m%s\033[0m", row + 1, col + 1, buf);
         else
-            printf("%-*s", fill, buf);
+            printf("\033[%d;%dH%s", row + 1, col + 1, buf);
+        if (width > 0 && (int)strlen(buf) < fill) {
+            int pad = fill - (int)strlen(buf);
+            while (pad-- > 0)
+                printf(" ");
+        }
         fflush(stdout);
     }
 #else
     if (highlighted)
         attron(A_REVERSE);
-    if (width > 0)
-        mvprintw(row, col, "%-*s", width, buf);
-    else
-        mvprintw(row, col, "%s", buf);
+    mvprintw(row, col, "%s", buf);
     if (highlighted)
         attroff(A_REVERSE);
 #endif
@@ -1169,18 +1165,13 @@ main_menu_screen(void)
     if (highlight >= entry_count)
         highlight = entry_count - 1;
 
+    draw_layout("Main Menu - Select a Group to Browse Messages", "");
+    mvprintw(4, 2, "%-*s", COLS - 4, "");
+    draw_main_options(entries, entry_count, highlight);
+    refresh();
+
     while (1) {
-        entry_count = build_main_menu_entries(entries, MAX_MAIN_MENU_ENTRIES);
-        if (entry_count == 0)
-            entry_count = 1;
-        if (highlight >= entry_count)
-            highlight = entry_count - 1;
-
-        draw_layout("Main Menu - Select a Group to Browse Messages", "");
-        mvprintw(4, 2, "%-*s", COLS - 4, "");
-        draw_main_options(entries, entry_count, highlight);
-        refresh();
-
+        int prev_highlight = highlight;
         ch = read_key();
         key = normalize_key(ch);
         if (is_back_key(ch)) {
@@ -1192,11 +1183,19 @@ main_menu_screen(void)
         if (ch == KEY_UP) {
             if (highlight > 0)
                 --highlight;
+            if (highlight != prev_highlight) {
+                draw_main_options(entries, entry_count, highlight);
+                refresh();
+            }
             continue;
         }
         if (ch == KEY_DOWN) {
             if (highlight < entry_count - 1)
                 ++highlight;
+            if (highlight != prev_highlight) {
+                draw_main_options(entries, entry_count, highlight);
+                refresh();
+            }
             continue;
         }
 
