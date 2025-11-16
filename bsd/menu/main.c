@@ -196,6 +196,9 @@ static void platform_read_input(int y, int x, char *buf, int maxlen);
 static void platform_draw_breadcrumb(const char *text);
 static void platform_reverse_on(void);
 static void platform_reverse_off(void);
+#ifdef LEGACY_CURSES
+static void legacy_draw_box(int top, int left, int height, int width);
+#endif
 static void draw_highlighted_text(int row, int col, int width, int highlighted, const char *fmt, ...);
 static void set_current_label(const char *label, enum screen_id id);
 static void reset_navigation(enum screen_id screen, const char *label);
@@ -349,18 +352,48 @@ static void
 platform_draw_border(void)
 {
     int col;
+    int row;
+    
+    /* Put placeholder spaces in curses buffer at border positions */
     for (col = 0; col < COLS; ++col) {
-        mvaddch(0, col, '-');
-        mvaddch(LINES - 1, col, '-');
+        mvaddch(0, col, ' ');
+        mvaddch(LINES - 1, col, ' ');
     }
-    for (col = 0; col < LINES; ++col) {
-        mvaddch(col, 0, '|');
-        mvaddch(col, COLS - 1, '|');
+    for (row = 0; row < LINES; ++row) {
+        mvaddch(row, 0, ' ');
+        mvaddch(row, COLS - 1, ' ');
     }
-    mvaddch(0, 0, '+');
-    mvaddch(0, COLS - 1, '+');
-    mvaddch(LINES - 1, 0, '+');
-    mvaddch(LINES - 1, COLS - 1, '+');
+    
+    /* Now refresh to get curses content (headers, etc.) on screen */
+    refresh();
+    
+    /* Now overlay DEC graphics on top using direct output */
+    fputs("\033(0", stdout);
+    
+    /* Top border: ┌──...──┐ */
+    printf("\033[1;1H");
+    putchar('l');
+    for (col = 1; col < COLS - 1; ++col)
+        putchar('q');
+    putchar('k');
+    
+    /* Side borders: │ */
+    for (row = 1; row < LINES - 1; ++row) {
+        printf("\033[%d;1H", row + 1);
+        putchar('x');
+        printf("\033[%d;%dH", row + 1, COLS);
+        putchar('x');
+    }
+    
+    /* Bottom border: └──...──┘ */
+    printf("\033[%d;1H", LINES);
+    putchar('m');
+    for (col = 1; col < COLS - 1; ++col)
+        putchar('q');
+    putchar('j');
+    
+    fputs("\033(B", stdout);
+    fflush(stdout);
 }
 
 static void
@@ -368,22 +401,19 @@ platform_draw_header_line(const char *left, const char *right)
 {
     int i;
     int gap;
-    int shift = 0;
 
-    /* Output reverse video escape code directly, then use addch for content */
-    move(1, 1);
+    /* Start at column 2 to leave room for left border at column 0 */
+    move(1, 2);
     platform_reverse_on();
-    addch(' ');
     addstr(left);
     
-    gap = COLS - (int)strlen(right) - 3 - (int)strlen(left) - 1 - shift;
+    gap = COLS - (int)strlen(right) - 4 - (int)strlen(left);
     if (gap < 0)
         gap = 0;
     for (i = 0; i < gap; ++i)
         addch(' ');
     
     addstr(right);
-    addch(' ');
     platform_reverse_off();
     refresh();
 }
@@ -408,7 +438,7 @@ platform_draw_breadcrumb(const char *text)
                 copy_len = width;
         memcpy(line, text, copy_len);
     }
-    printf("\033[3;2H\033[7m %-*s \033[0m", width, line);
+    printf("\033[3;3H\033[7m%-*s\033[0m", width, line);
     fflush(stdout);
 }
 #else
@@ -416,9 +446,8 @@ platform_draw_breadcrumb(const char *text)
     int textlen;
     int padding;
 
-    move(2, 1);
+    move(2, 2);
     platform_reverse_on();
-    addch(' ');
     if (text && *text) {
         addstr(text);
         textlen = (int)strlen(text);
@@ -432,7 +461,6 @@ platform_draw_breadcrumb(const char *text)
     for (i = 0; i < padding; ++i)
         addch(' ');
     
-    addch(' ');
     platform_reverse_off();
     refresh();
 #endif
@@ -442,8 +470,19 @@ static void
 platform_draw_separator(int row)
 {
     int col;
+    
+    /* Select DEC Special Graphics character set */
+    fputs("\033(0", stdout);
+    
+    printf("\033[%d;1H", row + 1);
+    putchar('t');           /* Left T-junction (├) */
     for (col = 1; col < COLS - 1; ++col)
-        mvaddch(row, col, '=');
+        putchar('q');       /* Horizontal line (─) */
+    putchar('u');           /* Right T-junction (┤) */
+    
+    /* Return to ASCII character set */
+    fputs("\033(B", stdout);
+    fflush(stdout);
 }
 
 static void
@@ -596,6 +635,49 @@ platform_reverse_off(void)
     attroff(A_REVERSE);
 #endif
 }
+
+#ifdef LEGACY_CURSES
+static void
+legacy_draw_box(int top, int left, int height, int width)
+{
+    int row;
+    int col;
+    int bottom = top + height - 1;
+    int right = left + width - 1;
+
+    if (height < 2 || width < 2)
+        return;
+
+    /* Select DEC Special Graphics character set (like matrix.c does) */
+    fputs("\033(0", stdout);
+
+    /* Top edge */
+    printf("\033[%d;%dH", top + 1, left + 1);
+    putchar('l');           /* upper-left corner */
+    for (col = left + 1; col < right; ++col)
+        putchar('q');       /* horizontal line */
+    putchar('k');           /* upper-right corner */
+
+    /* Bottom edge */
+    printf("\033[%d;%dH", bottom + 1, left + 1);
+    putchar('m');           /* lower-left corner */
+    for (col = left + 1; col < right; ++col)
+        putchar('q');       /* horizontal line */
+    putchar('j');           /* lower-right corner */
+
+    /* Vertical sides */
+    for (row = top + 1; row < bottom; ++row) {
+        printf("\033[%d;%dH", row + 1, left + 1);
+        putchar('x');       /* vertical line */
+        printf("\033[%d;%dH", row + 1, right + 1);
+        putchar('x');       /* vertical line */
+    }
+
+    /* Return to ASCII character set */
+    fputs("\033(B", stdout);
+    fflush(stdout);
+}
+#endif
 
 static void
 draw_highlighted_text(int row, int col, int width, int highlighted, const char *fmt, ...)
@@ -770,9 +852,10 @@ draw_layout(const char *title, const char *status)
     platform_draw_header_line(header_left, header_right);
     platform_draw_breadcrumb(g_breadcrumb);
 
-    mvprintw(3, 2, "%s", title);
+    mvprintw(3, 4, "%s", title);
     if (status && *status)
-        mvprintw(3, COLS - (int)strlen(status) - 2, "%s", status);
+        mvprintw(3, COLS - (int)strlen(status) - 3, "%s", status);
+    refresh();
 
     menu_bar = LINES - MENU_ROWS - 1;
     platform_draw_separator(menu_bar);
