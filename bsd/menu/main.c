@@ -194,6 +194,8 @@ static void platform_draw_header_line(const char *left, const char *right);
 static void platform_draw_separator(int row);
 static void platform_read_input(int y, int x, char *buf, int maxlen);
 static void platform_draw_breadcrumb(const char *text);
+static void platform_reverse_on(void);
+static void platform_reverse_off(void);
 static void draw_highlighted_text(int row, int col, int width, int highlighted, const char *fmt, ...);
 static void set_current_label(const char *label, enum screen_id id);
 static void reset_navigation(enum screen_id screen, const char *label);
@@ -370,7 +372,7 @@ platform_draw_header_line(const char *left, const char *right)
 
     /* Output reverse video escape code directly, then use addch for content */
     move(1, 1);
-    addstr("\033[7m");  /* Enable reverse video */
+    platform_reverse_on();
     addch(' ');
     addstr(left);
     
@@ -382,19 +384,40 @@ platform_draw_header_line(const char *left, const char *right)
     
     addstr(right);
     addch(' ');
-    addstr("\033[0m");  /* Disable reverse video */
+    platform_reverse_off();
     refresh();
 }
 
 static void
 platform_draw_breadcrumb(const char *text)
 {
+#ifdef LEGACY_CURSES
+    {
+        char line[256];
+        int width = COLS - 4;
+        int copy_len;
+        if (width > (int)sizeof line - 1)
+            width = (int)sizeof line - 1;
+        if (width < 0)
+            width = 0;
+        memset(line, ' ', width);
+        line[width] = '\0';
+        if (text && *text) {
+            copy_len = (int)strlen(text);
+            if (copy_len > width)
+                copy_len = width;
+            memcpy(line, text, copy_len);
+        }
+        printf("\033[3;2H\033[7m %s \033[0m", line);
+        fflush(stdout);
+    }
+#else
     int i;
     int textlen;
     int padding;
 
     move(2, 1);
-    addstr("\033[7m");  /* Enable reverse video */
+    platform_reverse_on();
     addch(' ');
     if (text && *text) {
         addstr(text);
@@ -410,8 +433,9 @@ platform_draw_breadcrumb(const char *text)
         addch(' ');
     
     addch(' ');
-    addstr("\033[0m");  /* Disable reverse video */
+    platform_reverse_off();
     refresh();
+#endif
 }
 
 static void
@@ -510,7 +534,7 @@ platform_draw_header_line(const char *left, const char *right)
     int right_col;
     int shift = 5;
 
-    attron(A_REVERSE);
+    platform_reverse_on();
     move(1, 1);
     for (col = 1; col < COLS - 1; ++col)
         addch(' ');
@@ -519,19 +543,19 @@ platform_draw_header_line(const char *left, const char *right)
     if (right_col < 2)
         right_col = 2;
     mvprintw(1, right_col, "%s", right);
-    attroff(A_REVERSE);
+    platform_reverse_off();
 }
 
 static void
 platform_draw_breadcrumb(const char *text)
 {
     int col;
-    attron(A_REVERSE);
+    platform_reverse_on();
     move(2, 1);
     for (col = 1; col < COLS - 1; ++col)
         addch(' ');
     mvprintw(2, 2, "%s", text ? text : "");
-    attroff(A_REVERSE);
+    platform_reverse_off();
 }
 
 static void
@@ -552,6 +576,26 @@ platform_read_input(int y, int x, char *buf, int maxlen)
     noecho();
 }
 #endif
+
+static void
+platform_reverse_on(void)
+{
+#ifdef LEGACY_CURSES
+    standout();
+#else
+    attron(A_REVERSE);
+#endif
+}
+
+static void
+platform_reverse_off(void)
+{
+#ifdef LEGACY_CURSES
+    standend();
+#else
+    attroff(A_REVERSE);
+#endif
+}
 
 static void
 draw_highlighted_text(int row, int col, int width, int highlighted, const char *fmt, ...)
@@ -720,6 +764,9 @@ draw_layout(const char *title, const char *status)
         g_session.username[0] ? g_session.username : "(not logged)");
     if (g_session.is_admin)
         safe_append(header_right, sizeof header_right, " (admin)");
+    while ((int)strlen(header_right) < 32) {
+        safe_append_char(header_right, sizeof header_right, ' ');
+    }
     platform_draw_header_line(header_left, header_right);
     platform_draw_breadcrumb(g_breadcrumb);
 
