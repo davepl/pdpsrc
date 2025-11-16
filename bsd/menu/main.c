@@ -368,7 +368,7 @@ platform_draw_header_line(const char *left, const char *right)
 {
     int i;
     int gap;
-    int shift = 5;
+    int shift = 0;
 
     /* Output reverse video escape code directly, then use addch for content */
     move(1, 1);
@@ -406,11 +406,11 @@ platform_draw_breadcrumb(const char *text)
             copy_len = (int)strlen(text);
             if (copy_len > width)
                 copy_len = width;
-            memcpy(line, text, copy_len);
-        }
-        printf("\033[3;2H\033[7m %s \033[0m", line);
-        fflush(stdout);
+        memcpy(line, text, copy_len);
     }
+    printf("\033[3;2H\033[7m %-*s \033[0m", width, line);
+    fflush(stdout);
+}
 #else
     int i;
     int textlen;
@@ -532,7 +532,7 @@ platform_draw_header_line(const char *left, const char *right)
 {
     int col;
     int right_col;
-    int shift = 5;
+    int shift = 0;
 
     platform_reverse_on();
     move(1, 1);
@@ -764,8 +764,12 @@ draw_layout(const char *title, const char *status)
         g_session.username[0] ? g_session.username : "(not logged)");
     if (g_session.is_admin)
         safe_append(header_right, sizeof header_right, " (admin)");
-    while ((int)strlen(header_right) < 32) {
-        safe_append_char(header_right, sizeof header_right, ' ');
+    {
+        int target_col = COLS - 40;
+        if (target_col < 2)
+            target_col = 2;
+        while ((int)strlen(header_right) < target_col)
+            safe_append_char(header_right, sizeof header_right, ' ');
     }
     platform_draw_header_line(header_left, header_right);
     platform_draw_breadcrumb(g_breadcrumb);
