@@ -4,20 +4,29 @@ LDFLAGS= -O
 PDP11_CFLAGS= -O -i
 PDP11_LDFLAGS= -i
 PROGRAM=	menu
-SRCS=		main.c
-OBJS=		main.o
+SRCS=		main.c data.c
+OBJS=		main.o data.o
 LIBS=		-lcurses
 LIBS_PDP11=	-lcurses -ltermcap
 
 all:	${PROGRAM}
 
-${OBJS}: ${SRCS}
+main.o: main.c
 	@if [ "`uname -m`" = "pdp11" ]; then \
 		echo "Building for PDP-11..."; \
-		${CC} ${PDP11_CFLAGS} -DLEGACY_CURSES -D__pdp11__ -c -o $@ ${SRCS}; \
+		${CC} ${PDP11_CFLAGS} -DLEGACY_CURSES -D__pdp11__ -c -o $@ main.c; \
 	else \
 		echo "Building for modern system..."; \
-		${CC} ${CFLAGS} -Wno-deprecated-non-prototype -Wno-deprecated-declarations -Wno-pointer-sign -Wno-parentheses -Wno-incompatible-pointer-types -Wno-format -c -o $@ ${SRCS}; \
+		${CC} ${CFLAGS} -Wno-deprecated-non-prototype -Wno-deprecated-declarations -Wno-pointer-sign -Wno-parentheses -Wno-incompatible-pointer-types -Wno-format -c -o $@ main.c; \
+	fi
+
+data.o: data.c
+	@if [ "`uname -m`" = "pdp11" ]; then \
+		echo "Building for PDP-11..."; \
+		${CC} ${PDP11_CFLAGS} -DLEGACY_CURSES -D__pdp11__ -c -o $@ data.c; \
+	else \
+		echo "Building for modern system..."; \
+		${CC} ${CFLAGS} -Wno-deprecated-non-prototype -Wno-deprecated-declarations -Wno-pointer-sign -Wno-parentheses -Wno-incompatible-pointer-types -Wno-format -c -o $@ data.c; \
 	fi
 
 ${PROGRAM}:	${OBJS}

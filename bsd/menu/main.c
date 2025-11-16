@@ -8,7 +8,8 @@
 #include <sys/stat.h>
 #include <ctype.h>
 #include <sys/ioctl.h>
-#include <time.h>
+#include <sys/time.h>
+#include "data.h"
 
 #if defined(__APPLE__) || defined(__MACH__) || defined(__linux__)
 #include <unistd.h>
@@ -17,6 +18,9 @@ extern int unlink();
 extern int link();
 extern int getpid();
 extern unsigned sleep();
+#endif
+#if defined(__pdp11__)
+#define remove unlink
 #endif
 
 #ifndef A_REVERSE
@@ -44,53 +48,33 @@ extern unsigned sleep();
 #ifndef KEY_BACKSPACE
 #define KEY_BACKSPACE 0407
 #endif
+#ifndef ACS_HLINE
+#define ACS_HLINE '-'
+#endif
+#ifndef ACS_VLINE
+#define ACS_VLINE '|'
+#endif
+#ifndef ACS_ULCORNER
+#define ACS_ULCORNER '+'
+#endif
+#ifndef ACS_URCORNER
+#define ACS_URCORNER '+'
+#endif
+#ifndef ACS_LLCORNER
+#define ACS_LLCORNER '+'
+#endif
+#ifndef ACS_LRCORNER
+#define ACS_LRCORNER '+'
+#endif
+#ifndef ACS_LTEE
+#define ACS_LTEE '+'
+#endif
+#ifndef ACS_RTEE
+#define ACS_RTEE '+'
+#endif
 
 #ifdef LEGACY_CURSES
-#ifndef remove
-#define remove unlink
-#endif
 static int legacy_mvgetnstr(int y, int x, char *buf, int maxlen);
-#endif
-
-#define DATA_DIR "bbsdata"
-#define GROUPS_FILE DATA_DIR "/groups.txt"
-#define ADDRESS_FILE DATA_DIR "/addrbook.txt"
-#define CONFIG_FILE DATA_DIR "/config.txt"
-#define LOCK_FILE DATA_DIR "/.lock"
-#define PROGRAM_TITLE "Dave's Garage PDP-11 BBS"
-#define PROGRAM_VERSION "0.2"
-#define ADMIN_USER "admin"
-#define ADMIN_PASS "2326"
-
-#define MIN_COLS 80
-#define MIN_ROWS 24
-#define MENU_ROWS 5
-
-/* Reduce memory usage significantly on PDP-11 */
-#ifdef __pdp11__
-#define MAX_GROUPS 16
-#define MAX_GROUP_NAME 32
-#define MAX_GROUP_DESC 48
-#define MAX_MESSAGES 64
-#define MAX_SUBJECT 64
-#define MAX_BODY 1024
-#define MAX_AUTHOR 32
-#define MAX_ADDRESS 64
-#define MAX_ADDRBOOK 32
-#define MAX_CONFIG_VALUE 128
-#define MAX_MENU_OPTIONS 16
-#else
-#define MAX_GROUPS 64
-#define MAX_GROUP_NAME 48
-#define MAX_GROUP_DESC 80
-#define MAX_MESSAGES 256
-#define MAX_SUBJECT 96
-#define MAX_BODY 4096
-#define MAX_AUTHOR 48
-#define MAX_ADDRESS 128
-#define MAX_ADDRBOOK 128
-#define MAX_CONFIG_VALUE 256
-#define MAX_MENU_OPTIONS 16
 #endif
 
 #define CTRL_KEY(x) ((x) & 0x1f)
@@ -108,75 +92,33 @@ enum screen_id {
     SCREEN_HELP
 };
 
-struct group {
-    char name[MAX_GROUP_NAME];
-    char description[MAX_GROUP_DESC];
-    int deleted;
-};
-
-struct message {
-    int id;
-    int parent_id;
-    time_t created;
-    int deleted;
-    int answered;
-    char author[MAX_AUTHOR];
-    char subject[MAX_SUBJECT];
-    char body[MAX_BODY];
-};
-
-struct address_entry {
-    char nickname[MAX_AUTHOR];
-    char fullname[MAX_GROUP_DESC];
-    char address[MAX_ADDRESS];
-    int is_list;
-};
-
-struct config_data {
-    char printer[MAX_CONFIG_VALUE];
-    char signature[MAX_CONFIG_VALUE];
-    char password[MAX_CONFIG_VALUE];
-};
-
 struct session {
     char username[MAX_AUTHOR];
     int is_admin;
     int current_group;
 };
 
-struct menu_option {
+enum main_menu_action {
+    MAIN_MENU_GROUP,
+    MAIN_MENU_GROUP_MGMT,
+    MAIN_MENU_BACK,
+    MAIN_MENU_SETUP,
+    MAIN_MENU_QUIT
+};
+
+struct main_menu_entry {
     char key;
-    const char *label;
-    enum screen_id target;
+    enum main_menu_action action;
+    int group_index;
+    char label[64];
 };
 
-static const struct menu_option g_main_menu_options[] = {
-    {'?', "Help", SCREEN_HELP},
-    {'C', "Compose", SCREEN_COMPOSE},
-    {'I', "Group Index", SCREEN_POST_INDEX},
-    {'L', "Group List", SCREEN_GROUP_LIST},
-    {'A', "Address Book", SCREEN_ADDRESS_BOOK},
-    {'S', "Setup", SCREEN_SETUP},
-    {'Q', "Quit", SCREEN_LOGIN},
-    {'O', "Other Cmds", SCREEN_MAIN}
-};
+#define MAX_MAIN_MENU_ENTRIES 16
 
-static const int g_main_menu_option_count =
-    (int)(sizeof(g_main_menu_options) / sizeof(g_main_menu_options[0]));
-
-static struct group g_groups[MAX_GROUPS];
-static int g_group_count;
-static struct address_entry g_addrbook[MAX_ADDRBOOK];
-static int g_addr_count;
-static struct config_data g_config;
 static struct session g_session;
 static enum screen_id g_screen = SCREEN_LOGIN;
 static int g_running = 1;
-static int g_show_extras = 0;
-static int g_lock_depth = 0;
 static int g_last_highlight = 0;
-static struct message *g_cached_messages = NULL;
-static int g_cached_message_count = 0;
 static char g_compose_prefill_to[MAX_ADDRESS];
 static int g_ui_ready = 0;
 
@@ -187,10 +129,9 @@ static char g_compose_buffer_attach[MAX_ADDRESS];
 static char g_compose_buffer_subject[MAX_SUBJECT];
 static char g_compose_buffer_body[MAX_BODY];
 static struct message g_compose_newmsg;
-static struct message g_temp_message; /* For load_messages_direct and copy_message_to_group */
-
-static void ensure_data_dir(void);
-static void init_config(void);
+static struct message g_compose_reply_source;
+static struct message *g_compose_source = NULL;
+static int g_compose_forward = 0;
 static void start_ui(void);
 static void stop_ui(void);
 static int screen_too_small(void);
@@ -214,27 +155,12 @@ static void setup_screen(void);
 static void draw_group_rows(int highlight);
 static void draw_post_rows(int highlight);
 static void draw_address_rows(int highlight);
-static void draw_main_options(int highlight);
-static void toggle_extras(void);
+static int build_main_menu_entries(struct main_menu_entry *entries, int max_entries);
+static void draw_main_options(const struct main_menu_entry *entries, int count, int highlight);
 static void update_status_line(void);
 static void render_body_text(const char *body, int start_row, int max_rows);
 static void edit_body(char *buffer, int maxlen);
-static void safe_copy(char *dst, size_t dstlen, const char *src);
-static void safe_append(char *dst, size_t dstlen, const char *src);
-static void safe_append_char(char *dst, size_t dstlen, char ch);
-static void safe_append_number(char *dst, size_t dstlen, long value);
-static void safe_append_two_digit(char *dst, size_t dstlen, int value);
-
-static void trim_newline(char *text);
-static int load_groups(void);
-static int save_groups(void);
-static int load_messages_for_group(int group_index);
-static int save_messages_for_group(int group_index);
-static int load_messages_direct(const char *group_name, struct message **messages, int *count);
-static int save_messages_direct(const char *group_name, struct message *messages, int count);
-static void free_cached_messages(void);
-static int next_message_id(void);
-static int copy_message_to_group(struct message *msg, const char *group_name);
+static void draw_group_list_commands(void);
 static const char *current_group_name(void);
 static void add_group(void);
 static void rename_group(int idx);
@@ -248,129 +174,164 @@ static void save_message_to_group(struct message *msg);
 static void delete_or_undelete(struct message *msg, int deleted);
 static void expunge_messages(void);
 static void search_messages(void);
-static void load_address_book(void);
-static void save_address_book(void);
 static void add_address_entry(int is_list);
 static void edit_address_entry(int idx);
 static void delete_address_entry(int idx);
 static void compose_to_entry(int idx);
-static void load_config(void);
-static void save_config(void);
 static void edit_signature(void);
 static void edit_printer(void);
 static void change_password(void);
-static int build_group_path(const char *group_name, char *path, int maxlen);
-
-static int acquire_lock(void);
-static void release_lock(void);
-static void lock_guard(void);
-static void unlock_guard(void);
 static int read_key(void);
 static int input_has_data(void);
+static int is_back_key(int ch);
+static int normalize_key(int ch);
+static int confirm_exit_prompt(void);
+static void draw_back_hint(void);
+int require_admin(const char *action);
 static void platform_set_cursor(int visible);
 static void platform_draw_border(void);
 static void platform_draw_header_line(const char *left, const char *right);
 static void platform_draw_separator(int row);
 static void platform_read_input(int y, int x, char *buf, int maxlen);
+static void platform_draw_breadcrumb(const char *text);
 static void draw_highlighted_text(int row, int col, int width, int highlighted, const char *fmt, ...);
+static void set_current_label(const char *label, enum screen_id id);
+static void reset_navigation(enum screen_id screen, const char *label);
+static void push_screen(enum screen_id next, const char *label);
+static int pop_screen(void);
+static void update_breadcrumb(void);
+static const char *default_label_for_screen(enum screen_id id);
+static int handle_back_navigation(void);
+static void open_compose(struct message *src, int forward_mode);
+static void open_post_view(int index);
 
 static int g_pending_key = -1;
+static char g_current_label[64];
+static char g_breadcrumb[256];
 
-static void
-trim_newline(char *text)
+struct nav_entry {
+    enum screen_id id;
+    char label[64];
+};
+
+#define NAV_STACK_MAX 16
+static struct nav_entry g_nav_stack[NAV_STACK_MAX];
+static int g_nav_size = 0;
+
+static const char *
+default_label_for_screen(enum screen_id id)
 {
-    int len;
-
-    len = (int)strlen(text);
-    while (len > 0 && (text[len - 1] == '\n' || text[len - 1] == '\r')) {
-        text[len - 1] = '\0';
-        --len;
+    switch (id) {
+    case SCREEN_LOGIN:
+        return "Login";
+    case SCREEN_GROUP_LIST:
+        return "Groups";
+    case SCREEN_POST_INDEX:
+        return "Group";
+    case SCREEN_POST_VIEW:
+        return "Post";
+    case SCREEN_COMPOSE:
+        return "Compose";
+    case SCREEN_ADDRESS_BOOK:
+        return "Address Book";
+    case SCREEN_SETUP:
+        return "Setup";
+    case SCREEN_HELP:
+        return "Help";
+    case SCREEN_MAIN:
+    default:
+        return "";
     }
 }
 
 static void
-safe_copy(char *dst, size_t dstlen, const char *src)
+update_breadcrumb(void)
 {
-    size_t i;
-
-    if (dstlen == 0 || dst == NULL)
-        return;
-    if (src == NULL)
-        src = "";
-    for (i = 0; i < dstlen - 1 && src[i] != '\0'; ++i)
-        dst[i] = src[i];
-    dst[i] = '\0';
-}
-
-static void
-safe_append(char *dst, size_t dstlen, const char *src)
-{
-    size_t used;
-
-    if (dst == NULL || dstlen == 0 || src == NULL)
-        return;
-    for (used = 0; used < dstlen - 1 && dst[used] != '\0'; ++used)
-        ;
-    while (*src && used < dstlen - 1) {
-        dst[used++] = *src++;
-    }
-    dst[used] = '\0';
-}
-
-static void
-safe_append_char(char *dst, size_t dstlen, char ch)
-{
-    char tmp[2];
-
-    tmp[0] = ch;
-    tmp[1] = '\0';
-    safe_append(dst, dstlen, tmp);
-}
-
-static void
-safe_append_number(char *dst, size_t dstlen, long value)
-{
-    char tmp[32];
     int i;
-    int neg;
-    long v;
 
-    if (dst == NULL || dstlen == 0)
-        return;
-    v = value;
-    neg = 0;
-    if (v < 0) {
-        neg = 1;
-        v = -v;
+    safe_copy(g_breadcrumb, sizeof g_breadcrumb, "Home");
+    for (i = 0; i < g_nav_size; ++i) {
+        if (g_nav_stack[i].label[0]) {
+            safe_append(g_breadcrumb, sizeof g_breadcrumb, " > ");
+            safe_append(g_breadcrumb, sizeof g_breadcrumb, g_nav_stack[i].label);
+        }
     }
-    i = 0;
-    if (v == 0)
-        tmp[i++] = '0';
-    while (v > 0 && i < (int)sizeof(tmp) - 1) {
-        tmp[i++] = (char)('0' + (v % 10));
-        v /= 10;
-    }
-    if (neg && i < (int)sizeof(tmp) - 1)
-        tmp[i++] = '-';
-    tmp[i] = '\0';
-    while (i > 0) {
-        --i;
-        safe_append_char(dst, dstlen, tmp[i]);
+    if (g_current_label[0]) {
+        safe_append(g_breadcrumb, sizeof g_breadcrumb, " > ");
+        safe_append(g_breadcrumb, sizeof g_breadcrumb, g_current_label);
     }
 }
 
 static void
-safe_append_two_digit(char *dst, size_t dstlen, int value)
+set_current_label(const char *label, enum screen_id id)
 {
-    char tmp[3];
+    if (label != NULL)
+        safe_copy(g_current_label, sizeof g_current_label, label);
+    else
+        safe_copy(g_current_label, sizeof g_current_label, default_label_for_screen(id));
+    update_breadcrumb();
+}
 
-    if (value < 0)
-        value = 0;
-    value %= 100;
-    tmp[0] = (char)('0' + ((value / 10) % 10));
-    tmp[1] = (char)('0' + (value % 10));
-    tmp[2] = '\0';
-    safe_append(dst, dstlen, tmp);
+static void
+reset_navigation(enum screen_id screen, const char *label)
+{
+    g_nav_size = 0;
+    g_screen = screen;
+    set_current_label(label, screen);
+}
+
+static void
+push_screen(enum screen_id next, const char *label)
+{
+    if (g_nav_size < NAV_STACK_MAX) {
+        g_nav_stack[g_nav_size].id = g_screen;
+        safe_copy(g_nav_stack[g_nav_size].label, sizeof g_nav_stack[g_nav_size].label, g_current_label);
+        ++g_nav_size;
+    }
+    g_screen = next;
+    set_current_label(label, next);
+}
+
+static int
+pop_screen(void)
+{
+    if (g_nav_size == 0)
+        return 0;
+    --g_nav_size;
+    g_screen = g_nav_stack[g_nav_size].id;
+    safe_copy(g_current_label, sizeof g_current_label, g_nav_stack[g_nav_size].label);
+    update_breadcrumb();
+    return 1;
+}
+
+static int
+handle_back_navigation(void)
+{
+    if (pop_screen())
+        return 1;
+    if (confirm_exit_prompt())
+        g_running = 0;
+    return 0;
+}
+
+static void
+open_compose(struct message *src, int forward_mode)
+{
+    if (src != NULL) {
+        g_compose_reply_source = *src;
+        g_compose_source = &g_compose_reply_source;
+    } else {
+        g_compose_source = NULL;
+    }
+    g_compose_forward = forward_mode;
+    push_screen(SCREEN_COMPOSE, "Compose");
+}
+
+static void
+open_post_view(int index)
+{
+    g_last_highlight = index;
+    push_screen(SCREEN_POST_VIEW, "Post");
 }
 
 #ifdef LEGACY_CURSES
@@ -405,23 +366,52 @@ platform_draw_header_line(const char *left, const char *right)
 {
     int i;
     int gap;
-    int right_len;
+    int shift = 5;
 
+    /* Output reverse video escape code directly, then use addch for content */
     move(1, 1);
-    for (i = 1; i < COLS - 1; ++i)
-        addch(' ');
-    mvprintw(1, 2, "%s", left);
-    mvprintw(1, COLS - (int)strlen(right) - 2, "%s", right);
-    refresh();
-
-    printf("\033[2;2H\033[7m %s", left);
-    gap = COLS - (int)strlen(right) - 3 - (int)strlen(left) - 1;
+    addstr("\033[7m");  /* Enable reverse video */
+    addch(' ');
+    addstr(left);
+    
+    gap = COLS - (int)strlen(right) - 3 - (int)strlen(left) - 1 - shift;
     if (gap < 0)
         gap = 0;
     for (i = 0; i < gap; ++i)
-        putchar(' ');
-    printf("%s \033[0m", right);
-    fflush(stdout);
+        addch(' ');
+    
+    addstr(right);
+    addch(' ');
+    addstr("\033[0m");  /* Disable reverse video */
+    refresh();
+}
+
+static void
+platform_draw_breadcrumb(const char *text)
+{
+    int i;
+    int textlen;
+    int padding;
+
+    move(2, 1);
+    addstr("\033[7m");  /* Enable reverse video */
+    addch(' ');
+    if (text && *text) {
+        addstr(text);
+        textlen = (int)strlen(text);
+    } else {
+        textlen = 0;
+    }
+    
+    padding = COLS - 4 - textlen;
+    if (padding < 0)
+        padding = 0;
+    for (i = 0; i < padding; ++i)
+        addch(' ');
+    
+    addch(' ');
+    addstr("\033[0m");  /* Disable reverse video */
+    refresh();
 }
 
 static void
@@ -446,6 +436,7 @@ legacy_mvgetnstr(int y, int x, char *buf, int maxlen)
     int len;
     int limit;
     int ch;
+    int key;
 
     if (buf == NULL || maxlen <= 0)
         return 0;
@@ -516,12 +507,30 @@ static void
 platform_draw_header_line(const char *left, const char *right)
 {
     int col;
+    int right_col;
+    int shift = 5;
+
     attron(A_REVERSE);
     move(1, 1);
     for (col = 1; col < COLS - 1; ++col)
         addch(' ');
     mvprintw(1, 2, "%s", left);
-    mvprintw(1, COLS - (int)strlen(right) - 2, "%s", right);
+    right_col = COLS - (int)strlen(right) - 2 - shift;
+    if (right_col < 2)
+        right_col = 2;
+    mvprintw(1, right_col, "%s", right);
+    attroff(A_REVERSE);
+}
+
+static void
+platform_draw_breadcrumb(const char *text)
+{
+    int col;
+    attron(A_REVERSE);
+    move(2, 1);
+    for (col = 1; col < COLS - 1; ++col)
+        addch(' ');
+    mvprintw(2, 2, "%s", text ? text : "");
     attroff(A_REVERSE);
 }
 
@@ -561,11 +570,13 @@ draw_highlighted_text(int row, int col, int width, int highlighted, const char *
         move(row, col);
         for (i = 0; i < fill; ++i)
             addch(' ');
-        move(row, col);
+        refresh();
+        printf("\033[%d;%dH", row + 1, col + 1);
         if (highlighted)
-            printw("\033[7m%s\033[0m", buf);
+            printf("\033[7m%-*s\033[0m", fill, buf);
         else
-            printw("%s", buf);
+            printf("%-*s", fill, buf);
+        fflush(stdout);
     }
 #else
     if (highlighted)
@@ -598,6 +609,8 @@ main(int argc, char **argv)
     g_session.is_admin = 0;
     g_session.current_group = -1;
 
+    reset_navigation(SCREEN_LOGIN, "Login");
+
     while (g_running) {
         switch (g_screen) {
         case SCREEN_LOGIN:
@@ -616,7 +629,9 @@ main(int argc, char **argv)
             post_view_screen(g_last_highlight);
             break;
         case SCREEN_COMPOSE:
-            compose_screen(NULL, 0);
+            compose_screen(g_compose_source, g_compose_forward);
+            g_compose_source = NULL;
+            g_compose_forward = 0;
             break;
         case SCREEN_ADDRESS_BOOK:
             address_book_screen();
@@ -627,7 +642,7 @@ main(int argc, char **argv)
         case SCREEN_HELP:
         default:
             show_help("Help", "Context help is not yet implemented.");
-            g_screen = SCREEN_MAIN;
+            reset_navigation(SCREEN_MAIN, "");
             break;
         }
     }
@@ -635,30 +650,6 @@ main(int argc, char **argv)
     free_cached_messages();
     stop_ui();
     return EXIT_SUCCESS;
-}
-
-static void
-ensure_data_dir(void)
-{
-    struct stat st;
-
-    if (stat(DATA_DIR, &st) == -1) {
-        if (mkdir(DATA_DIR, 0755) == -1) {
-            perror("mkdir");
-            exit(EXIT_FAILURE);
-        }
-    } else if (!S_ISDIR(st.st_mode)) {
-        fprintf(stderr, "%s exists but is not a directory.\n", DATA_DIR);
-        exit(EXIT_FAILURE);
-    }
-}
-
-static void
-init_config(void)
-{
-    g_config.printer[0] = '\0';
-    g_config.signature[0] = '\0';
-    g_config.password[0] = '\0';
 }
 
 static void
@@ -708,6 +699,7 @@ logout_session(void)
     g_session.current_group = -1;
     free_cached_messages();
     g_last_highlight = 0;
+    reset_navigation(SCREEN_LOGIN, "Login");
 }
 
 static void
@@ -729,10 +721,11 @@ draw_layout(const char *title, const char *status)
     if (g_session.is_admin)
         safe_append(header_right, sizeof header_right, " (admin)");
     platform_draw_header_line(header_left, header_right);
+    platform_draw_breadcrumb(g_breadcrumb);
 
-    mvprintw(2, 2, "%s", title);
+    mvprintw(3, 2, "%s", title);
     if (status && *status)
-        mvprintw(2, COLS - (int)strlen(status) - 2, "%s", status);
+        mvprintw(3, COLS - (int)strlen(status) - 2, "%s", status);
 
     menu_bar = LINES - MENU_ROWS - 1;
     platform_draw_separator(menu_bar);
@@ -839,6 +832,108 @@ read_key(void)
 }
 
 static int
+is_back_key(int ch)
+{
+    if (ch == KEY_BACKSPACE || ch == CTRL_KEY('H'))
+        return 1;
+    if (ch == 127 || ch == '\b')
+        return 1;
+    return 0;
+}
+
+static int
+normalize_key(int ch)
+{
+    if (ch >= 0 && ch <= 255)
+        return toupper((unsigned char)ch);
+    return ch;
+}
+
+static int
+confirm_exit_prompt(void)
+{
+    const char *msg = "Exit BBS? (Y/N)";
+    int box_w = 20;
+    int box_h = 10;
+    int top = (LINES - box_h) / 2;
+    int left = (COLS - box_w) / 2;
+    int row;
+    int col;
+    int msg_row;
+    int msg_col;
+    int ch;
+    int key;
+
+    if (top < 0)
+        top = 0;
+    if (left < 0)
+        left = 0;
+    if (box_h > LINES)
+        box_h = LINES;
+    if (box_w > COLS)
+        box_w = COLS;
+
+    for (row = 0; row < box_h; ++row) {
+        for (col = 0; col < box_w; ++col) {
+            int screen_row = top + row;
+            int screen_col = left + col;
+            char border;
+            if (row == 0 || row == box_h - 1) {
+                if (col == 0 || col == box_w - 1)
+                    border = '+';
+                else
+                    border = '-';
+            } else if (col == 0 || col == box_w - 1) {
+                border = '|';
+            } else {
+                border = ' ';
+            }
+            mvaddch(screen_row, screen_col, border);
+        }
+    }
+    msg_row = top + box_h / 2;
+    msg_col = left + (box_w - (int)strlen(msg)) / 2;
+    if (msg_col < left + 1)
+        msg_col = left + 1;
+    mvprintw(msg_row, msg_col, "%s", msg);
+    refresh();
+
+    while (1) {
+        ch = read_key();
+        key = normalize_key(ch);
+        if (key == 'Y')
+            return 1;
+        if (key == 'N' || is_back_key(ch))
+            return 0;
+    }
+}
+
+static void
+draw_back_hint(void)
+{
+    int row = LINES - MENU_ROWS - 1;
+    if (row < 0)
+        row = 0;
+    mvprintw(row, 2, "Back) Return to previous menu");
+}
+
+int
+require_admin(const char *action)
+{
+    if (g_session.is_admin)
+        return 1;
+    if (action && *action) {
+        char msg[80];
+        safe_copy(msg, sizeof msg, "Admin only: ");
+        safe_append(msg, sizeof msg, action);
+        wait_for_ack(msg);
+    } else {
+        wait_for_ack("Admin only.");
+    }
+    return 0;
+}
+
+static int
 input_has_data_timeout(int usec)
 {
 #if defined(__unix__)
@@ -873,6 +968,7 @@ static void
 show_help(const char *title, const char *body)
 {
     draw_layout(title, "Help");
+    draw_back_hint();
     mvprintw(5, 4, "%s", body);
     draw_menu_lines("[Space] Continue", "", "");
     wait_for_ack("Press any key to return.");
@@ -902,7 +998,7 @@ login_screen(void)
         g_session.is_admin = 0;
     }
     safe_copy(g_session.username, sizeof g_session.username, user);
-    g_screen = SCREEN_MAIN;
+    reset_navigation(SCREEN_MAIN, "");
 }
 
 static void
@@ -926,123 +1022,182 @@ update_status_line(void)
     safe_append(status, sizeof status, group);
     safe_append(status, sizeof status, "  Posts: ");
     safe_append_number(status, sizeof status, posts);
-    mvprintw(3, 2, "%-*s", COLS - 4, status);
+    mvprintw(4, 2, "%-*s", COLS - 4, status);
+}
+
+static int
+build_main_menu_entries(struct main_menu_entry *entries, int max_entries)
+{
+    int count;
+    int i;
+
+    if (max_entries <= 0)
+        return 0;
+
+    count = 0;
+
+    for (i = 0; i < g_group_count && i < 10 && count < max_entries; ++i) {
+        entries[count].key = (char)('0' + i);
+        entries[count].action = MAIN_MENU_GROUP;
+        entries[count].group_index = i;
+        if (g_groups[i].name[0] != '\0')
+            safe_copy(entries[count].label, sizeof entries[count].label, g_groups[i].name);
+        else {
+            safe_copy(entries[count].label, sizeof entries[count].label, "Group ");
+            safe_append_number(entries[count].label, sizeof entries[count].label, i);
+        }
+        ++count;
+    }
+
+    if (count < max_entries) {
+        entries[count].key = 'G';
+        entries[count].action = MAIN_MENU_GROUP_MGMT;
+        entries[count].group_index = -1;
+        safe_copy(entries[count].label, sizeof entries[count].label, "Group Management");
+        ++count;
+    }
+
+    if (count < max_entries) {
+        entries[count].key = 'B';
+        entries[count].action = MAIN_MENU_BACK;
+        entries[count].group_index = -1;
+        safe_copy(entries[count].label, sizeof entries[count].label, "Back - Return to previous menu");
+        ++count;
+    }
+
+    if (count < max_entries) {
+        entries[count].key = 'S';
+        entries[count].action = MAIN_MENU_SETUP;
+        entries[count].group_index = -1;
+        safe_copy(entries[count].label, sizeof entries[count].label, "Setup");
+        ++count;
+    }
+
+    if (count < max_entries) {
+        entries[count].key = 'Q';
+        entries[count].action = MAIN_MENU_QUIT;
+        entries[count].group_index = -1;
+        safe_copy(entries[count].label, sizeof entries[count].label, "Quit");
+        ++count;
+    }
+
+    return count;
 }
 
 static void
-draw_main_options(int highlight)
+draw_main_options(const struct main_menu_entry *entries, int count, int highlight)
 {
-    static int last_highlight = -1;
-    static int initialized = 0;
-    int count;
     int i;
     int row;
 
-    count = g_main_menu_option_count;
-    row = 6;
-    
-    /* Initial full render */
-    if (!initialized) {
-        for (i = 0; i < count; ++i) {
-            draw_highlighted_text(row + i, 6, COLS - 8, i == highlight,
-                "%c) %s", g_main_menu_options[i].key, g_main_menu_options[i].label);
-        }
-        last_highlight = highlight;
-        initialized = 1;
+    row = 8;
+    for (i = 0; i < count; ++i) {
+        draw_highlighted_text(row + i, 6, COLS - 8, i == highlight,
+            "%c) %s", entries[i].key, entries[i].label);
     }
-    /* Only redraw changed lines for efficiency */
-    else if (last_highlight != highlight) {
-        /* Clear and redraw old highlighted line as normal */
-        if (last_highlight >= 0 && last_highlight < count) {
-            draw_highlighted_text(row + last_highlight, 6, COLS - 8, 0,
-                "%c) %s", g_main_menu_options[last_highlight].key,
-                g_main_menu_options[last_highlight].label);
-        }
-        
-        /* Clear and redraw new highlighted line with reverse video */
-        if (highlight >= 0 && highlight < count) {
-            draw_highlighted_text(row + highlight, 6, COLS - 8, 1,
-                "%c) %s", g_main_menu_options[highlight].key,
-                g_main_menu_options[highlight].label);
-        }
-        
-        last_highlight = highlight;
-    }
-    if (g_show_extras) {
-        mvprintw(row + count + 2, 6, "Extras: Release notes (TODO), Print Help (TODO)");
-    }
-    draw_menu_lines("? Help  C Compose  I Index  L Groups  A Address  S Setup", "O Other  Q Quit", "Use letter keys or arrows");
+    draw_menu_lines("", "", "");
 }
 
 static void
 main_menu_screen(void)
 {
+    struct main_menu_entry entries[MAX_MAIN_MENU_ENTRIES];
+    int entry_count;
     int highlight;
     int ch;
-    int option_count;
+    int key;
+    int activate;
+    int i;
 
+    entry_count = build_main_menu_entries(entries, MAX_MAIN_MENU_ENTRIES);
     highlight = g_last_highlight;
-    option_count = g_main_menu_option_count;
     if (highlight < 0)
         highlight = 0;
-    if (highlight >= option_count)
-        highlight = option_count - 1;
-    draw_layout("Main Menu", "");
-    update_status_line();
-    draw_main_options(highlight);
-    refresh();
+    if (entry_count == 0)
+        entry_count = 1;
+    if (highlight >= entry_count)
+        highlight = entry_count - 1;
 
     while (1) {
+        entry_count = build_main_menu_entries(entries, MAX_MAIN_MENU_ENTRIES);
+        if (entry_count == 0)
+            entry_count = 1;
+        if (highlight >= entry_count)
+            highlight = entry_count - 1;
+
+        draw_layout("Main Menu - Select a Group to Browse Messages", "");
+        mvprintw(4, 2, "%-*s", COLS - 4, "");
+        draw_main_options(entries, entry_count, highlight);
+        refresh();
+
         ch = read_key();
+        key = normalize_key(ch);
+        if (is_back_key(ch)) {
+            handle_back_navigation();
+            if (!g_running)
+                return;
+            continue;
+        }
         if (ch == KEY_UP) {
             if (highlight > 0)
                 --highlight;
-        } else if (ch == KEY_DOWN) {
-            if (highlight < option_count - 1)
+            continue;
+        }
+        if (ch == KEY_DOWN) {
+            if (highlight < entry_count - 1)
                 ++highlight;
+            continue;
+        }
+
+        activate = -1;
+        if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
+            activate = highlight;
         } else {
-            if (ch == '\n' || ch == '\r' || ch == KEY_ENTER)
-                ch = g_main_menu_options[highlight].key;
-            if (ch == 'O' || ch == 'o') {
-                toggle_extras();
-            } else if (ch == 'Q' || ch == 'q') {
-                if (prompt_yesno("Logout? y/n")) {
-                    logout_session();
-                    g_screen = SCREEN_LOGIN;
-                    highlight = 0;
+            for (i = 0; i < entry_count; ++i) {
+                int entry_key = normalize_key((unsigned char)entries[i].key);
+                if (entry_key == key) {
+                    activate = i;
                     break;
                 }
-            } else if (ch == 'I' || ch == 'i') {
-                g_screen = SCREEN_POST_INDEX;
-                break;
-            } else if (ch == 'L' || ch == 'l') {
-                g_screen = SCREEN_GROUP_LIST;
-                break;
-            } else if (ch == 'C' || ch == 'c') {
-                g_screen = SCREEN_COMPOSE;
-                break;
-            } else if (ch == 'A' || ch == 'a') {
-                g_screen = SCREEN_ADDRESS_BOOK;
-                break;
-            } else if (ch == 'S' || ch == 's') {
-                g_screen = SCREEN_SETUP;
-                break;
-            } else if (ch == '?') {
-                show_help("Main Menu Help", "Use letter keys to trigger commands. Extras toggle additional commands.");
-                break;
             }
         }
-        /* Only redraw the menu options, not the entire layout */
-        draw_main_options(highlight);
-        refresh();
-    }
-    g_last_highlight = highlight;
-}
 
-static void
-toggle_extras(void)
-{
-    g_show_extras = !g_show_extras;
+        if (activate == -1)
+            continue;
+
+        switch (entries[activate].action) {
+        case MAIN_MENU_BACK:
+            handle_back_navigation();
+            if (!g_running)
+                return;
+            break;
+        case MAIN_MENU_GROUP:
+            if (entries[activate].group_index >= 0 &&
+                entries[activate].group_index < g_group_count) {
+                select_group(entries[activate].group_index);
+                push_screen(SCREEN_POST_INDEX, g_groups[entries[activate].group_index].name);
+                g_last_highlight = highlight;
+                return;
+            }
+            break;
+        case MAIN_MENU_GROUP_MGMT:
+            push_screen(SCREEN_GROUP_LIST, "Groups");
+            g_last_highlight = highlight;
+            return;
+        case MAIN_MENU_SETUP:
+            push_screen(SCREEN_SETUP, "Setup");
+            g_last_highlight = highlight;
+            return;
+        case MAIN_MENU_QUIT:
+            if (prompt_yesno("Exit BBS? y/n"))
+                g_running = 0;
+            if (!g_running) {
+                g_last_highlight = highlight;
+                return;
+            }
+            break;
+        }
+    }
 }
 
 static const char *
@@ -1068,10 +1223,8 @@ add_group(void)
     char name[MAX_GROUP_NAME];
     char desc[MAX_GROUP_DESC];
 
-    if (!g_session.is_admin) {
-        wait_for_ack("Only admin may create groups.");
+    if (!require_admin("create groups"))
         return;
-    }
     if (g_group_count >= MAX_GROUPS) {
         wait_for_ack("Maximum groups reached.");
         return;
@@ -1094,6 +1247,8 @@ rename_group(int idx)
 
     if (idx < 0 || idx >= g_group_count)
         return;
+    if (!require_admin("rename groups"))
+        return;
     prompt_string("New name:", newname, sizeof newname);
     if (newname[0] == '\0')
         return;
@@ -1106,6 +1261,8 @@ mark_delete_group(int idx)
 {
     if (idx < 0 || idx >= g_group_count)
         return;
+    if (!require_admin("delete groups"))
+        return;
     g_groups[idx].deleted = !g_groups[idx].deleted;
     save_groups();
 }
@@ -1116,6 +1273,8 @@ expunge_groups(void)
     int i;
     int dst;
 
+    if (!require_admin("expunge groups"))
+        return;
     dst = 0;
     for (i = 0; i < g_group_count; ++i) {
         if (g_groups[i].deleted) {
@@ -1145,7 +1304,7 @@ goto_group_prompt(void)
     for (i = 0; i < g_group_count; ++i) {
         if (strcasecmp(g_groups[i].name, name) == 0) {
             select_group(i);
-            g_screen = SCREEN_POST_INDEX;
+            push_screen(SCREEN_POST_INDEX, g_groups[i].name);
             return;
         }
     }
@@ -1164,6 +1323,7 @@ whereis_group(void)
     for (i = 0; i < g_group_count; ++i) {
         if (strstr(g_groups[i].name, needle) || strstr(g_groups[i].description, needle)) {
             select_group(i);
+            push_screen(SCREEN_POST_INDEX, g_groups[i].name);
             wait_for_ack("Match highlighted.");
             return;
         }
@@ -1186,6 +1346,25 @@ draw_group_rows(int highlight)
             "%-4d %-24s %-40s %s", i + 1, g_groups[i].name,
             g_groups[i].description, flag);
     }
+    draw_group_list_commands();
+}
+
+static void
+draw_group_list_commands(void)
+{
+    int row;
+
+    row = LINES - MENU_ROWS - 3;
+    if (row < 0)
+        row = 0;
+    mvprintw(row, 2, "%-*s", COLS - 4, "V View  G Goto  S Select  W WhereIs");
+    ++row;
+    if (row < LINES - MENU_ROWS - 1) {
+        if (g_session.is_admin)
+            mvprintw(row, 2, "%-*s", COLS - 4, "Admin: C Create  R Rename  D Delete  E Expunge");
+        else
+            mvprintw(row, 2, "%-*s", COLS - 4, "");
+    }
 }
 
 static void
@@ -1193,6 +1372,7 @@ group_list_screen(void)
 {
     int highlight;
     int ch;
+    int key;
 
     highlight = g_last_highlight;
     if (highlight >= g_group_count)
@@ -1201,83 +1381,82 @@ group_list_screen(void)
         highlight = 0;
 
     draw_layout("Group List", "");
+    draw_back_hint();
     draw_group_rows(highlight);
-    draw_menu_lines("V View  C Create  D Delete  R Rename  E Expunge", "N Next  P Prev  G Goto  < Main  O Other  S Select", "W WhereIs  ? Help");
+    draw_menu_lines("", "", "");
     refresh();
 
     while (1) {
         ch = read_key();
+        key = normalize_key(ch);
+        if (is_back_key(ch)) {
+            if (handle_back_navigation())
+                break;
+            if (!g_running)
+                return;
+            continue;
+        }
+        if (key == 'B') {
+            if (handle_back_navigation())
+                break;
+            if (!g_running)
+                return;
+            continue;
+        }
+        if (key == 'B') {
+            if (handle_back_navigation())
+                break;
+            if (!g_running)
+                return;
+            continue;
+        }
+        if (key == 'B') {
+            if (handle_back_navigation())
+                break;
+            if (!g_running)
+                return;
+            continue;
+        }
         if (ch == KEY_UP) {
             if (highlight > 0)
                 --highlight;
         } else if (ch == KEY_DOWN) {
             if (highlight < g_group_count - 1)
                 ++highlight;
-        } else if (ch == 'V' || ch == 'v' || ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
+        } else if (key == 'V' || ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
             select_group(highlight);
-            g_screen = SCREEN_POST_INDEX;
+            push_screen(SCREEN_POST_INDEX, g_groups[highlight].name);
             break;
-        } else if (ch == 'C' || ch == 'c') {
+        } else if (key == 'C') {
             add_group();
-        } else if (ch == 'D' || ch == 'd') {
+        } else if (key == 'D') {
             mark_delete_group(highlight);
-        } else if (ch == 'R' || ch == 'r') {
+        } else if (key == 'R') {
             rename_group(highlight);
-        } else if (ch == 'E' || ch == 'e') {
+        } else if (key == 'E') {
             if (prompt_yesno("Expunge groups? y/n"))
                 expunge_groups();
-        } else if (ch == 'N' || ch == 'n') {
+        } else if (key == 'N') {
             if (highlight < g_group_count - 1)
                 ++highlight;
-        } else if (ch == 'P' || ch == 'p') {
+        } else if (key == 'P') {
             if (highlight > 0)
                 --highlight;
-        } else if (ch == 'G' || ch == 'g') {
+        } else if (key == 'G') {
             goto_group_prompt();
             break;
-        } else if (ch == 'S' || ch == 's') {
+        } else if (key == 'S') {
             select_group(highlight);
             wait_for_ack("Group selected.");
-        } else if (ch == 'W' || ch == 'w') {
+        } else if (key == 'W') {
             whereis_group();
-        } else if (ch == 'Q' || ch == 'q') {
-            if (prompt_yesno("Return to main menu? y/n")) {
-                g_screen = SCREEN_MAIN;
-                break;
-            }
         } else if (ch == '?') {
             show_help("Group List Help", "Use commands displayed to manage groups. Deleted groups show D flag until expunged.");
-        } else if (ch == 'O' || ch == 'o') {
-            toggle_extras();
         }
         draw_group_rows(highlight);
         refresh();
     }
     g_last_highlight = highlight;
-}
-
-static void
-free_cached_messages(void)
-{
-    if (g_cached_messages != NULL) {
-        free(g_cached_messages);
-        g_cached_messages = NULL;
-    }
-    g_cached_message_count = 0;
-}
-
-static int
-next_message_id(void)
-{
-    int i;
-    int max_id;
-
-    max_id = 0;
-    for (i = 0; i < g_cached_message_count; ++i) {
-        if (g_cached_messages[i].id > max_id)
-            max_id = g_cached_messages[i].id;
-    }
-    return max_id + 1;
 }
 
 static void
@@ -1338,16 +1517,19 @@ post_index_screen(void)
 {
     int highlight;
     int ch;
+    int key;
     const char *group;
 
     if (!action_requires_group()) {
-        g_screen = SCREEN_GROUP_LIST;
+        pop_screen();
+        push_screen(SCREEN_GROUP_LIST, "Groups");
         return;
     }
 
     if (load_messages_for_group(g_session.current_group) != 0) {
         wait_for_ack("Unable to load messages.");
-        g_screen = SCREEN_GROUP_LIST;
+        pop_screen();
+        push_screen(SCREEN_GROUP_LIST, "Groups");
         return;
     }
 
@@ -1360,52 +1542,60 @@ post_index_screen(void)
     group = current_group_name();
 
     draw_layout("Post Index", group ? group : "");
+    draw_back_hint();
     draw_post_rows(highlight);
     draw_menu_lines("V View  D Delete  U Undelete  R Reply  F Forward", "S Save  X Expunge  T Take Addr  Y Print (TODO)  W WhereIs", "O Other  < Groups  ? Help");
     refresh();
 
     while (1) {
         ch = read_key();
+        key = normalize_key(ch);
+        if (is_back_key(ch)) {
+            if (handle_back_navigation())
+                break;
+            if (!g_running)
+                return;
+            continue;
+        }
         if (ch == KEY_UP) {
             if (highlight > 0)
                 --highlight;
         } else if (ch == KEY_DOWN) {
             if (highlight < g_cached_message_count - 1)
                 ++highlight;
-        } else if (ch == 'V' || ch == 'v' || ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
-            if (g_cached_message_count > 0)
-                post_view_screen(highlight);
-        } else if (ch == 'D' || ch == 'd') {
-            if (g_cached_message_count > 0)
-                delete_or_undelete(&g_cached_messages[highlight], 1);
-        } else if (ch == 'U' || ch == 'u') {
-            if (g_cached_message_count > 0)
-                delete_or_undelete(&g_cached_messages[highlight], 0);
-        } else if (ch == 'R' || ch == 'r') {
-            if (g_cached_message_count > 0)
-                compose_screen(&g_cached_messages[highlight], 0);
-        } else if (ch == 'F' || ch == 'f') {
-            if (g_cached_message_count > 0)
-                compose_screen(&g_cached_messages[highlight], 1);
-        } else if (ch == 'S' || ch == 's') {
-            if (g_cached_message_count > 0)
-                save_message_to_group(&g_cached_messages[highlight]);
-        } else if (ch == 'X' || ch == 'x') {
-            expunge_messages();
-        } else if (ch == 'T' || ch == 't') {
-            if (g_cached_message_count > 0)
-                take_address_from_message(&g_cached_messages[highlight]);
-        } else if (ch == 'Y' || ch == 'y') {
-            wait_for_ack("Printing not yet implemented.");
-        } else if (ch == 'W' || ch == 'w') {
-            search_messages();
-        } else if (ch == 'O' || ch == 'o') {
-            toggle_extras();
-        } else if (ch == 'Q' || ch == 'q') {
-            if (prompt_yesno("Return to group list? y/n")) {
-                g_screen = SCREEN_GROUP_LIST;
+        } else if (key == 'V' || ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
+            if (g_cached_message_count > 0) {
+                open_post_view(highlight);
                 break;
             }
+        } else if (key == 'D') {
+            if (g_cached_message_count > 0)
+                delete_or_undelete(&g_cached_messages[highlight], 1);
+        } else if (key == 'U') {
+            if (g_cached_message_count > 0)
+                delete_or_undelete(&g_cached_messages[highlight], 0);
+        } else if (key == 'R') {
+            if (g_cached_message_count > 0) {
+                open_compose(&g_cached_messages[highlight], 0);
+                break;
+            }
+        } else if (key == 'F') {
+            if (g_cached_message_count > 0) {
+                open_compose(&g_cached_messages[highlight], 1);
+                break;
+            }
+        } else if (key == 'S') {
+            if (g_cached_message_count > 0)
+                save_message_to_group(&g_cached_messages[highlight]);
+        } else if (key == 'X') {
+            expunge_messages();
+        } else if (key == 'T') {
+            if (g_cached_message_count > 0)
+                take_address_from_message(&g_cached_messages[highlight]);
+        } else if (key == 'Y') {
+            wait_for_ack("Printing not yet implemented.");
+        } else if (key == 'W') {
+            search_messages();
         } else if (ch == '?') {
             show_help("Post Index Help", "Use commands to manage posts. Deleted posts are expunged with X.");
         }
@@ -1419,6 +1609,7 @@ static void
 post_view_screen(int message_index)
 {
     int ch;
+    int key;
     struct message *msg;
     char stamp[64];
 
@@ -1428,6 +1619,7 @@ post_view_screen(int message_index)
 
     while (1) {
         draw_layout("Post View", msg->subject);
+        draw_back_hint();
         format_time(msg->created, stamp, sizeof stamp);
         mvprintw(5, 4, "From: %s", msg->author);
         mvprintw(6, 4, "Date: %s", stamp);
@@ -1437,23 +1629,26 @@ post_view_screen(int message_index)
         draw_menu_lines("D Delete  U Undelete  R Reply  F Forward  S Save", "T Take Addr  V View Attach (TODO)  E Exit Attach (TODO)", "< Index  ? Help");
         refresh();
         ch = read_key();
-        if (ch == 'D' || ch == 'd') {
+        key = normalize_key(ch);
+        if (is_back_key(ch) || key == 'B' || key == 'E') {
+            if (handle_back_navigation())
+                return;
+            if (!g_running)
+                return;
+        } else if (key == 'D') {
             delete_or_undelete(msg, 1);
-        } else if (ch == 'U' || ch == 'u') {
+        } else if (key == 'U') {
             delete_or_undelete(msg, 0);
-        } else if (ch == 'R' || ch == 'r') {
-            compose_screen(msg, 0);
-        } else if (ch == 'F' || ch == 'f') {
-            compose_screen(msg, 1);
-        } else if (ch == 'S' || ch == 's') {
+        } else if (key == 'R') {
+            open_compose(msg, 0);
+            return;
+        } else if (key == 'F') {
+            open_compose(msg, 1);
+            return;
+        } else if (key == 'S') {
             save_message_to_group(msg);
-        } else if (ch == 'T' || ch == 't') {
+        } else if (key == 'T') {
             take_address_from_message(msg);
-        } else if (ch == 'E' || ch == 'e') {
-            break;
-        } else if (ch == 'Q' || ch == 'q') {
-            if (prompt_yesno("Return to index? y/n"))
-                break;
         } else if (ch == '?') {
             show_help("Post View Help", "Use commands to reply, forward, or save the current message.");
         }
@@ -1540,12 +1735,19 @@ compose_screen(struct message *reply_source, int forward_mode)
     int done;
     int ch;
     int parent;
+    int key;
 
-    if (!action_requires_group())
+    if (!action_requires_group()) {
+        if (pop_screen())
+            push_screen(SCREEN_GROUP_LIST, "Groups");
+        else
+            reset_navigation(SCREEN_GROUP_LIST, "Groups");
         return;
+    }
 
     if (load_messages_for_group(g_session.current_group) != 0) {
         wait_for_ack("Unable to load messages.");
+        handle_back_navigation();
         return;
     }
 
@@ -1582,6 +1784,7 @@ compose_screen(struct message *reply_source, int forward_mode)
 
     while (!done) {
         draw_layout("Compose", "");
+        draw_back_hint();
         mvprintw(5, 4, "To: %s", to);
         mvprintw(6, 4, "Cc: %s", cc);
         mvprintw(7, 4, "Attach: %s", attach);
@@ -1591,6 +1794,11 @@ compose_screen(struct message *reply_source, int forward_mode)
         draw_menu_lines("^X Send  ^C Cancel  ^O Postpone (TODO)  ^R Read File (TODO)", "^J Justify (TODO)  ^W WhereIs (TODO)  ^T Add Addr", "Enter edits field  Arrows move field");
         refresh();
         ch = read_key();
+        key = normalize_key(ch);
+        if (is_back_key(ch) || key == 'B') {
+            handle_back_navigation();
+            return;
+        }
         if (ch == KEY_UP) {
             if (field > 0)
                 --field;
@@ -1641,13 +1849,14 @@ compose_screen(struct message *reply_source, int forward_mode)
         } else if (ch == CTRL_KEY('C')) {
             if (prompt_yesno("Discard draft? y/n"))
                 done = 1;
-        } else if (ch == 'Q' || ch == 'q') {
+        } else if (key == 'Q') {
             if (prompt_yesno("Discard draft? y/n"))
                 done = 1;
         } else if (ch == CTRL_KEY('T')) {
             add_address_entry(0);
         }
     }
+    pop_screen();
 }
 
 static void
@@ -1764,37 +1973,42 @@ address_book_screen(void)
 {
     int highlight;
     int ch;
+    int key;
 
     highlight = 0;
     draw_layout("Address Book", "");
+    draw_back_hint();
     draw_address_rows(highlight);
     draw_menu_lines("A Add  S Create List  V View/Update  D Delete", "C Compose To  T Take (TODO)  O Other", "< Main  ? Help");
     refresh();
 
     while (1) {
         ch = read_key();
+        key = normalize_key(ch);
+        if (is_back_key(ch)) {
+            if (handle_back_navigation())
+                break;
+            if (!g_running)
+                return;
+            continue;
+        }
         if (ch == KEY_UP) {
             if (highlight > 0)
                 --highlight;
         } else if (ch == KEY_DOWN) {
             if (highlight < g_addr_count - 1)
                 ++highlight;
-        } else if (ch == 'A' || ch == 'a') {
+        } else if (key == 'A') {
             add_address_entry(0);
-        } else if (ch == 'S' || ch == 's') {
+        } else if (key == 'S') {
             add_address_entry(1);
-        } else if (ch == 'V' || ch == 'v' || ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
+        } else if (key == 'V' || ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
             edit_address_entry(highlight);
-        } else if (ch == 'D' || ch == 'd') {
+        } else if (key == 'D') {
             delete_address_entry(highlight);
-        } else if (ch == 'C' || ch == 'c') {
+        } else if (key == 'C') {
             compose_to_entry(highlight);
             break;
-        } else if (ch == 'Q' || ch == 'q') {
-            if (prompt_yesno("Return to main menu? y/n")) {
-                g_screen = SCREEN_MAIN;
-                break;
-            }
         } else if (ch == '?') {
             show_help("Address Book Help", "Manage nicknames and distribution lists from this screen.");
         }
@@ -1849,16 +2063,18 @@ compose_to_entry(int idx)
     if (idx < 0 || idx >= g_addr_count)
         return;
     safe_copy(g_compose_prefill_to, sizeof g_compose_prefill_to, g_addrbook[idx].address);
-    g_screen = SCREEN_COMPOSE;
+    open_compose(NULL, 0);
 }
 
 static void
 setup_screen(void)
 {
     int ch;
+    int key;
 
     while (1) {
         draw_layout("Setup", "");
+        draw_back_hint();
         mvprintw(5, 4, "P) Printer command: %s", g_config.printer[0] ? g_config.printer : "(default)");
         mvprintw(6, 4, "G) Signature: %s", g_config.signature[0] ? g_config.signature : "(none)");
         mvprintw(7, 4, "N) Change password (admin only)");
@@ -1866,366 +2082,24 @@ setup_screen(void)
         draw_menu_lines("P Printer  G Signature  N Password", "C Config (TODO)  K Color (TODO)  R Roles (TODO)  F Rules (TODO)  L LDAP (TODO)", "< Main  ? Help");
         refresh();
         ch = read_key();
-        if (ch == 'P' || ch == 'p') {
-            edit_printer();
-        } else if (ch == 'G' || ch == 'g') {
-            edit_signature();
-        } else if (ch == 'N' || ch == 'n') {
-            change_password();
-        } else if (ch == 'Q' || ch == 'q') {
-            if (prompt_yesno("Return to main menu? y/n")) {
-                g_screen = SCREEN_MAIN;
+        key = normalize_key(ch);
+        if (is_back_key(ch) || key == 'B') {
+            if (handle_back_navigation())
                 return;
-            }
+            if (!g_running)
+                return;
+            continue;
+        }
+        if (key == 'P') {
+            edit_printer();
+        } else if (key == 'G') {
+            edit_signature();
+        } else if (key == 'N') {
+            change_password();
         } else if (ch == '?') {
             show_help("Setup Help", "Configure printer, signature, and future options from here.");
         }
     }
-}
-
-static int
-load_groups(void)
-{
-    FILE *fp;
-    char line[256];
-    char *name;
-    char *desc;
-    char *flag;
-
-    g_group_count = 0;
-    lock_guard();
-    fp = fopen(GROUPS_FILE, "r");
-    if (fp == NULL) {
-        unlock_guard();
-        return 0;
-    }
-
-    while (fgets(line, sizeof line, fp) != NULL && g_group_count < MAX_GROUPS) {
-        trim_newline(line);
-        name = strtok(line, "|");
-        desc = strtok(NULL, "|");
-        flag = strtok(NULL, "|");
-        if (name == NULL)
-            continue;
-        safe_copy(g_groups[g_group_count].name, sizeof g_groups[g_group_count].name, name);
-        if (desc)
-            safe_copy(g_groups[g_group_count].description, sizeof g_groups[g_group_count].description, desc);
-        else
-            g_groups[g_group_count].description[0] = '\0';
-        g_groups[g_group_count].deleted = (flag && *flag == 'D') ? 1 : 0;
-        ++g_group_count;
-    }
-    fclose(fp);
-    unlock_guard();
-    return 0;
-}
-
-static int
-save_groups(void)
-{
-    FILE *fp;
-    int i;
-
-    lock_guard();
-    fp = fopen(GROUPS_FILE, "w");
-    if (fp == NULL) {
-        unlock_guard();
-        return -1;
-    }
-    for (i = 0; i < g_group_count; ++i)
-        fprintf(fp, "%s|%s|%s\n", g_groups[i].name, g_groups[i].description,
-            g_groups[i].deleted ? "D" : "");
-    fclose(fp);
-    unlock_guard();
-    return 0;
-}
-
-static int
-build_group_path(const char *group_name, char *path, int maxlen)
-{
-    char safe[MAX_GROUP_NAME];
-    int i;
-
-    for (i = 0; group_name[i] != '\0' && i < MAX_GROUP_NAME - 1; ++i) {
-        if (isalnum((unsigned char)group_name[i]))
-            safe[i] = tolower((unsigned char)group_name[i]);
-        else
-            safe[i] = '_';
-    }
-    safe[i] = '\0';
-    if (maxlen <= 0)
-        return -1;
-    path[0] = '\0';
-    safe_append(path, maxlen, DATA_DIR);
-    safe_append_char(path, maxlen, '/');
-    safe_append(path, maxlen, safe);
-    safe_append(path, maxlen, ".msg");
-    return 0;
-}
-
-static int
-load_messages_for_group(int group_index)
-{
-    struct message *msgs;
-    int count;
-
-    if (group_index < 0 || group_index >= g_group_count)
-        return -1;
-    if (load_messages_direct(g_groups[group_index].name, &msgs, &count) != 0)
-        return -1;
-    free_cached_messages();
-    g_cached_messages = msgs;
-    g_cached_message_count = count;
-    return 0;
-}
-
-static int
-save_messages_for_group(int group_index)
-{
-    if (group_index < 0 || group_index >= g_group_count)
-        return -1;
-    return save_messages_direct(g_groups[group_index].name, g_cached_messages, g_cached_message_count);
-}
-
-static int
-load_messages_direct(const char *group_name, struct message **messages, int *count)
-{
-    FILE *fp;
-    char line[512];
-    char path[256];
-    struct message *list;
-    int capacity;
-    struct message *msg = &g_temp_message; /* Use static buffer to avoid stack overflow */
-
-    *messages = NULL;
-    *count = 0;
-    build_group_path(group_name, path, sizeof path);
-
-    lock_guard();
-    fp = fopen(path, "r");
-    if (fp == NULL) {
-        unlock_guard();
-        return 0;
-    }
-
-    capacity = 32;
-    list = (struct message *)malloc(sizeof(struct message) * capacity);
-    if (list == NULL) {
-        fclose(fp);
-        unlock_guard();
-        return -1;
-    }
-
-    memset(msg, 0, sizeof *msg);
-    while (fgets(line, sizeof line, fp) != NULL) {
-        trim_newline(line);
-        if (strncmp(line, "MSG ", 4) == 0) {
-            msg->id = atoi(line + 4);;
-        } else if (strncmp(line, "PARENT ", 7) == 0) {
-            msg->parent_id = atoi(line + 7);;
-        } else if (strncmp(line, "TIME ", 5) == 0) {
-            msg->created = (time_t)atol(line + 5);;
-        } else if (strncmp(line, "STATUS ", 7) == 0) {
-            msg->deleted = (line[7] == 'D');
-            msg->answered = (line[7] == 'A');
-        } else if (strncmp(line, "AUTHOR ", 7) == 0) {
-            safe_copy(msg->author, sizeof msg->author, line + 7);
-        } else if (strncmp(line, "SUBJECT ", 8) == 0) {
-            safe_copy(msg->subject, sizeof msg->subject, line + 8);
-        } else if (strcmp(line, "BODY") == 0) {
-            msg->body[0] = '\0';
-            while (fgets(line, sizeof line, fp) != NULL) {
-                trim_newline(line);
-                if (strcmp(line, ".") == 0)
-                    break;
-                if ((int)strlen(msg->body) + (int)strlen(line) + 2 >= MAX_BODY)
-                    break;
-                strcat(msg->body, line);
-                strcat(msg->body, "\n");
-            }
-        } else if (strcmp(line, "END") == 0) {
-            if (*count >= capacity) {
-                capacity *= 2;
-                list = (struct message *)realloc(list, sizeof(struct message) * capacity);
-                if (list == NULL) {
-                    fclose(fp);
-                    unlock_guard();
-                    return -1;
-                }
-            }
-            list[*count] = *msg;
-            ++(*count);
-            memset(msg, 0, sizeof *msg);
-        }
-    }
-
-    fclose(fp);
-    unlock_guard();
-    *messages = list;
-    return 0;
-}
-
-static int
-save_messages_direct(const char *group_name, struct message *messages, int count)
-{
-    FILE *fp;
-    char path[256];
-    int i;
-
-    build_group_path(group_name, path, sizeof path);
-    lock_guard();
-    fp = fopen(path, "w");
-    if (fp == NULL) {
-        unlock_guard();
-        return -1;
-    }
-    for (i = 0; i < count; ++i) {
-        fprintf(fp, "MSG %d\n", messages[i].id);
-        fprintf(fp, "PARENT %d\n", messages[i].parent_id);
-        fprintf(fp, "TIME %ld\n", (long)messages[i].created);
-        fprintf(fp, "STATUS %c\n", messages[i].deleted ? 'D' : (messages[i].answered ? 'A' : 'N'));
-        fprintf(fp, "AUTHOR %s\n", messages[i].author);
-        fprintf(fp, "SUBJECT %s\n", messages[i].subject);
-        fprintf(fp, "BODY\n%s", messages[i].body);
-        if (messages[i].body[0] == '\0' || messages[i].body[strlen(messages[i].body) - 1] != '\n')
-            fprintf(fp, "\n");
-        fprintf(fp, ".\nEND\n");
-    }
-    fclose(fp);
-    unlock_guard();
-    return 0;
-}
-
-static int
-copy_message_to_group(struct message *msg, const char *group_name)
-{
-    struct message *msgs;
-    int count;
-    struct message *copy = &g_temp_message; /* Use static buffer to avoid stack overflow */
-    int rc;
-
-    if (load_messages_direct(group_name, &msgs, &count) != 0)
-        return -1;
-    *copy = *msg;
-    copy->id = 0;
-    copy->parent_id = 0;
-    copy->deleted = 0;
-    copy->answered = 0;
-    copy->created = time(NULL);
-    copy->id = count > 0 ? msgs[count - 1].id + 1 : 1;
-    msgs = (struct message *)realloc(msgs, sizeof(struct message) * (count + 1));
-    if (msgs == NULL)
-        return -1;
-    msgs[count] = *copy;
-    rc = save_messages_direct(group_name, msgs, count + 1);
-    free(msgs);
-    return rc;
-}
-
-static void
-load_address_book(void)
-{
-    FILE *fp;
-    char line[512];
-    char *nick;
-    char *full;
-    char *addr;
-    char *flag;
-
-    g_addr_count = 0;
-    lock_guard();
-    fp = fopen(ADDRESS_FILE, "r");
-    if (fp == NULL) {
-        unlock_guard();
-        return;
-    }
-
-    while (fgets(line, sizeof line, fp) != NULL && g_addr_count < MAX_ADDRBOOK) {
-        trim_newline(line);
-        nick = strtok(line, "|");
-        full = strtok(NULL, "|");
-        addr = strtok(NULL, "|");
-        flag = strtok(NULL, "|");
-        if (nick == NULL || addr == NULL)
-            continue;
-        safe_copy(g_addrbook[g_addr_count].nickname, sizeof g_addrbook[g_addr_count].nickname, nick);
-        safe_copy(g_addrbook[g_addr_count].fullname, sizeof g_addrbook[g_addr_count].fullname, full ? full : "");
-        safe_copy(g_addrbook[g_addr_count].address, sizeof g_addrbook[g_addr_count].address, addr);
-        g_addrbook[g_addr_count].is_list = (flag && *flag == 'L') ? 1 : 0;
-        ++g_addr_count;
-    }
-    fclose(fp);
-    unlock_guard();
-}
-
-static void
-save_address_book(void)
-{
-    FILE *fp;
-    int i;
-
-    lock_guard();
-    fp = fopen(ADDRESS_FILE, "w");
-    if (fp == NULL) {
-        unlock_guard();
-        return;
-    }
-    for (i = 0; i < g_addr_count; ++i)
-        fprintf(fp, "%s|%s|%s|%c\n", g_addrbook[i].nickname,
-            g_addrbook[i].fullname, g_addrbook[i].address,
-            g_addrbook[i].is_list ? 'L' : 'A');
-    fclose(fp);
-    unlock_guard();
-}
-
-static void
-load_config(void)
-{
-    FILE *fp;
-    char line[512];
-    char *key;
-    char *value;
-
-    lock_guard();
-    fp = fopen(CONFIG_FILE, "r");
-    if (fp == NULL) {
-        unlock_guard();
-        return;
-    }
-
-    while (fgets(line, sizeof line, fp) != NULL) {
-        trim_newline(line);
-        key = strtok(line, "=");
-        value = strtok(NULL, "");
-        if (key == NULL || value == NULL)
-            continue;
-        if (strcmp(key, "printer") == 0)
-            safe_copy(g_config.printer, sizeof g_config.printer, value);
-        else if (strcmp(key, "signature") == 0)
-            safe_copy(g_config.signature, sizeof g_config.signature, value);
-        else if (strcmp(key, "password") == 0)
-            safe_copy(g_config.password, sizeof g_config.password, value);
-    }
-    fclose(fp);
-    unlock_guard();
-}
-
-static void
-save_config(void)
-{
-    FILE *fp;
-
-    lock_guard();
-    fp = fopen(CONFIG_FILE, "w");
-    if (fp == NULL) {
-        unlock_guard();
-        return;
-    }
-    fprintf(fp, "printer=%s\n", g_config.printer);
-    fprintf(fp, "signature=%s\n", g_config.signature);
-    fprintf(fp, "password=%s\n", g_config.password);
-    fclose(fp);
-    unlock_guard();
 }
 
 static void
@@ -2256,72 +2130,4 @@ change_password(void)
         return;
     safe_copy(g_config.password, sizeof g_config.password, buf);
     save_config();
-}
-
-static int
-acquire_lock(void)
-{
-    char tmp[128];
-    FILE *fp;
-    int attempt;
-    int pid;
-
-    if (g_lock_depth > 0) {
-        ++g_lock_depth;
-        return 0;
-    }
-
-    pid = 1;
-#ifdef __unix__
-    pid = getpid();
-#endif
-    tmp[0] = '\0';
-    safe_append(tmp, sizeof tmp, DATA_DIR);
-    safe_append(tmp, sizeof tmp, "/.lock.");
-    safe_append_number(tmp, sizeof tmp, pid);
-    fp = fopen(tmp, "w");
-    if (fp == NULL)
-        return -1;
-    fprintf(fp, "%ld\n", (long)time(NULL));
-    fclose(fp);
-
-    for (attempt = 0; attempt < 5; ++attempt) {
-        if (link(tmp, LOCK_FILE) == 0) {
-            unlink(tmp);
-            g_lock_depth = 1;
-            return 0;
-        }
-#ifdef __unix__
-        sleep(1);
-#endif
-    }
-    unlink(tmp);
-    return -1;
-}
-
-static void
-release_lock(void)
-{
-    if (g_lock_depth == 0)
-        return;
-    --g_lock_depth;
-    if (g_lock_depth == 0)
-        unlink(LOCK_FILE);
-}
-
-static void
-lock_guard(void)
-{
-    if (acquire_lock() != 0) {
-        if (g_ui_ready)
-            wait_for_ack("Unable to acquire global lock.");
-        else
-            fprintf(stderr, "Unable to acquire global lock.\n");
-    }
-}
-
-static void
-unlock_guard(void)
-{
-    release_lock();
 }
