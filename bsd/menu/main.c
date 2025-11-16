@@ -1,3 +1,48 @@
+/******************************************************************************
+ *                                                                            *
+ *  ░███████  ░█████   ░███████        ░████████   ░████████     ░██████      *
+ *  ░██   ░██ ░██ ░██  ░██   ░██       ░██    ░██  ░██    ░██   ░██   ░██     *
+ *  ░██   ░██ ░██  ░██ ░██   ░██       ░██    ░██  ░██    ░██  ░██            *
+ *  ░███████  ░██  ░██ ░███████  ░████ ░████████   ░████████    ░████████     *
+ *  ░██       ░██  ░██ ░██             ░██     ░██ ░██     ░██         ░██    *
+ *  ░██       ░██ ░██  ░██             ░██     ░██ ░██     ░██  ░██   ░██     *
+ *  ░██       ░█████   ░██             ░█████████  ░█████████    ░██████      *
+ *                                                                            * 
+ *  ════════════════════════════════════════════════════════════════════════  *
+ *                                                                            *
+ *  PROGRAM:     DAVE'S GARAGE PDP-11 BBS MENU SYSTEM                         *
+ *  MODULE:      MAIN.C                                                       *
+ *  VERSION:     0.2                                                          *
+ *  DATE:        NOVEMBER 2025                                                *
+ *                                                                            *
+ *  ════════════════════════════════════════════════════════════════════════  *
+ *                                                                            *
+ *  DESCRIPTION:                                                              *
+ *                                                                            *
+ *    Main menu and user interface for a bulletin board system designed       *
+ *    for the PDP-11 running 2.11BSD. Features VT220 terminal support         *
+ *    with DEC Special Graphics Character Set for elegant box drawing.        *
+ *                                                                            *
+ *    Provides hierarchical message group browsing, user management,          *
+ *    address book functionality, and message composition with a full         *
+ *    screen curses-based interface optimized for low-bandwidth serial        *
+ *    terminals at 9600 baud.                                                 *
+ *                                                                            *
+ *  ════════════════════════════════════════════════════════════════════════  *
+ *                                                                            *
+ *  COMPATIBILITY:                                                            *
+ *                                                                            *
+ *    - PDP-11 with 2.11BSD (LEGACY_CURSES)                                   *
+ *    - Modern Unix systems with ncurses                                      *
+ *    - VT220 terminal or compatible emulator                                 *
+ *                                                                            *
+ *  ════════════════════════════════════════════════════════════════════════  *
+ *                                                                            *
+ *  AUTHOR:      DAVE PLUMMER                                                 *
+ *  LICENSE:     GPL 2.0                                                      *
+ *                                                                            *
+ ******************************************************************************/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +55,7 @@
 #include <sys/ioctl.h>
 #include <sys/time.h>
 #include "data.h"
+#include "platform.h"
 
 #if defined(__APPLE__) || defined(__MACH__) || defined(__linux__)
 #include <unistd.h>
@@ -77,7 +123,6 @@ extern unsigned sleep();
 static int legacy_mvgetnstr(int y, int x, char *buf, int maxlen);
 #endif
 
-#define CTRL_KEY(x) ((x) & 0x1f)
 #define ESC_KEY 27
 
 enum screen_id {
@@ -183,22 +228,12 @@ static void edit_printer(void);
 static void change_password(void);
 static int read_key(void);
 static int input_has_data(void);
+static int input_has_data_timeout(int usec);
 static int is_back_key(int ch);
 static int normalize_key(int ch);
 static int confirm_exit_prompt(void);
 static void draw_back_hint(void);
 int require_admin(const char *action);
-static void platform_set_cursor(int visible);
-static void platform_draw_border(void);
-static void platform_draw_header_line(const char *left, const char *right);
-static void platform_draw_separator(int row);
-static void platform_read_input(int y, int x, char *buf, int maxlen);
-static void platform_draw_breadcrumb(const char *text);
-static void platform_reverse_on(void);
-static void platform_reverse_off(void);
-#ifdef LEGACY_CURSES
-static void legacy_draw_box(int top, int left, int height, int width);
-#endif
 static void draw_highlighted_text(int row, int col, int width, int highlighted, const char *fmt, ...);
 static void set_current_label(const char *label, enum screen_id id);
 static void reset_navigation(enum screen_id screen, const char *label);
@@ -222,6 +257,9 @@ struct nav_entry {
 #define NAV_STACK_MAX 16
 static struct nav_entry g_nav_stack[NAV_STACK_MAX];
 static int g_nav_size = 0;
+
+// Returns default label text for each screen type used in breadcrumb navigation.
+// Called when screen doesn't provide custom label. 
 
 static const char *
 default_label_for_screen(enum screen_id id)
@@ -249,6 +287,9 @@ default_label_for_screen(enum screen_id id)
     }
 }
 
+// Rebuilds breadcrumb trail from navigation stack showing user's current location.
+// Format: "Home > Groups > General > Post" for hierarchical navigation.
+
 static void
 update_breadcrumb(void)
 {
@@ -267,6 +308,8 @@ update_breadcrumb(void)
     }
 }
 
+/* Sets label for current screen and updates breadcrumb trail.
+ * Uses provided label or defaults to screen type name if NULL. */
 static void
 set_current_label(const char *label, enum screen_id id)
 {
@@ -277,6 +320,8 @@ set_current_label(const char *label, enum screen_id id)
     update_breadcrumb();
 }
 
+/* Resets navigation stack to initial state with specified screen.
+ * Used when logging in or returning to main menu. */
 static void
 reset_navigation(enum screen_id screen, const char *label)
 {
@@ -285,6 +330,8 @@ reset_navigation(enum screen_id screen, const char *label)
     set_current_label(label, screen);
 }
 
+/* Pushes current screen onto navigation stack and switches to new screen.
+ * Enables back navigation by preserving screen history. */
 static void
 push_screen(enum screen_id next, const char *label)
 {
@@ -297,6 +344,8 @@ push_screen(enum screen_id next, const char *label)
     set_current_label(label, next);
 }
 
+/* Pops previous screen from navigation stack and returns to it.
+ * Returns 1 if successful, 0 if already at root level. */
 static int
 pop_screen(void)
 {
@@ -309,6 +358,8 @@ pop_screen(void)
     return 1;
 }
 
+/* Handles back/quit key by popping navigation stack or prompting to exit.
+ * Returns 1 if navigation occurred, sets g_running=0 to exit if confirmed. */
 static int
 handle_back_navigation(void)
 {
@@ -319,6 +370,8 @@ handle_back_navigation(void)
     return 0;
 }
 
+/* Opens compose screen with optional source message for reply/forward.
+ * Sets global compose state and pushes compose screen onto navigation stack. */
 static void
 open_compose(struct message *src, int forward_mode)
 {
@@ -332,6 +385,8 @@ open_compose(struct message *src, int forward_mode)
     push_screen(SCREEN_COMPOSE, "Compose");
 }
 
+/* Opens post viewer for message at specified index.
+ * Saves highlight position and pushes post view screen onto stack. */
 static void
 open_post_view(int index)
 {
@@ -339,315 +394,8 @@ open_post_view(int index)
     push_screen(SCREEN_POST_VIEW, "Post");
 }
 
-#ifdef LEGACY_CURSES
-static void
-platform_set_cursor(int visible)
-{
-    const char *seq = visible ? "\033[?25h" : "\033[?25l";
-    fputs(seq, stdout);
-    fflush(stdout);
-}
-
-static void
-platform_draw_border(void)
-{
-    int col;
-    int row;
-    
-    /* Draw border with DEC graphics using direct output after curses refresh */
-    /* This will be called after content is in curses buffer */
-    
-    fputs("\033(0", stdout);
-    
-    /* Top border: ┌──...──┐ */
-    printf("\033[1;1H");
-    putchar('l');
-    for (col = 1; col < COLS - 1; ++col)
-        putchar('q');
-    putchar('k');
-    
-    /* Side borders: │ */
-    for (row = 1; row < LINES - 1; ++row) {
-        printf("\033[%d;1H", row + 1);
-        putchar('x');
-        printf("\033[%d;%dH", row + 1, COLS);
-        putchar('x');
-    }
-    
-    /* Bottom border: └──...──┘ */
-    printf("\033[%d;1H", LINES);
-    putchar('m');
-    for (col = 1; col < COLS - 1; ++col)
-        putchar('q');
-    putchar('j');
-    
-    fputs("\033(B", stdout);
-    fflush(stdout);
-}
-
-static void
-platform_draw_header_line(const char *left, const char *right)
-{
-    int i;
-    int gap;
-
-    /* Start at column 1 and fill to COLS-2 for border-to-border reverse video */
-    move(1, 1);
-    platform_reverse_on();
-    addch(' ');
-    addstr(left);
-    
-    gap = COLS - (int)strlen(right) - (int)strlen(left) - 4;
-    if (gap < 0)
-        gap = 0;
-    for (i = 0; i < gap; ++i)
-        addch(' ');
-    
-    addstr(right);
-    addch(' ');
-    platform_reverse_off();
-}
-
-static void
-platform_draw_breadcrumb(const char *text)
-{
-    int i;
-    int textlen;
-    int padding;
-
-    move(2, 1);
-    platform_reverse_on();
-    addch(' ');
-    if (text && *text) {
-        addstr(text);
-        textlen = (int)strlen(text);
-    } else {
-        textlen = 0;
-    }
-    
-    padding = COLS - 4 - textlen;
-    if (padding < 0)
-        padding = 0;
-    for (i = 0; i < padding; ++i)
-        addch(' ');
-    
-    addch(' ');
-    platform_reverse_off();
-}
-
-static void
-platform_draw_separator(int row)
-{
-    int col;
-    
-    /* Select DEC Special Graphics character set */
-    fputs("\033(0", stdout);
-    
-    printf("\033[%d;1H", row + 1);
-    putchar('t');           /* Left T-junction (├) */
-    for (col = 1; col < COLS - 1; ++col)
-        putchar('q');       /* Horizontal line (─) */
-    putchar('u');           /* Right T-junction (┤) */
-    
-    /* Return to ASCII character set */
-    fputs("\033(B", stdout);
-    fflush(stdout);
-}
-
-static void
-platform_read_input(int y, int x, char *buf, int maxlen)
-{
-    echo();
-    legacy_mvgetnstr(y, x, buf, maxlen);
-    noecho();
-}
-
-static int
-legacy_mvgetnstr(int y, int x, char *buf, int maxlen)
-{
-    int len;
-    int limit;
-    int ch;
-    int key;
-
-    if (buf == NULL || maxlen <= 0)
-        return 0;
-    len = 0;
-    limit = maxlen;
-    buf[0] = '\0';
-    move(y, x);
-    refresh();
-    while (1) {
-        ch = getch();
-        if (ch == '\n' || ch == '\r') {
-            break;
-        } else if (ch == '\b' || ch == 127 || ch == CTRL_KEY('H') || ch == KEY_BACKSPACE) {
-            if (len > 0) {
-                --len;
-                buf[len] = '\0';
-                mvaddch(y, x + len, ' ');
-                move(y, x + len);
-                refresh();
-            }
-        } else if (ch == CTRL_KEY('U')) {
-            while (len > 0) {
-                --len;
-                mvaddch(y, x + len, ' ');
-            }
-            move(y, x);
-            buf[0] = '\0';
-            refresh();
-        } else if (isprint(ch)) {
-            if (len < limit) {
-                buf[len++] = (char)ch;
-                buf[len] = '\0';
-                mvaddch(y, x + len - 1, ch);
-                move(y, x + len);
-                refresh();
-            }
-        }
-    }
-    buf[len] = '\0';
-    return len;
-}
-#else
-static void
-platform_set_cursor(int visible)
-{
-    curs_set(visible);
-}
-
-static void
-platform_draw_border(void)
-{
-    int col;
-    for (col = 0; col < COLS; ++col) {
-        mvaddch(0, col, ACS_HLINE);
-        mvaddch(LINES - 1, col, ACS_HLINE);
-    }
-    for (col = 0; col < LINES; ++col) {
-        mvaddch(col, 0, ACS_VLINE);
-        mvaddch(col, COLS - 1, ACS_VLINE);
-    }
-    mvaddch(0, 0, ACS_ULCORNER);
-    mvaddch(0, COLS - 1, ACS_URCORNER);
-    mvaddch(LINES - 1, 0, ACS_LLCORNER);
-    mvaddch(LINES - 1, COLS - 1, ACS_LRCORNER);
-}
-
-static void
-platform_draw_header_line(const char *left, const char *right)
-{
-    int col;
-    int right_col;
-    int shift = 0;
-
-    platform_reverse_on();
-    move(1, 1);
-    for (col = 1; col < COLS - 1; ++col)
-        addch(' ');
-    mvprintw(1, 2, "%s", left);
-    right_col = COLS - (int)strlen(right) - 2 - shift;
-    if (right_col < 2)
-        right_col = 2;
-    mvprintw(1, right_col, "%s", right);
-    platform_reverse_off();
-}
-
-static void
-platform_draw_breadcrumb(const char *text)
-{
-    int col;
-    platform_reverse_on();
-    move(2, 1);
-    for (col = 1; col < COLS - 1; ++col)
-        addch(' ');
-    mvprintw(2, 2, "%s", text ? text : "");
-    platform_reverse_off();
-}
-
-static void
-platform_draw_separator(int row)
-{
-    int col;
-    mvaddch(row, 0, ACS_LTEE);
-    for (col = 1; col < COLS - 1; ++col)
-        mvaddch(row, col, ACS_HLINE);
-    mvaddch(row, COLS - 1, ACS_RTEE);
-}
-
-static void
-platform_read_input(int y, int x, char *buf, int maxlen)
-{
-    echo();
-    mvgetnstr(y, x, buf, maxlen);
-    noecho();
-}
-#endif
-
-static void
-platform_reverse_on(void)
-{
-#ifdef LEGACY_CURSES
-    standout();
-#else
-    attron(A_REVERSE);
-#endif
-}
-
-static void
-platform_reverse_off(void)
-{
-#ifdef LEGACY_CURSES
-    standend();
-#else
-    attroff(A_REVERSE);
-#endif
-}
-
-#ifdef LEGACY_CURSES
-static void
-legacy_draw_box(int top, int left, int height, int width)
-{
-    int row;
-    int col;
-    int bottom = top + height - 1;
-    int right = left + width - 1;
-
-    if (height < 2 || width < 2)
-        return;
-
-    /* Select DEC Special Graphics character set (like matrix.c does) */
-    fputs("\033(0", stdout);
-
-    /* Top edge */
-    printf("\033[%d;%dH", top + 1, left + 1);
-    putchar('l');           /* upper-left corner */
-    for (col = left + 1; col < right; ++col)
-        putchar('q');       /* horizontal line */
-    putchar('k');           /* upper-right corner */
-
-    /* Bottom edge */
-    printf("\033[%d;%dH", bottom + 1, left + 1);
-    putchar('m');           /* lower-left corner */
-    for (col = left + 1; col < right; ++col)
-        putchar('q');       /* horizontal line */
-    putchar('j');           /* lower-right corner */
-
-    /* Vertical sides */
-    for (row = top + 1; row < bottom; ++row) {
-        printf("\033[%d;%dH", row + 1, left + 1);
-        putchar('x');       /* vertical line */
-        printf("\033[%d;%dH", row + 1, right + 1);
-        putchar('x');       /* vertical line */
-    }
-
-    /* Return to ASCII character set */
-    fputs("\033(B", stdout);
-    fflush(stdout);
-}
-#endif
-
+/* Draws text at specified position with optional reverse video highlighting.
+ * Handles platform differences between legacy BSD curses and modern ncurses. */
 static void
 draw_highlighted_text(int row, int col, int width, int highlighted, const char *fmt, ...)
 {
@@ -913,7 +661,7 @@ read_key(void)
     /* Got ESC - always try to read escape sequence for arrow keys */
     next = getch();
     if (next == ERR)
-        return ERR;
+        return ch;
     
     if (next == '[' || next == 'O') {
         /* For VT220/ANSI sequences: ESC [ A or ESC O A */
@@ -935,6 +683,14 @@ read_key(void)
         g_pending_key = dir;
         return ch;
     }
+    if (next == 'A')
+        return KEY_UP;
+    if (next == 'B')
+        return KEY_DOWN;
+    if (next == 'C')
+        return KEY_RIGHT;
+    if (next == 'D')
+        return KEY_LEFT;
     /* Not an arrow key sequence */
     g_pending_key = next;
     return ch;

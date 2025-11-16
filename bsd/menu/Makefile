@@ -4,8 +4,8 @@ LDFLAGS= -O
 PDP11_CFLAGS= -O -i
 PDP11_LDFLAGS= -i
 PROGRAM=	menu
-SRCS=		main.c data.c
-OBJS=		main.o data.o
+SRCS=		main.c data.c platform.c
+OBJS=		main.o data.o platform.o
 LIBS=		-lcurses
 LIBS_PDP11=	-lcurses -ltermcap
 
@@ -47,3 +47,11 @@ tags:
 
 clean:
 	rm -f a.out core *.o ${PROGRAM}
+platform.o: platform.c
+	@if [ "`uname -m`" = "pdp11" ]; then \
+		echo "Building for PDP-11..."; \
+		${CC} ${PDP11_CFLAGS} -DLEGACY_CURSES -D__pdp11__ -c -o $@ platform.c; \
+	else \
+		echo "Building for modern system..."; \
+		${CC} ${CFLAGS} -Wno-deprecated-non-prototype -Wno-deprecated-declarations -Wno-pointer-sign -Wno-parentheses -Wno-incompatible-pointer-types -Wno-format -c -o $@ platform.c; \
+	fi
