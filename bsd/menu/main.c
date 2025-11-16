@@ -13,7 +13,7 @@
  *  PROGRAM:     DAVE'S GARAGE PDP-11 BBS MENU SYSTEM                         *
  *  MODULE:      MAIN.C                                                       *
  *  VERSION:     0.2                                                          *
- *  DATE:        NOVEMBER 2025                                                *
+ *  DATE:        NOVEMBER 15, 2025                                            *
  *                                                                            *
  *  ════════════════════════════════════════════════════════════════════════  *
  *                                                                            *
@@ -142,6 +142,18 @@ struct session {
     int is_admin;
     int current_group;
 };
+
+static const char *g_login_banner[] = {
+"\n"
+"    _____  _____  _____        ____  ____   _____  \n"
+"   |  __ \\|  __ \\|  __ \\      |  _ \\|  _ \\ / ____| \n"
+"   | |__) | |  | | |__) |_____| |_) | |_) | (___   \n"
+"   |  ___/| |  | |  ___/______|  _ <|  _ < \\___ \\  \n"
+"   | |    | |__| | |          | |_) | |_) |____) | \n"
+"   |_|    |_____/|_|          |____/|____/|_____/  \n"
+};
+
+#define LOGIN_BANNER_LINES (int)(sizeof(g_login_banner) / sizeof(g_login_banner[0]))
 
 enum main_menu_action {
     MAIN_MENU_GROUP,
@@ -844,10 +856,15 @@ login_screen(void)
 {
     char user[MAX_AUTHOR];
     char pass[MAX_AUTHOR];
+    int i;
+    int row;
 
     draw_layout("Login", "");
-    mvprintw(8, 4, "Welcome to the PDP-11 message boards.");
-    mvprintw(10, 4, "Enter user id (admin requires password).");
+    for (i = 0; i < LOGIN_BANNER_LINES; ++i)
+        mvprintw(4 + i, 4, "%s", g_login_banner[i]);
+    row = 11;   // leave room for banner
+    mvprintw(row + 1, 4, "Welcome to the PDP-11 message boards.");
+    mvprintw(row + 3, 4, "Enter user id (admin requires password).");
     refresh();
     draw_menu_lines("Enter user id", "", "");
     prompt_string("User id:", user, sizeof user);

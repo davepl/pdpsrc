@@ -1,3 +1,35 @@
+#/******************************************************************************
+# *                                                                            *
+# *  ░███████  ░█████   ░███████        ░████████   ░████████     ░██████      *
+# *  ░██   ░██ ░██ ░██  ░██   ░██       ░██    ░██  ░██    ░██   ░██   ░██     *
+# *  ░██   ░██ ░██  ░██ ░██   ░██       ░██    ░██  ░██    ░██  ░██            *
+# *  ░███████  ░██  ░██ ░███████  ░████ ░████████   ░████████    ░████████     *
+# *  ░██       ░██  ░██ ░██             ░██     ░██ ░██     ░██         ░██    *
+# *  ░██       ░██ ░██  ░██             ░██     ░██ ░██     ░██  ░██   ░██     *
+# *  ░██       ░█████   ░██             ░█████████  ░█████████    ░██████      *
+# *                                                                            *
+# *  ════════════════════════════════════════════════════════════════════════  *
+# *                                                                            *
+# *  PROGRAM:     DAVE'S GARAGE PDP-11 BBS MENU SYSTEM                         *
+# *  MODULE:      DATA.C                                                       *
+# *  VERSION:     0.2                                                          *
+# *  DATE:        NOVEMBER 2025                                                *
+# *                                                                            *
+# *  ════════════════════════════════════════════════════════════════════════  *
+# *                                                                            *
+# *  DESCRIPTION:                                                              *
+# *                                                                            *
+# *    Centralizes all persistent storage: groups, messages, address book,     *
+# *    configuration, and global locking. Provides safe string utilities,      *
+# *    disk I/O helpers, and record caching used by the UI layer.              *
+# *                                                                            *
+# *  ════════════════════════════════════════════════════════════════════════  *
+# *                                                                            *
+# *  AUTHOR:      DAVE PLUMMER                                                 *
+# *  LICENSE:     GPL 2.0                                                      *
+# *                                                                            *
+# ******************************************************************************/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -33,6 +65,8 @@ static int save_messages_direct(const char *group_name, struct message *messages
 static int acquire_lock(void);
 static void release_lock(void);
 
+// Trims CR/LF characters off the end of a string read from disk.
+
 void
 trim_newline(char *text)
 {
@@ -47,6 +81,8 @@ trim_newline(char *text)
     }
 }
 
+// Safe string copy that always NUL-terminates the destination buffer.
+
 void
 safe_copy(char *dst, size_t dstlen, const char *src)
 {
@@ -60,6 +96,8 @@ safe_copy(char *dst, size_t dstlen, const char *src)
         dst[i] = src[i];
     dst[i] = '\0';
 }
+
+// Appends a string to another string with bounds checking.
 
 void
 safe_append(char *dst, size_t dstlen, const char *src)
@@ -76,6 +114,8 @@ safe_append(char *dst, size_t dstlen, const char *src)
     dst[used] = '\0';
 }
 
+// Appends a single character to a bounded string buffer.
+
 void
 safe_append_char(char *dst, size_t dstlen, char ch)
 {
@@ -85,6 +125,8 @@ safe_append_char(char *dst, size_t dstlen, char ch)
     tmp[1] = '\0';
     safe_append(dst, dstlen, tmp);
 }
+
+// Appends an integer in decimal form to the destination string.
 
 void
 safe_append_number(char *dst, size_t dstlen, long value)
@@ -118,6 +160,8 @@ safe_append_number(char *dst, size_t dstlen, long value)
     }
 }
 
+// Appends a two-digit zero-padded number for dates/times.
+
 void
 safe_append_two_digit(char *dst, size_t dstlen, int value)
 {
@@ -131,6 +175,8 @@ safe_append_two_digit(char *dst, size_t dstlen, int value)
     tmp[2] = '\0';
     safe_append(dst, dstlen, tmp);
 }
+
+// Ensures the data directory exists before reading/writing files.
 
 void
 ensure_data_dir(void)
@@ -148,6 +194,8 @@ ensure_data_dir(void)
     }
 }
 
+// Initializes configuration defaults so load failures have sane values.
+
 void
 init_config(void)
 {
@@ -155,6 +203,8 @@ init_config(void)
     g_config.signature[0] = '\0';
     g_config.password[0] = '\0';
 }
+
+// Loads groups from disk into memory, respecting deletion flags.
 
 int
 load_groups(void)
@@ -193,6 +243,8 @@ load_groups(void)
     return 0;
 }
 
+// Writes current group metadata back to disk.
+
 int
 save_groups(void)
 {
@@ -212,6 +264,8 @@ save_groups(void)
     unlock_guard();
     return 0;
 }
+
+// Builds the path to a group message file using a sanitized name.
 
 static int
 build_group_path(const char *group_name, char *path, int maxlen)
@@ -236,6 +290,8 @@ build_group_path(const char *group_name, char *path, int maxlen)
     return 0;
 }
 
+// Loads all messages for a given group into the in-memory cache.
+
 int
 load_messages_for_group(int group_index)
 {
@@ -252,6 +308,8 @@ load_messages_for_group(int group_index)
     return 0;
 }
 
+// Persists the in-memory message cache for a specific group.
+
 int
 save_messages_for_group(int group_index)
 {
@@ -259,6 +317,8 @@ save_messages_for_group(int group_index)
         return -1;
     return save_messages_direct(g_groups[group_index].name, g_cached_messages, g_cached_message_count);
 }
+
+// Reads messages from disk into a newly allocated array.
 
 static int
 load_messages_direct(const char *group_name, struct message **messages, int *count)
@@ -338,6 +398,8 @@ load_messages_direct(const char *group_name, struct message **messages, int *cou
     return 0;
 }
 
+// Writes the provided message array to disk for a given group.
+
 static int
 save_messages_direct(const char *group_name, struct message *messages, int count)
 {
@@ -369,6 +431,8 @@ save_messages_direct(const char *group_name, struct message *messages, int count
     return 0;
 }
 
+// Releases the cached message array to free memory.
+
 void
 free_cached_messages(void)
 {
@@ -378,6 +442,8 @@ free_cached_messages(void)
     }
     g_cached_message_count = 0;
 }
+
+// Computes the next available message ID by scanning cached data.
 
 int
 next_message_id(void)
@@ -392,6 +458,8 @@ next_message_id(void)
     }
     return max_id + 1;
 }
+
+// Copies a message into another group's file, used by save/forward flows.
 
 int
 copy_message_to_group(struct message *msg, const char *group_name)
@@ -419,6 +487,8 @@ copy_message_to_group(struct message *msg, const char *group_name)
     free(msgs);
     return rc;
 }
+
+// Loads the address book file into memory.
 
 void
 load_address_book(void)
@@ -456,6 +526,8 @@ load_address_book(void)
     unlock_guard();
 }
 
+// Saves the in-memory address book out to disk.
+
 void
 save_address_book(void)
 {
@@ -475,6 +547,8 @@ save_address_book(void)
     fclose(fp);
     unlock_guard();
 }
+
+// Loads key/value configuration file for printer/signature/password.
 
 void
 load_config(void)
@@ -508,6 +582,8 @@ load_config(void)
     unlock_guard();
 }
 
+// Writes configuration data back to disk.
+
 void
 save_config(void)
 {
@@ -525,6 +601,8 @@ save_config(void)
     fclose(fp);
     unlock_guard();
 }
+
+// Attempts to acquire a simple lock by creating a .lock file.
 
 static int
 acquire_lock(void)
@@ -566,6 +644,8 @@ acquire_lock(void)
     return -1;
 }
 
+// Releases the lock when critical section is complete.
+
 static void
 release_lock(void)
 {
@@ -576,12 +656,16 @@ release_lock(void)
         unlink(LOCK_FILE);
 }
 
+// Public entry point to acquire the guard lock and warn on failure.
+
 void
 lock_guard(void)
 {
     if (acquire_lock() != 0)
         fprintf(stderr, "Unable to acquire global lock.\n");
 }
+
+// Matching unlock for lock_guard, releasing the global lock file.
 
 void
 unlock_guard(void)

@@ -1,3 +1,36 @@
+#/******************************************************************************
+# *                                                                            *
+# *  ░███████  ░█████   ░███████        ░████████   ░████████     ░██████      *
+# *  ░██   ░██ ░██ ░██  ░██   ░██       ░██    ░██  ░██    ░██   ░██   ░██     *
+# *  ░██   ░██ ░██  ░██ ░██   ░██       ░██    ░██  ░██    ░██  ░██            *
+# *  ░███████  ░██  ░██ ░███████  ░████ ░████████   ░████████    ░████████     *
+# *  ░██       ░██  ░██ ░██             ░██     ░██ ░██     ░██         ░██    *
+# *  ░██       ░██ ░██  ░██             ░██     ░██ ░██     ░██  ░██   ░██     *
+# *  ░██       ░█████   ░██             ░█████████  ░█████████    ░██████      *
+# *                                                                            *
+# *  ════════════════════════════════════════════════════════════════════════  *
+# *                                                                            *
+# *  PROGRAM:     DAVE'S GARAGE PDP-11 BBS MENU SYSTEM                         *
+# *  MODULE:      PLATFORM.C                                                   *
+# *  VERSION:     0.2                                                          *
+# *  DATE:        NOVEMBER 2025                                                *
+# *                                                                            *
+# *  ════════════════════════════════════════════════════════════════════════  *
+# *                                                                            *
+# *  DESCRIPTION:                                                              *
+# *                                                                            *
+# *    Encapsulates all platform-specific UI helpers: borders, headers,        *
+# *    breadcrumbs, separators, input handling, reverse video, and legacy      *
+# *    DEC special-graphics drawing. Abstracts VT220 vs. modern ncurses        *
+# *    differences behind consistent APIs used by main.c.                      *
+# *                                                                            *
+# *  ════════════════════════════════════════════════════════════════════════  *
+# *                                                                            *
+# *  AUTHOR:      DAVE PLUMMER                                                 *
+# *  LICENSE:     GPL 2.0                                                      *
+# *                                                                            *
+# ******************************************************************************/
+
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>
@@ -8,6 +41,9 @@ static int legacy_mvgetnstr(int y, int x, char *buf, int maxlen);
 #endif
 
 #ifdef LEGACY_CURSES
+
+// Toggles cursor visibility using VT220 escape codes or curses API.
+
 void
 platform_set_cursor(int visible)
 {
@@ -15,6 +51,8 @@ platform_set_cursor(int visible)
     fputs(seq, stdout);
     fflush(stdout);
 }
+
+// Paints the screen border using DEC graphics for legacy terminals.
 
 void
 platform_draw_border(void)
@@ -47,6 +85,8 @@ platform_draw_border(void)
     fflush(stdout);
 }
 
+// Renders the top banner with title and user info in reverse video.
+
 void
 platform_draw_header_line(const char *left, const char *right)
 {
@@ -68,6 +108,8 @@ platform_draw_header_line(const char *left, const char *right)
     platform_reverse_off();
 }
 
+// Displays the breadcrumb line below the banner, padded edge to edge.
+
 void
 platform_draw_breadcrumb(const char *text)
 {
@@ -81,6 +123,8 @@ platform_draw_breadcrumb(const char *text)
     platform_reverse_off();
     refresh();
 }
+
+// Draws the menu separator line using DEC graphics characters.
 
 void
 platform_draw_separator(int row)
@@ -97,6 +141,8 @@ platform_draw_separator(int row)
     fflush(stdout);
 }
 
+// Reads keyboard input on legacy terminals via custom mvgetnstr logic.
+
 void
 platform_read_input(int y, int x, char *buf, int maxlen)
 {
@@ -104,6 +150,8 @@ platform_read_input(int y, int x, char *buf, int maxlen)
     legacy_mvgetnstr(y, x, buf, maxlen);
     noecho();
 }
+
+// Minimal reimplementation of mvgetnstr for legacy curses that lack it.
 
 static int
 legacy_mvgetnstr(int y, int x, char *buf, int maxlen)
@@ -153,6 +201,8 @@ legacy_mvgetnstr(int y, int x, char *buf, int maxlen)
     return len;
 }
 
+// Draws a sample box using DEC special graphics; useful for demos.
+
 void
 legacy_draw_box(int top, int left, int height, int width)
 {
@@ -189,11 +239,15 @@ legacy_draw_box(int top, int left, int height, int width)
     fflush(stdout);
 }
 
+// Enables reverse video under legacy curses using standout().
+
 void
 platform_reverse_on(void)
 {
     standout();
 }
+
+// Disables reverse video and returns to normal text attributes.
 
 void
 platform_reverse_off(void)
@@ -203,11 +257,15 @@ platform_reverse_off(void)
 
 #else
 
+// Modern curses cursor toggle using curses API.
+
 void
 platform_set_cursor(int visible)
 {
     curs_set(visible);
 }
+
+// Draws the UI border using ncurses ACS line-drawing characters.
 
 void
 platform_draw_border(void)
@@ -227,6 +285,7 @@ platform_draw_border(void)
     mvaddch(LINES - 1, COLS - 1, ACS_LRCORNER);
 }
 
+// Draws the header banner in reverse video on modern systems.
 void
 platform_draw_header_line(const char *left, const char *right)
 {
@@ -245,6 +304,7 @@ platform_draw_header_line(const char *left, const char *right)
     platform_reverse_off();
 }
 
+// Paints the breadcrumb line using standard ncurses calls.
 void
 platform_draw_breadcrumb(const char *text)
 {
@@ -258,6 +318,7 @@ platform_draw_breadcrumb(const char *text)
     platform_reverse_off();
 }
 
+// Draws the bottom separator line in ncurses.
 void
 platform_draw_separator(int row)
 {
@@ -268,6 +329,7 @@ platform_draw_separator(int row)
     mvaddch(row, COLS - 1, ACS_RTEE);
 }
 
+// Reads user input using mvgetnstr on modern curses implementations.
 void
 platform_read_input(int y, int x, char *buf, int maxlen)
 {
@@ -276,12 +338,14 @@ platform_read_input(int y, int x, char *buf, int maxlen)
     noecho();
 }
 
+// Enables reverse video (standout) in ncurses.
 void
 platform_reverse_on(void)
 {
     attron(A_REVERSE);
 }
 
+// Disables reverse video (standout) in ncurses.
 void
 platform_reverse_off(void)
 {
