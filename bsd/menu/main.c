@@ -354,20 +354,9 @@ platform_draw_border(void)
     int col;
     int row;
     
-    /* Put placeholder spaces in curses buffer at border positions */
-    for (col = 0; col < COLS; ++col) {
-        mvaddch(0, col, ' ');
-        mvaddch(LINES - 1, col, ' ');
-    }
-    for (row = 0; row < LINES; ++row) {
-        mvaddch(row, 0, ' ');
-        mvaddch(row, COLS - 1, ' ');
-    }
+    /* Draw border with DEC graphics using direct output after curses refresh */
+    /* This will be called after content is in curses buffer */
     
-    /* Now refresh to get curses content (headers, etc.) on screen */
-    refresh();
-    
-    /* Now overlay DEC graphics on top using direct output */
     fputs("\033(0", stdout);
     
     /* Top border: ┌──...──┐ */
@@ -402,52 +391,33 @@ platform_draw_header_line(const char *left, const char *right)
     int i;
     int gap;
 
-    /* Start at column 2 to leave room for left border at column 0 */
-    move(1, 2);
+    /* Start at column 1 and fill to COLS-2 for border-to-border reverse video */
+    move(1, 1);
     platform_reverse_on();
+    addch(' ');
     addstr(left);
     
-    gap = COLS - (int)strlen(right) - 4 - (int)strlen(left);
+    gap = COLS - (int)strlen(right) - (int)strlen(left) - 4;
     if (gap < 0)
         gap = 0;
     for (i = 0; i < gap; ++i)
         addch(' ');
     
     addstr(right);
+    addch(' ');
     platform_reverse_off();
-    refresh();
 }
 
 static void
 platform_draw_breadcrumb(const char *text)
 {
-#ifdef LEGACY_CURSES
-    {
-        char line[256];
-        int width = COLS - 4;
-        int copy_len;
-        if (width > (int)sizeof line - 1)
-            width = (int)sizeof line - 1;
-        if (width < 0)
-            width = 0;
-        memset(line, ' ', width);
-        line[width] = '\0';
-        if (text && *text) {
-            copy_len = (int)strlen(text);
-            if (copy_len > width)
-                copy_len = width;
-        memcpy(line, text, copy_len);
-    }
-    printf("\033[3;3H\033[7m%-*s\033[0m", width, line);
-    fflush(stdout);
-}
-#else
     int i;
     int textlen;
     int padding;
 
-    move(2, 2);
+    move(2, 1);
     platform_reverse_on();
+    addch(' ');
     if (text && *text) {
         addstr(text);
         textlen = (int)strlen(text);
@@ -461,9 +431,8 @@ platform_draw_breadcrumb(const char *text)
     for (i = 0; i < padding; ++i)
         addch(' ');
     
+    addch(' ');
     platform_reverse_off();
-    refresh();
-#endif
 }
 
 static void
@@ -488,7 +457,7 @@ platform_draw_separator(int row)
 static void
 platform_read_input(int y, int x, char *buf, int maxlen)
 {
-    noecho();
+    echo();
     legacy_mvgetnstr(y, x, buf, maxlen);
     noecho();
 }
@@ -832,7 +801,6 @@ draw_layout(const char *title, const char *status)
     char header_right[80];
 
     clear();
-    platform_draw_border();
 
     safe_copy(header_left, sizeof header_left, PROGRAM_TITLE);
     safe_append(header_left, sizeof header_left, " ");
@@ -852,10 +820,13 @@ draw_layout(const char *title, const char *status)
     platform_draw_header_line(header_left, header_right);
     platform_draw_breadcrumb(g_breadcrumb);
 
-    mvprintw(3, 4, "%s", title);
+    mvprintw(6, 4, "%s", title);
     if (status && *status)
-        mvprintw(3, COLS - (int)strlen(status) - 3, "%s", status);
+        mvprintw(6, COLS - (int)strlen(status) - 3, "%s", status);
+    
+    /* Refresh curses buffer to screen, THEN draw DEC graphics border over it */
     refresh();
+    platform_draw_border();
 
     menu_bar = LINES - MENU_ROWS - 1;
     platform_draw_separator(menu_bar);
@@ -891,12 +862,20 @@ static void
 prompt_string(const char *label, char *buffer, int maxlen)
 {
     int row;
+    int menu_bar;
 
     row = LINES - MENU_ROWS - 3;
     mvprintw(row, 2, "%-*s", COLS - 4, "");
     mvprintw(row, 2, "%s", label);
+    refresh();
+    
+    /* Redraw border and separator after refresh erases them */
+    platform_draw_border();
+    menu_bar = LINES - MENU_ROWS - 1;
+    platform_draw_separator(menu_bar);
+    
     platform_set_cursor(1);
-    platform_read_input(row + 1, 4, buffer, maxlen - 1);
+    platform_read_input(row + 1, 5, buffer, maxlen - 1);
     platform_set_cursor(0);
     trim_newline(buffer);
 }
@@ -1111,8 +1090,9 @@ login_screen(void)
     char pass[MAX_AUTHOR];
 
     draw_layout("Login", "");
-    mvprintw(6, 4, "Welcome to the PDP-11 message boards.");
-    mvprintw(8, 4, "Enter user id (admin requires password).");
+    mvprintw(8, 4, "Welcome to the PDP-11 message boards.");
+    mvprintw(10, 4, "Enter user id (admin requires password).");
+    refresh();
     draw_menu_lines("Enter user id", "", "");
     prompt_string("User id:", user, sizeof user);
     if (user[0] == '\0')
@@ -1249,7 +1229,6 @@ main_menu_screen(void)
         highlight = entry_count - 1;
 
     draw_layout("Main Menu - Select a Group to Browse Messages", "");
-    mvprintw(4, 2, "%-*s", COLS - 4, "");
     draw_main_options(entries, entry_count, highlight);
     refresh();
 
@@ -1471,7 +1450,7 @@ draw_group_rows(int highlight)
     int i;
     const char *flag;
 
-    row = 5;
+    row = 8;
     mvprintw(row - 1, 4, "%-4s %-24s %-40s", "No.", "Group", "Description");
     for (i = 0; i < g_group_count && row < LINES - MENU_ROWS - 2; ++i, ++row) {
         flag = g_groups[i].deleted ? "D" : " ";
@@ -1624,7 +1603,7 @@ draw_post_rows(int highlight)
     char stamp[32];
     char status;
 
-    row = 5;
+    row = 8;
     mvprintw(row - 1, 2, "%-4s %-2s %-5s %-16s %-40s", "No", "St", "ID", "Poster", "Subject");
     for (i = 0; i < g_cached_message_count && row < LINES - MENU_ROWS - 2; ++i, ++row) {
         status = g_cached_messages[i].deleted ? 'D' : (g_cached_messages[i].answered ? 'A' : 'N');
@@ -2091,7 +2070,7 @@ draw_address_rows(int highlight)
     int row;
     int i;
 
-    row = 5;
+    row = 8;
     mvprintw(row - 1, 3, "%-4s %-12s %-20s %-32s", "No", "Nick", "Fullname", "Address/List");
     for (i = 0; i < g_addr_count && row < LINES - MENU_ROWS - 2; ++i, ++row) {
         draw_highlighted_text(row, 3, COLS - 5, i == highlight,
