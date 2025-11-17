@@ -131,6 +131,7 @@ platform_draw_separator(int row)
 {
     int col;
 
+    row = LINES - PROMPT_ROW_OFFSET - 1;
     fputs("\033(0", stdout);
     printf("\033[%d;1H", row + 1);
     putchar('t');
@@ -323,6 +324,7 @@ void
 platform_draw_separator(int row)
 {
     int col;
+    row = LINES - PROMPT_ROW_OFFSET - 1;
     mvaddch(row, 0, ACS_LTEE);
     for (col = 1; col < COLS - 1; ++col)
         mvaddch(row, col, ACS_HLINE);

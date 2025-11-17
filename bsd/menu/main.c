@@ -370,15 +370,15 @@ pop_screen(void)
     return 1;
 }
 
-/* Handles back/quit key by popping navigation stack or prompting to exit.
- * Returns 1 if navigation occurred, sets g_running=0 to exit if confirmed. */
+/* Handles back/quit key by popping navigation stack or prompting logout.
+ * Returns 1 if navigation occurred or logout confirmed. */
 static int
 handle_back_navigation(void)
 {
     if (pop_screen())
         return 1;
     if (confirm_exit_prompt())
-        g_running = 0;
+        logout_session();
     return 0;
 }
 
@@ -624,7 +624,7 @@ prompt_string(const char *label, char *buffer, int maxlen)
     int row;
     int col;
 
-    row = LINES - MENU_ROWS - 3;
+    row = LINES - PROMPT_ROW_OFFSET;
     move(row, 2);
     clrtoeol();
     mvprintw(row, 2, "%s ", label);
@@ -727,60 +727,16 @@ normalize_key(int ch)
 static int
 confirm_exit_prompt(void)
 {
-    const char *msg = "Exit BBS? (Y/N)";
-    int box_w = 20;
-    int box_h = 10;
-    int top = (LINES - box_h) / 2;
-    int left = (COLS - box_w) / 2;
-    int row;
-    int col;
-    int msg_row;
-    int msg_col;
-    int ch;
-    int key;
+    char buf[8];
+    int row = LINES - PROMPT_ROW_OFFSET;
 
-    if (top < 0)
-        top = 0;
-    if (left < 0)
-        left = 0;
-    if (box_h > LINES)
-        box_h = LINES;
-    if (box_w > COLS)
-        box_w = COLS;
-
-    for (row = 0; row < box_h; ++row) {
-        for (col = 0; col < box_w; ++col) {
-            int screen_row = top + row;
-            int screen_col = left + col;
-            char border;
-            if (row == 0 || row == box_h - 1) {
-                if (col == 0 || col == box_w - 1)
-                    border = '+';
-                else
-                    border = '-';
-            } else if (col == 0 || col == box_w - 1) {
-                border = '|';
-            } else {
-                border = ' ';
-            }
-            mvaddch(screen_row, screen_col, border);
-        }
-    }
-    msg_row = top + box_h / 2;
-    msg_col = left + (box_w - (int)strlen(msg)) / 2;
-    if (msg_col < left + 1)
-        msg_col = left + 1;
-    mvprintw(msg_row, msg_col, "%s", msg);
+    prompt_string("Logout (Y/N):", buf, sizeof buf);
+    move(row, 2);
+    clrtoeol();
     refresh();
-
-    while (1) {
-        ch = read_key();
-        key = normalize_key(ch);
-        if (key == 'Y')
-            return 1;
-        if (key == 'N' || is_back_key(ch))
-            return 0;
-    }
+    if (buf[0] == 'y' || buf[0] == 'Y')
+        return 1;
+    return 0;
 }
 
 static void
@@ -942,14 +898,6 @@ build_main_menu_entries(struct main_menu_entry *entries, int max_entries)
     }
 
     if (count < max_entries) {
-        entries[count].key = 'B';
-        entries[count].action = MAIN_MENU_BACK;
-        entries[count].group_index = -1;
-        safe_copy(entries[count].label, sizeof entries[count].label, "Back - Return to previous menu");
-        ++count;
-    }
-
-    if (count < max_entries) {
         entries[count].key = 'S';
         entries[count].action = MAIN_MENU_SETUP;
         entries[count].group_index = -1;
@@ -962,6 +910,14 @@ build_main_menu_entries(struct main_menu_entry *entries, int max_entries)
         entries[count].action = MAIN_MENU_QUIT;
         entries[count].group_index = -1;
         safe_copy(entries[count].label, sizeof entries[count].label, "Quit");
+        ++count;
+    }
+
+    if (count < max_entries) {
+        entries[count].key = 'B';
+        entries[count].action = MAIN_MENU_BACK;
+        entries[count].group_index = -1;
+        safe_copy(entries[count].label, sizeof entries[count].label, "Back - Return to previous menu");
         ++count;
     }
 
@@ -1011,8 +967,7 @@ main_menu_screen(void)
         ch = read_key();
         key = normalize_key(ch);
         if (is_back_key(ch)) {
-            handle_back_navigation();
-            if (!g_running)
+            if (handle_back_navigation() && g_screen != SCREEN_MAIN)
                 return;
             continue;
         }
@@ -1053,9 +1008,11 @@ main_menu_screen(void)
 
         switch (entries[activate].action) {
         case MAIN_MENU_BACK:
-            handle_back_navigation();
-            if (!g_running)
-                return;
+            if (handle_back_navigation()) {
+                g_last_highlight = highlight;
+                if (g_screen != SCREEN_MAIN)
+                    return;
+            }
             break;
         case MAIN_MENU_GROUP:
             if (entries[activate].group_index >= 0 &&
@@ -1075,10 +1032,9 @@ main_menu_screen(void)
             g_last_highlight = highlight;
             return;
         case MAIN_MENU_QUIT:
-            if (prompt_yesno("Exit BBS? y/n"))
-                g_running = 0;
-            if (!g_running) {
-                g_last_highlight = highlight;
+            if (confirm_exit_prompt()) {
+                logout_session();
+                g_last_highlight = 0;
                 return;
             }
             break;
@@ -1278,29 +1234,11 @@ group_list_screen(void)
         if (is_back_key(ch)) {
             if (handle_back_navigation())
                 break;
-            if (!g_running)
-                return;
             continue;
         }
         if (key == 'B') {
             if (handle_back_navigation())
                 break;
-            if (!g_running)
-                return;
-            continue;
-        }
-        if (key == 'B') {
-            if (handle_back_navigation())
-                break;
-            if (!g_running)
-                return;
-            continue;
-        }
-        if (key == 'B') {
-            if (handle_back_navigation())
-                break;
-            if (!g_running)
-                return;
             continue;
         }
         if (ch == KEY_UP) {
@@ -1439,8 +1377,6 @@ post_index_screen(void)
         if (is_back_key(ch)) {
             if (handle_back_navigation())
                 break;
-            if (!g_running)
-                return;
             continue;
         }
         if (ch == KEY_UP) {
@@ -1518,8 +1454,6 @@ post_view_screen(int message_index)
         key = normalize_key(ch);
         if (is_back_key(ch) || key == 'B' || key == 'E') {
             if (handle_back_navigation())
-                return;
-            if (!g_running)
                 return;
         } else if (key == 'D') {
             delete_or_undelete(msg, 1);
@@ -1874,8 +1808,6 @@ address_book_screen(void)
         if (is_back_key(ch)) {
             if (handle_back_navigation())
                 break;
-            if (!g_running)
-                return;
             continue;
         }
         if (ch == KEY_UP) {
@@ -1971,8 +1903,6 @@ setup_screen(void)
         key = normalize_key(ch);
         if (is_back_key(ch) || key == 'B') {
             if (handle_back_navigation())
-                return;
-            if (!g_running)
                 return;
             continue;
         }

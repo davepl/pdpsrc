@@ -4,6 +4,7 @@
 #include <curses.h>
 
 #define CTRL_KEY(x) ((x) & 0x1f)
+#define PROMPT_ROW_OFFSET 2
 #ifndef KEY_ENTER
 #define KEY_ENTER '\n'
 #endif
