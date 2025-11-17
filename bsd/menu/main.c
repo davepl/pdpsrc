@@ -622,20 +622,18 @@ static void
 prompt_string(const char *label, char *buffer, int maxlen)
 {
     int row;
-    int menu_bar;
+    int col;
 
     row = LINES - MENU_ROWS - 3;
-    mvprintw(row, 2, "%-*s", COLS - 4, "");
-    mvprintw(row, 2, "%s", label);
-    refresh();
-    
-    /* Redraw border and separator after refresh erases them */
-    platform_draw_border();
-    menu_bar = LINES - MENU_ROWS - 1;
-    platform_draw_separator(menu_bar);
-    
+    move(row, 2);
+    clrtoeol();
+    mvprintw(row, 2, "%s ", label);
+    col = 2 + (int)strlen(label) + 1;
+    if (col >= COLS - 2)
+        col = COLS - 3;
+    move(row, col);
     platform_set_cursor(1);
-    platform_read_input(row + 1, 5, buffer, maxlen - 1);
+    platform_read_input(row, col, buffer, maxlen - 1);
     platform_set_cursor(0);
     trim_newline(buffer);
 }
@@ -861,11 +859,14 @@ login_screen(void)
 
     draw_layout("Login", "");
     for (i = 0; i < LOGIN_BANNER_LINES; ++i)
-        mvprintw(4 + i, 4, "%s", g_login_banner[i]);
+        mvprintw(4 + i, 2, "%s", g_login_banner[i]);
     row = 11;   // leave room for banner
-    mvprintw(row + 1, 4, "Welcome to the PDP-11 message boards.");
-    mvprintw(row + 3, 4, "Enter user id (admin requires password).");
+    mvprintw(row + 1, 2, "Welcome to the PDP-11 message boards.");
+    mvprintw(row + 3, 2, "Enter user id (admin requires password).");
     refresh();
+    platform_draw_border();
+    platform_draw_separator(LINES - MENU_ROWS - 1);
+    platform_draw_breadcrumb(g_breadcrumb);
     draw_menu_lines("Enter user id", "", "");
     prompt_string("User id:", user, sizeof user);
     if (user[0] == '\0')
