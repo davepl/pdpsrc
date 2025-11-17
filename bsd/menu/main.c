@@ -56,6 +56,7 @@
 #include <sys/time.h>
 #include "data.h"
 #include "platform.h"
+#include "menu.h"
 
 #if defined(__APPLE__) || defined(__MACH__) || defined(__linux__)
 #include <unistd.h>
@@ -67,56 +68,6 @@ extern unsigned sleep();
 #endif
 #if defined(__pdp11__)
 #define remove unlink
-#endif
-
-#ifndef A_REVERSE
-#ifdef A_STANDOUT
-#define A_REVERSE A_STANDOUT
-#else
-#define A_REVERSE 0x01
-#endif
-#endif
-#ifndef KEY_ENTER
-#define KEY_ENTER '\n'
-#endif
-#ifndef KEY_UP
-#define KEY_UP 0403
-#endif
-#ifndef KEY_DOWN
-#define KEY_DOWN 0402
-#endif
-#ifndef KEY_LEFT
-#define KEY_LEFT 0404
-#endif
-#ifndef KEY_RIGHT
-#define KEY_RIGHT 0405
-#endif
-#ifndef KEY_BACKSPACE
-#define KEY_BACKSPACE 0407
-#endif
-#ifndef ACS_HLINE
-#define ACS_HLINE '-'
-#endif
-#ifndef ACS_VLINE
-#define ACS_VLINE '|'
-#endif
-#ifndef ACS_ULCORNER
-#define ACS_ULCORNER '+'
-#endif
-#ifndef ACS_URCORNER
-#define ACS_URCORNER '+'
-#endif
-#ifndef ACS_LLCORNER
-#define ACS_LLCORNER '+'
-#endif
-#ifndef ACS_LRCORNER
-#define ACS_LRCORNER '+'
-#endif
-#ifndef ACS_LTEE
-#define ACS_LTEE '+'
-#endif
-#ifndef ACS_RTEE
-#define ACS_RTEE '+'
 #endif
 
 #ifdef LEGACY_CURSES
@@ -159,8 +110,15 @@ enum main_menu_action {
     MAIN_MENU_GROUP,
     MAIN_MENU_GROUP_MGMT,
     MAIN_MENU_BACK,
-    MAIN_MENU_SETUP,
-    MAIN_MENU_QUIT
+    MAIN_MENU_SETUP
+};
+
+enum group_menu_entry_type {
+    GROUP_MENU_ENTRY_GROUP = 0,
+    GROUP_MENU_ENTRY_CREATE,
+    GROUP_MENU_ENTRY_DELETE,
+    GROUP_MENU_ENTRY_EDIT,
+    GROUP_MENU_ENTRY_BACK
 };
 
 struct main_menu_entry {
@@ -171,6 +129,7 @@ struct main_menu_entry {
 };
 
 #define MAX_MAIN_MENU_ENTRIES 16
+#define GROUP_MENU_LABEL_LEN (MAX_GROUP_NAME + MAX_GROUP_DESC + 16)
 
 static struct session g_session;
 static enum screen_id g_screen = SCREEN_LOGIN;
@@ -178,6 +137,45 @@ static int g_running = 1;
 static int g_last_highlight = 0;
 static char g_compose_prefill_to[MAX_ADDRESS];
 static int g_ui_ready = 0;
+
+static void
+draw_highlighted_text(int row, int col, int width, int highlighted, const char *fmt, ...)
+{
+    char buf[256];
+    va_list ap;
+
+    va_start(ap, fmt);
+    vsprintf(buf, fmt, ap);
+    va_end(ap);
+
+#ifdef LEGACY_CURSES
+    {
+        int fill = width > 0 ? width : (int)strlen(buf);
+        move(row, col);
+        clrtoeol();
+        printf("\033[%d;%dH", row + 1, col + 1);
+        if (highlighted)
+            printf("\033[7m%s\033[0m", buf);
+        else
+            printf("%s", buf);
+        if (width > 0 && (int)strlen(buf) < fill) {
+            int pad = fill - (int)strlen(buf);
+            while (pad-- > 0)
+                printf(" ");
+        }
+        fflush(stdout);
+    }
+#else
+    if (highlighted)
+        attron(A_REVERSE);
+    if (width > 0)
+        mvprintw(row, col, "%-*s", width, buf);
+    else
+        mvprintw(row, col, "%s", buf);
+    if (highlighted)
+        attroff(A_REVERSE);
+#endif
+}
 
 /* Static buffers to avoid stack overflow on PDP-11 */
 static char g_compose_buffer_to[MAX_ADDRESS];
@@ -204,23 +202,24 @@ static void show_help(const char *title, const char *body);
 static void login_screen(void);
 static void main_menu_screen(void);
 static void group_list_screen(void);
+static char group_menu_key_for_index(int idx);
 static void post_index_screen(void);
 static void post_view_screen(int message_index);
 static void compose_screen(struct message *reply_source, int forward_mode);
 static void address_book_screen(void);
 static void setup_screen(void);
 static void draw_group_rows(int highlight);
+static void handle_group_action(char action_key, int group_index);
 static void draw_post_rows(int highlight);
 static void draw_address_rows(int highlight);
 static int build_main_menu_entries(struct main_menu_entry *entries, int max_entries);
-static void draw_main_options(const struct main_menu_entry *entries, int count, int highlight);
 static void update_status_line(void);
 static void render_body_text(const char *body, int start_row, int max_rows);
 static void edit_body(char *buffer, int maxlen);
 static void draw_group_list_commands(void);
 static const char *current_group_name(void);
 static void add_group(void);
-static void rename_group(int idx);
+static void edit_group_details(int idx);
 static void mark_delete_group(int idx);
 static void expunge_groups(void);
 static void select_group(int idx);
@@ -246,7 +245,6 @@ static int normalize_key(int ch);
 static int confirm_exit_prompt(void);
 static void draw_back_hint(void);
 int require_admin(const char *action);
-static void draw_highlighted_text(int row, int col, int width, int highlighted, const char *fmt, ...);
 static void set_current_label(const char *label, enum screen_id id);
 static void reset_navigation(enum screen_id screen, const char *label);
 static void push_screen(enum screen_id next, const char *label);
@@ -408,39 +406,6 @@ open_post_view(int index)
 
 /* Draws text at specified position with optional reverse video highlighting.
  * Handles platform differences between legacy BSD curses and modern ncurses. */
-static void
-draw_highlighted_text(int row, int col, int width, int highlighted, const char *fmt, ...)
-{
-    char buf[256];
-    va_list ap;
-
-    va_start(ap, fmt);
-    vsprintf(buf, fmt, ap);
-    va_end(ap);
-
-#ifdef LEGACY_CURSES
-    {
-        int fill = width > 0 ? width : (int)strlen(buf);
-        if (highlighted)
-            printf("\033[%d;%dH\033[7m%s\033[0m", row + 1, col + 1, buf);
-        else
-            printf("\033[%d;%dH%s", row + 1, col + 1, buf);
-        if (width > 0 && (int)strlen(buf) < fill) {
-            int pad = fill - (int)strlen(buf);
-            while (pad-- > 0)
-                printf(" ");
-        }
-        fflush(stdout);
-    }
-#else
-    if (highlighted)
-        attron(A_REVERSE);
-    mvprintw(row, col, "%s", buf);
-    if (highlighted)
-        attroff(A_REVERSE);
-#endif
-}
-
 int
 main(int argc, char **argv)
 {
@@ -730,11 +695,11 @@ confirm_exit_prompt(void)
     char buf[8];
     int row = LINES - PROMPT_ROW_OFFSET;
 
-    prompt_string("Logout (Y/N):", buf, sizeof buf);
+    prompt_string("Logout (Y/n):", buf, sizeof buf);
     move(row, 2);
     clrtoeol();
     refresh();
-    if (buf[0] == 'y' || buf[0] == 'Y')
+    if (buf[0] == '\0' || buf[0] == 'y' || buf[0] == 'Y')
         return 1;
     return 0;
 }
@@ -825,8 +790,12 @@ login_screen(void)
     platform_draw_breadcrumb(g_breadcrumb);
     draw_menu_lines("Enter user id", "", "");
     prompt_string("User id:", user, sizeof user);
-    if (user[0] == '\0')
-        return;
+    if (user[0] == '\0') {
+        clear();
+        refresh();
+        stop_ui();
+        exit(0);
+    }
     if (strcasecmp(user, ADMIN_USER) == 0) {
         prompt_string("Admin password:", pass, sizeof pass);
         if (strcmp(pass, ADMIN_PASS) != 0) {
@@ -906,138 +875,81 @@ build_main_menu_entries(struct main_menu_entry *entries, int max_entries)
     }
 
     if (count < max_entries) {
-        entries[count].key = 'Q';
-        entries[count].action = MAIN_MENU_QUIT;
-        entries[count].group_index = -1;
-        safe_copy(entries[count].label, sizeof entries[count].label, "Quit");
-        ++count;
-    }
-
-    if (count < max_entries) {
         entries[count].key = 'B';
         entries[count].action = MAIN_MENU_BACK;
         entries[count].group_index = -1;
-        safe_copy(entries[count].label, sizeof entries[count].label, "Back - Return to previous menu");
+        safe_copy(entries[count].label, sizeof entries[count].label, "Quit (Logout)");
         ++count;
     }
 
     return count;
 }
 
-static void
-draw_main_options(const struct main_menu_entry *entries, int count, int highlight)
-{
-    int i;
-    int row;
 
-    row = 8;
-    for (i = 0; i < count; ++i) {
-        draw_highlighted_text(row + i, 6, COLS - 8, i == highlight,
-            "%c) %s", entries[i].key, entries[i].label);
-    }
-    draw_menu_lines("", "", "");
-}
 
 static void
 main_menu_screen(void)
 {
     struct main_menu_entry entries[MAX_MAIN_MENU_ENTRIES];
+    struct menu_item items[MAX_MAIN_MENU_ENTRIES];
     int entry_count;
-    int highlight;
-    int ch;
-    int key;
-    int activate;
+    int choice;
     int i;
-
-    entry_count = build_main_menu_entries(entries, MAX_MAIN_MENU_ENTRIES);
-    highlight = g_last_highlight;
-    if (highlight < 0)
-        highlight = 0;
-    if (entry_count == 0)
-        entry_count = 1;
-    if (highlight >= entry_count)
-        highlight = entry_count - 1;
-
-    draw_layout("Main Menu - Select a Group to Browse Messages", "");
-    draw_main_options(entries, entry_count, highlight);
-    refresh();
+    int selected_index;
+    int focus_index;
+    int highlight;
+    int action_index;
 
     while (1) {
-        int prev_highlight = highlight;
-        ch = read_key();
-        key = normalize_key(ch);
-        if (is_back_key(ch)) {
+        entry_count = build_main_menu_entries(entries, MAX_MAIN_MENU_ENTRIES);
+        if (entry_count == 0)
+            return;
+
+        draw_layout("Main Menu - Select a Group to Browse Messages", "");
+        draw_menu_lines("", "", "");
+        for (i = 0; i < entry_count; ++i) {
+            items[i].key = entries[i].key;
+            items[i].label = entries[i].label;
+        }
+        highlight = g_last_highlight;
+        if (highlight >= entry_count)
+            highlight = entry_count - 1;
+        if (highlight < 0)
+            highlight = 0;
+        selected_index = -1;
+        focus_index = -1;
+        choice = run_menu(8, items, entry_count, highlight, &selected_index, &focus_index);
+        if (choice == 0) {
             if (handle_back_navigation() && g_screen != SCREEN_MAIN)
                 return;
             continue;
         }
-        if (ch == KEY_UP) {
-            if (highlight > 0)
-                --highlight;
-            if (highlight != prev_highlight) {
-                draw_main_options(entries, entry_count, highlight);
-                refresh();
-            }
-            continue;
-        }
-        if (ch == KEY_DOWN) {
-            if (highlight < entry_count - 1)
-                ++highlight;
-            if (highlight != prev_highlight) {
-                draw_main_options(entries, entry_count, highlight);
-                refresh();
-            }
-            continue;
-        }
+        action_index = (selected_index >= 0) ? selected_index : focus_index;
+        if (action_index < 0 || action_index >= entry_count)
+            action_index = 0;
+        g_last_highlight = action_index;
 
-        activate = -1;
-        if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
-            activate = highlight;
-        } else {
-            for (i = 0; i < entry_count; ++i) {
-                int entry_key = normalize_key((unsigned char)entries[i].key);
-                if (entry_key == key) {
-                    activate = i;
-                    break;
-                }
-            }
-        }
-
-        if (activate == -1)
-            continue;
-
-        switch (entries[activate].action) {
+        switch (entries[action_index].action) {
         case MAIN_MENU_BACK:
-            if (handle_back_navigation()) {
-                g_last_highlight = highlight;
-                if (g_screen != SCREEN_MAIN)
-                    return;
+            if (confirm_exit_prompt()) {
+                logout_session();
+                return;
             }
             break;
         case MAIN_MENU_GROUP:
-            if (entries[activate].group_index >= 0 &&
-                entries[activate].group_index < g_group_count) {
-                select_group(entries[activate].group_index);
-                push_screen(SCREEN_POST_INDEX, g_groups[entries[activate].group_index].name);
-                g_last_highlight = highlight;
+            if (entries[action_index].group_index >= 0 &&
+                entries[action_index].group_index < g_group_count) {
+                select_group(entries[action_index].group_index);
+                push_screen(SCREEN_POST_INDEX, g_groups[entries[action_index].group_index].name);
                 return;
             }
             break;
         case MAIN_MENU_GROUP_MGMT:
             push_screen(SCREEN_GROUP_LIST, "Groups");
-            g_last_highlight = highlight;
             return;
         case MAIN_MENU_SETUP:
             push_screen(SCREEN_SETUP, "Setup");
-            g_last_highlight = highlight;
             return;
-        case MAIN_MENU_QUIT:
-            if (confirm_exit_prompt()) {
-                logout_session();
-                g_last_highlight = 0;
-                return;
-            }
-            break;
         }
     }
 }
@@ -1083,18 +995,21 @@ add_group(void)
 }
 
 static void
-rename_group(int idx)
+edit_group_details(int idx)
 {
     char newname[MAX_GROUP_NAME];
+    char newdesc[MAX_GROUP_DESC];
 
     if (idx < 0 || idx >= g_group_count)
         return;
-    if (!require_admin("rename groups"))
+    if (!require_admin("edit groups"))
         return;
-    prompt_string("New name:", newname, sizeof newname);
-    if (newname[0] == '\0')
-        return;
-    safe_copy(g_groups[idx].name, sizeof g_groups[idx].name, newname);
+    prompt_string("Group name:", newname, sizeof newname);
+    prompt_string("Description:", newdesc, sizeof newdesc);
+    if (newname[0] != '\0')
+        safe_copy(g_groups[idx].name, sizeof g_groups[idx].name, newname);
+    if (newdesc[0] != '\0')
+        safe_copy(g_groups[idx].description, sizeof g_groups[idx].description, newdesc);
     save_groups();
 }
 
@@ -1173,114 +1088,163 @@ whereis_group(void)
     wait_for_ack("No matches.");
 }
 
-static void
-draw_group_rows(int highlight)
+static char
+group_menu_key_for_index(int idx)
 {
-    int row;
-    int i;
-    const char *flag;
+    int count = 0;
+    int ch;
 
-    row = 8;
-    mvprintw(row - 1, 4, "%-4s %-24s %-40s", "No.", "Group", "Description");
-    for (i = 0; i < g_group_count && row < LINES - MENU_ROWS - 2; ++i, ++row) {
-        flag = g_groups[i].deleted ? "D" : " ";
-        draw_highlighted_text(row, 4, COLS - 6, i == highlight,
-            "%-4d %-24s %-40s %s", i + 1, g_groups[i].name,
-            g_groups[i].description, flag);
+    for (ch = '0'; ch <= '9'; ++ch) {
+        if (count == idx)
+            return (char)ch;
+        ++count;
     }
-    draw_group_list_commands();
-}
-
-static void
-draw_group_list_commands(void)
-{
-    int row;
-
-    row = LINES - MENU_ROWS - 3;
-    if (row < 0)
-        row = 0;
-    mvprintw(row, 2, "%-*s", COLS - 4, "V View  G Goto  S Select  W WhereIs");
-    ++row;
-    if (row < LINES - MENU_ROWS - 1) {
-        if (g_session.is_admin)
-            mvprintw(row, 2, "%-*s", COLS - 4, "Admin: C Create  R Rename  D Delete  E Expunge");
-        else
-            mvprintw(row, 2, "%-*s", COLS - 4, "");
+    for (ch = 'A'; ch <= 'Z'; ++ch) {
+        if (ch == 'B' || ch == 'C' || ch == 'D' || ch == 'E')
+            continue;
+        if (count == idx)
+            return (char)ch;
+        ++count;
     }
+    for (ch = 'a'; ch <= 'z'; ++ch) {
+        if (ch == 'b' || ch == 'c' || ch == 'd' || ch == 'e')
+            continue;
+        if (count == idx)
+            return (char)ch;
+        ++count;
+    }
+    for (ch = '!'; ch <= '/'; ++ch) {
+        if (count == idx)
+            return (char)ch;
+        ++count;
+    }
+    return (char)('0' + (idx % 10));
 }
 
 static void
 group_list_screen(void)
 {
-    int highlight;
-    int ch;
-    int key;
+    struct menu_item menu_items[MAX_GROUPS + 4];
+    char labels[MAX_GROUPS][GROUP_MENU_LABEL_LEN];
+    int entry_type[MAX_GROUPS + 4];
+    int entry_data[MAX_GROUPS + 4];
+    int selected_index;
+    int focus_index;
+    int highlight = g_last_highlight;
+    int choice;
+    int entry_count;
+    int current_group = (g_group_count > 0) ? 0 : -1;
+    int i;
+    const int start_row = 8;
 
-    highlight = g_last_highlight;
-    if (highlight >= g_group_count)
-        highlight = g_group_count - 1;
     if (highlight < 0)
         highlight = 0;
 
-    draw_layout("Group List", "");
-    draw_back_hint();
-    draw_group_rows(highlight);
-    draw_menu_lines("", "", "");
-    refresh();
-
     while (1) {
-        ch = read_key();
-        key = normalize_key(ch);
-        if (is_back_key(ch)) {
+        draw_layout("Group Management", "Browse groups");
+        if (g_group_count == 0)
+            mvprintw(start_row - 1, 4, "No groups defined. Create one to begin.");
+        else
+            mvprintw(start_row - 1, 4, "Select a group to enter or choose an admin option.");
+
+        entry_count = 0;
+        for (i = 0; i < g_group_count && entry_count < MAX_GROUPS; ++i) {
+            labels[i][0] = '\0';
+            safe_copy(labels[i], sizeof labels[i], g_groups[i].name);
+            if (g_groups[i].description[0] != '\0') {
+                safe_append(labels[i], sizeof labels[i], " - ");
+                safe_append(labels[i], sizeof labels[i], g_groups[i].description);
+            }
+            if (g_groups[i].deleted)
+                safe_append(labels[i], sizeof labels[i], " [DELETED]");
+            menu_items[entry_count].key = group_menu_key_for_index(entry_count);
+            menu_items[entry_count].label = labels[i];
+            entry_type[entry_count] = GROUP_MENU_ENTRY_GROUP;
+            entry_data[entry_count] = i;
+            ++entry_count;
+        }
+
+        if (g_session.is_admin) {
+            menu_items[entry_count].key = 'C';
+            menu_items[entry_count].label = "Create Group";
+            entry_type[entry_count] = GROUP_MENU_ENTRY_CREATE;
+            entry_data[entry_count] = -1;
+            ++entry_count;
+
+            menu_items[entry_count].key = 'E';
+            menu_items[entry_count].label = "Edit Highlighted Group";
+            entry_type[entry_count] = GROUP_MENU_ENTRY_EDIT;
+            entry_data[entry_count] = -1;
+            ++entry_count;
+
+            menu_items[entry_count].key = 'D';
+            menu_items[entry_count].label = "Delete/Restore Highlighted Group";
+            entry_type[entry_count] = GROUP_MENU_ENTRY_DELETE;
+            entry_data[entry_count] = -1;
+            ++entry_count;
+        }
+
+        menu_items[entry_count].key = 'B';
+        menu_items[entry_count].label = "Back - Return to previous menu";
+        entry_type[entry_count] = GROUP_MENU_ENTRY_BACK;
+        entry_data[entry_count] = -1;
+        ++entry_count;
+
+        if (highlight >= entry_count)
+            highlight = entry_count - 1;
+        if (highlight < 0)
+            highlight = 0;
+
+        selected_index = -1;
+        focus_index = -1;
+        choice = run_menu(start_row, menu_items, entry_count, highlight, &selected_index, &focus_index);
+
+        if (focus_index >= 0 && entry_type[focus_index] == GROUP_MENU_ENTRY_GROUP)
+            current_group = entry_data[focus_index];
+
+        if (choice == 0) {
             if (handle_back_navigation())
-                break;
+                return;
+            highlight = (focus_index >= 0) ? focus_index : highlight;
+            g_last_highlight = highlight;
             continue;
         }
-        if (key == 'B') {
-            if (handle_back_navigation())
-                break;
+
+        if (selected_index < 0 || selected_index >= entry_count)
             continue;
-        }
-        if (ch == KEY_UP) {
-            if (highlight > 0)
-                --highlight;
-        } else if (ch == KEY_DOWN) {
-            if (highlight < g_group_count - 1)
-                ++highlight;
-        } else if (key == 'V' || ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
-            select_group(highlight);
-            push_screen(SCREEN_POST_INDEX, g_groups[highlight].name);
-            break;
-        } else if (key == 'C') {
+
+        switch (entry_type[selected_index]) {
+        case GROUP_MENU_ENTRY_GROUP:
+            current_group = entry_data[selected_index];
+            select_group(current_group);
+            g_last_highlight = selected_index;
+            push_screen(SCREEN_POST_INDEX, g_groups[current_group].name);
+            return;
+        case GROUP_MENU_ENTRY_CREATE:
             add_group();
-        } else if (key == 'D') {
-            mark_delete_group(highlight);
-        } else if (key == 'R') {
-            rename_group(highlight);
-        } else if (key == 'E') {
-            if (prompt_yesno("Expunge groups? y/n"))
-                expunge_groups();
-        } else if (key == 'N') {
-            if (highlight < g_group_count - 1)
-                ++highlight;
-        } else if (key == 'P') {
-            if (highlight > 0)
-                --highlight;
-        } else if (key == 'G') {
-            goto_group_prompt();
             break;
-        } else if (key == 'S') {
-            select_group(highlight);
-            wait_for_ack("Group selected.");
-        } else if (key == 'W') {
-            whereis_group();
-        } else if (ch == '?') {
-            show_help("Group List Help", "Use commands displayed to manage groups. Deleted groups show D flag until expunged.");
+        case GROUP_MENU_ENTRY_EDIT:
+            if (current_group >= 0)
+                handle_group_action('E', current_group);
+            else
+                wait_for_ack("Highlight a group first.");
+            break;
+        case GROUP_MENU_ENTRY_DELETE:
+            if (current_group >= 0)
+                handle_group_action('D', current_group);
+            else
+                wait_for_ack("Highlight a group first.");
+            break;
+        case GROUP_MENU_ENTRY_BACK:
+        default:
+            if (handle_back_navigation())
+                return;
+            break;
         }
-        draw_group_rows(highlight);
-        refresh();
+
+        highlight = (focus_index >= 0) ? focus_index : highlight;
+        g_last_highlight = highlight;
     }
-    g_last_highlight = highlight;
 }
 
 static void
@@ -1887,33 +1851,55 @@ compose_to_entry(int idx)
 static void
 setup_screen(void)
 {
-    int ch;
-    int key;
+    struct menu_item setup_menu[4];
+    int choice;
+    int selected_index;
+    int focus_index;
+    int highlight = 0;
+
+    setup_menu[0].key = 'P';
+    setup_menu[0].label = "Printer Command";
+    setup_menu[1].key = 'G';
+    setup_menu[1].label = "Edit Signature";
+    setup_menu[2].key = 'N';
+    setup_menu[2].label = "Change Password";
+    setup_menu[3].key = 'B';
+    setup_menu[3].label = "Back - Return to previous menu";
 
     while (1) {
-        draw_layout("Setup", "");
-        draw_back_hint();
-        mvprintw(5, 4, "P) Printer command: %s", g_config.printer[0] ? g_config.printer : "(default)");
-        mvprintw(6, 4, "G) Signature: %s", g_config.signature[0] ? g_config.signature : "(none)");
-        mvprintw(7, 4, "N) Change password (admin only)");
-        mvprintw(8, 4, "Other options (C Config, K Color, R Roles, F Rules, L LDAP) are TODO");
-        draw_menu_lines("P Printer  G Signature  N Password", "C Config (TODO)  K Color (TODO)  R Roles (TODO)  F Rules (TODO)  L LDAP (TODO)", "< Main  ? Help");
-        refresh();
-        ch = read_key();
-        key = normalize_key(ch);
-        if (is_back_key(ch) || key == 'B') {
+        draw_layout("Setup", "Configure session");
+        mvprintw(5, 4, "Printer: %s", g_config.printer[0] ? g_config.printer : "(default)");
+        mvprintw(6, 4, "Signature: %s", g_config.signature[0] ? g_config.signature : "(none)");
+        mvprintw(7, 4, "Password changes require admin privileges.");
+        selected_index = -1;
+        focus_index = -1;
+        choice = run_menu(9, setup_menu, 4, highlight, &selected_index, &focus_index);
+        if (focus_index >= 0)
+            highlight = focus_index;
+        if (choice == 0) {
             if (handle_back_navigation())
                 return;
             continue;
         }
-        if (key == 'P') {
+        if (selected_index >= 0)
+            highlight = selected_index;
+
+        switch (choice) {
+        case 'P':
             edit_printer();
-        } else if (key == 'G') {
+            break;
+        case 'G':
             edit_signature();
-        } else if (key == 'N') {
+            break;
+        case 'N':
             change_password();
-        } else if (ch == '?') {
-            show_help("Setup Help", "Configure printer, signature, and future options from here.");
+            break;
+        case 'B':
+            if (handle_back_navigation())
+                return;
+            break;
+        default:
+            break;
         }
     }
 }
@@ -1946,4 +1932,25 @@ change_password(void)
         return;
     safe_copy(g_config.password, sizeof g_config.password, buf);
     save_config();
+}
+static void
+handle_group_action(char action_key, int group_index)
+{
+    if (!g_session.is_admin) {
+        wait_for_ack("Admins only.");
+        return;
+    }
+    switch (action_key) {
+    case 'C':
+        add_group();
+        break;
+    case 'D':
+        mark_delete_group(group_index);
+        break;
+    case 'E':
+        edit_group_details(group_index);
+        break;
+    default:
+        break;
+    }
 }
