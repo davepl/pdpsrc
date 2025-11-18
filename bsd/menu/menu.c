@@ -157,7 +157,7 @@ run_menu(int start_row,
                 ++highlight;
             continue;
         }
-        if (ch == KEY_BACKSPACE || ch == 27) {
+        if (ch == KEY_BACKSPACE || ch == CTRL_KEY('H') || ch == 127 || ch == '\b' || ch == 27) {
             if (selected_index)
                 *selected_index = -1;
             if (focus_index)

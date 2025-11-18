@@ -224,6 +224,7 @@ static int build_main_menu_entries(struct main_menu_entry *entries, int max_entr
 static void update_status_line(void);
 static void render_body_text(const char *body, int start_row, int max_rows);
 static void edit_body(char *buffer, int maxlen);
+static int edit_body_with_editor(char *subject, char *buffer, int maxlen);
 static void draw_group_list_commands(void);
 static const char *current_group_name(void);
 static void add_group(void);
@@ -1163,7 +1164,8 @@ group_list_screen(void)
     int choice;
     int entry_count;
     int i;
-    const int start_row = 8;
+    const int menu_start_row = 10;
+    const int notice_row = menu_start_row - 2;
 
     if (highlight < 0)
         highlight = 0;
@@ -1171,9 +1173,9 @@ group_list_screen(void)
     while (1) {
         draw_layout("Group Management", "Browse groups");
         if (g_group_count == 0)
-            mvprintw(start_row - 1, 4, "No groups defined. Create one to begin.");
+            mvprintw(notice_row, 4, "No groups defined. Create one to begin.");
         else
-            mvprintw(start_row - 1, 4, "Select a group to enter or choose an admin option.");
+            mvprintw(notice_row, 4, "Select a group to enter or choose an admin option.");
 
         entry_count = 0;
         for (i = 0; i < g_group_count && entry_count < MAX_GROUPS; ++i) {
@@ -1213,7 +1215,7 @@ group_list_screen(void)
 
         selected_index = -1;
         focus_index = -1;
-        choice = run_menu(start_row, menu_items, entry_count, highlight, &selected_index, &focus_index);
+        choice = run_menu(menu_start_row, menu_items, entry_count, highlight, &selected_index, &focus_index);
 
         if (choice == 0) {
             if (handle_back_navigation())
@@ -1642,6 +1644,93 @@ edit_body(char *buffer, int maxlen)
 }
 
 static int
+edit_body_with_editor(char *subject, char *buffer, int maxlen)
+{
+    char tmpname[L_tmpnam];
+    const char *editor;
+    char cmd[512];
+    FILE *fp;
+    size_t len;
+    int ch;
+    int truncated = 0;
+    int restart_ui = 0;
+    int rc;
+
+    if (subject == NULL || buffer == NULL || maxlen <= 1)
+        return 0;
+
+    if (subject[0] == '\0') {
+        prompt_string("Subject:", subject, MAX_SUBJECT);
+        if (subject[0] == '\0') {
+            wait_for_ack("Subject is required before editing body.");
+            return 0;
+        }
+    }
+
+    if (tmpnam(tmpname) == NULL) {
+        wait_for_ack("Unable to create temp file for editor.");
+        return 0;
+    }
+
+    fp = fopen(tmpname, "w");
+    if (fp == NULL) {
+        wait_for_ack("Unable to open temp file for editor.");
+        return 0;
+    }
+    if (buffer[0] != '\0')
+        fputs(buffer, fp);
+    fclose(fp);
+
+    editor = getenv("EDITOR");
+    if (editor == NULL || *editor == '\0')
+        editor = "vi";
+    if ((int)strlen(editor) + (int)strlen(tmpname) + 2 >= (int)sizeof cmd) {
+        wait_for_ack("EDITOR command too long.");
+        remove(tmpname);
+        return 0;
+    }
+    snprintf(cmd, sizeof cmd, "%s %s", editor, tmpname);
+
+    if (g_ui_ready) {
+        stop_ui();
+        restart_ui = 1;
+    }
+    rc = system(cmd);
+    if (restart_ui) {
+        start_ui();
+        require_screen_size();
+    }
+    if (rc == -1) {
+        wait_for_ack("Editor failed to run.");
+        remove(tmpname);
+        return 0;
+    }
+
+    fp = fopen(tmpname, "r");
+    if (fp == NULL) {
+        wait_for_ack("Unable to read edited body.");
+        remove(tmpname);
+        return 0;
+    }
+
+    len = 0;
+    while ((ch = fgetc(fp)) != EOF) {
+        if (len < (size_t)(maxlen - 1)) {
+            buffer[len++] = (char)ch;
+        } else {
+            truncated = 1;
+        }
+    }
+    buffer[len] = '\0';
+    fclose(fp);
+    remove(tmpname);
+
+    if (truncated)
+        wait_for_ack("Body truncated to fit buffer.");
+    return 1;
+}
+
+static int
 append_cached_message(struct message *msg)
 {
     struct message *tmp;
@@ -1726,7 +1815,7 @@ compose_screen(struct message *reply_source, int forward_mode)
         mvprintw(8, 4, "Subject: %s", subject);
         mvprintw(10, 4, "Body preview:");
         render_body_text(body, 11, LINES - MENU_ROWS - 13);
-        draw_menu_lines("^X Send  ^C Cancel  ^O Postpone (TODO)  ^R Read File (TODO)", "^J Justify (TODO)  ^W WhereIs (TODO)  ^T Add Addr", "Enter edits field  Arrows move field");
+        draw_menu_lines("^X Send  ^C Cancel  ^O Postpone (TODO)  ^R Read File (TODO)", "^J Justify (TODO)  ^W WhereIs (TODO)  ^T Add Addr", "Enter edits field (body opens $EDITOR)  Arrows move field");
         refresh();
         ch = read_key();
         key = normalize_key(ch);
@@ -1749,8 +1838,10 @@ compose_screen(struct message *reply_source, int forward_mode)
                 prompt_string("Attach:", attach, MAX_ADDRESS);
             else if (field == 3)
                 prompt_string("Subject:", subject, MAX_SUBJECT);
-            else if (field == 4)
-                edit_body(body, MAX_BODY);
+            else if (field == 4) {
+                if (!edit_body_with_editor(subject, body, MAX_BODY))
+                    edit_body(body, MAX_BODY);
+            }
         } else if (ch == CTRL_KEY('X')) {
             if (subject[0] == '\0')
                 safe_copy(subject, MAX_SUBJECT, "(no subject)");
