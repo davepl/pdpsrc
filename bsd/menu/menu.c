@@ -134,11 +134,13 @@ run_menu(int start_row,
     int available_rows;
     int visible_rows = 0;
     int first_row = start_row;
+    int last_row = start_row;
     int indicator_top_row = -1;
     int indicator_bottom_row = -1;
     int show_top = 0;
     int show_bottom = 0;
     int menu_width;
+    int menu_col = 4;
     int indicator_col;
     int indicator_width;
     int prev_indicator_top = -1;
@@ -153,55 +155,55 @@ run_menu(int start_row,
     if (highlight >= count)
         highlight = count - 1;
 
-    menu_width = COLS - 8;
-    if (menu_width < 1)
-        menu_width = (COLS > 1) ? COLS - 1 : 1;
-    indicator_col = 6;
-    indicator_width = COLS - indicator_col - 2;
-    if (indicator_width < 1)
-        indicator_width = 1;
+    {
+        int content_right = COLS - 2;
+        if (content_right <= menu_col)
+            menu_width = 1;
+        else
+            menu_width = content_right - menu_col + 1;
+    }
+    indicator_col = menu_col;
+    indicator_width = menu_width;
 
     bottom_row = LINES - PROMPT_ROW_OFFSET - 2;
     if (bottom_row < start_row)
         bottom_row = start_row;
     available_rows = bottom_row - start_row + 1;
-    if (available_rows < 1)
-        available_rows = 1;
+    {
+        int reserve_arrows = available_rows >= 4;
+        if (reserve_arrows) {
+            first_row = start_row + 1;
+            last_row = bottom_row - 1;
+            indicator_top_row = start_row;
+            indicator_bottom_row = bottom_row;
+        } else {
+            first_row = start_row;
+            last_row = bottom_row;
+            indicator_top_row = -1;
+            indicator_bottom_row = -1;
+        }
+        visible_rows = last_row - first_row + 1;
+        if (visible_rows < 1)
+            visible_rows = 1;
+    }
 
     while (1) {
-        int adjust = 1;
+        if (visible_rows > count)
+            visible_rows = count;
+        if (visible_rows < 1)
+            visible_rows = 1;
 
-        while (adjust) {
-            int new_show_top;
-            int new_show_bottom;
+        top_index = highlight - visible_rows + 1;
+        if (top_index < 0)
+            top_index = 0;
+        if (top_index + visible_rows > count)
+            top_index = count - visible_rows;
+        if (top_index < 0)
+            top_index = 0;
 
-            visible_rows = available_rows - (show_top ? 1 : 0) - (show_bottom ? 1 : 0);
-            if (visible_rows < 1)
-                visible_rows = 1;
-            if (visible_rows > count)
-                visible_rows = count;
-
-            top_index = highlight - visible_rows + 1;
-            if (top_index < 0)
-                top_index = 0;
-            if (top_index + visible_rows > count)
-                top_index = count - visible_rows;
-            if (top_index < 0)
-                top_index = 0;
-
-            new_show_top = top_index > 0;
-            new_show_bottom = (top_index + visible_rows) < count;
-
-            if (new_show_top == show_top && new_show_bottom == show_bottom) {
-                adjust = 0;
-            }
-            show_top = new_show_top;
-            show_bottom = new_show_bottom;
-        }
-
-        first_row = start_row + (show_top ? 1 : 0);
-        indicator_top_row = show_top ? start_row : -1;
-        indicator_bottom_row = show_bottom ? (start_row + available_rows - 1) : -1;
+        show_top = (indicator_top_row >= 0) && (top_index > 0);
+        show_bottom = (indicator_bottom_row >= 0) &&
+            ((top_index + visible_rows) < count);
 
         if (prev_indicator_top >= 0 && prev_indicator_top != indicator_top_row)
             mvprintw(prev_indicator_top, indicator_col, "%-*s", indicator_width, "");
@@ -214,26 +216,28 @@ run_menu(int start_row,
 
             if (item_index < count) {
                 if (items[item_index].key != 0)
-                    menu_draw_highlighted(row, 6, menu_width, item_index == highlight,
+                    menu_draw_highlighted(row, menu_col, menu_width, item_index == highlight,
                         "%c) %s", items[item_index].key, items[item_index].label);
                 else
-                    menu_draw_highlighted(row, 6, menu_width, item_index == highlight,
+                    menu_draw_highlighted(row, menu_col, menu_width, item_index == highlight,
                         "    %s", items[item_index].label);
             } else {
-                menu_draw_highlighted(row, 6, menu_width, 0, "%s", "");
+                menu_draw_highlighted(row, menu_col, menu_width, 0, "%s", "");
             }
         }
 
         if (indicator_top_row >= 0) {
             mvprintw(indicator_top_row, indicator_col, "%-*s", indicator_width, "");
-            mvprintw(indicator_top_row, indicator_col, "<<<----");
+            if (show_top)
+                mvprintw(indicator_top_row, indicator_col, "<<<----");
         }
         if (indicator_bottom_row >= 0) {
             mvprintw(indicator_bottom_row, indicator_col, "%-*s", indicator_width, "");
-            mvprintw(indicator_bottom_row, indicator_col, "---->>>");
+            if (show_bottom)
+                mvprintw(indicator_bottom_row, indicator_col, "---->>>");
         }
-        prev_indicator_top = indicator_top_row;
-        prev_indicator_bottom = indicator_bottom_row;
+        prev_indicator_top = show_top ? indicator_top_row : -1;
+        prev_indicator_bottom = show_bottom ? indicator_bottom_row : -1;
         refresh();
 
         ch = menu_read_key();

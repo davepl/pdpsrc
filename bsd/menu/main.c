@@ -583,11 +583,11 @@ draw_layout(const char *title, const char *status)
     platform_draw_header_line(header_left, header_right);
     platform_draw_breadcrumb(g_breadcrumb);
 
-    move(6, 1);
+    move(4, 1);
     clrtoeol();
-    mvprintw(6, 4, "%s", title);
+    mvprintw(4, 4, "%s", title);
     if (status && *status)
-        mvprintw(6, COLS - (int)strlen(status) - 3, "%s", status);
+        mvprintw(4, COLS - (int)strlen(status) - 3, "%s", status);
     
     /* Refresh curses buffer to screen, THEN draw DEC graphics border over it */
     refresh();
@@ -834,8 +834,8 @@ login_screen(void)
 
     draw_layout("Login", "");
     for (i = 0; i < LOGIN_BANNER_LINES; ++i)
-        mvprintw(4 + i, 2, "%s", g_login_banner[i]);
-    row = 11;   // leave room for banner
+        mvprintw(5 + i, 2, "%s", g_login_banner[i]);
+    row = 12;   // leave room for banner
     mvprintw(row + 1, 2, "Welcome to the PDP-11 message boards.");
     mvprintw(row + 3, 2, "Enter user id (admin requires password).");
     refresh();

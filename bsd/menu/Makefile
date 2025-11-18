@@ -13,19 +13,19 @@ all:	${PROGRAM}
 
 main.o: main.c
 	@if [ "`uname -m`" = "pdp11" ]; then \
-		echo "Building for PDP-11..."; \
+		echo "Building main.c for PDP-11..."; \
 		${CC} ${PDP11_CFLAGS} -DLEGACY_CURSES -D__pdp11__ -c -o $@ main.c; \
 	else \
-		echo "Building for modern system..."; \
+		echo "Building main.c for modern system..."; \
 		${CC} ${CFLAGS} -Wno-deprecated-non-prototype -Wno-deprecated-declarations -Wno-pointer-sign -Wno-parentheses -Wno-incompatible-pointer-types -Wno-format -c -o $@ main.c; \
 	fi
 
 data.o: data.c
 	@if [ "`uname -m`" = "pdp11" ]; then \
-		echo "Building for PDP-11..."; \
+		echo "Building data.c for PDP-11..."; \
 		${CC} ${PDP11_CFLAGS} -DLEGACY_CURSES -D__pdp11__ -c -o $@ data.c; \
 	else \
-		echo "Building for modern system..."; \
+		echo "Building data.c for modern system..."; \
 		${CC} ${CFLAGS} -Wno-deprecated-non-prototype -Wno-deprecated-declarations -Wno-pointer-sign -Wno-parentheses -Wno-incompatible-pointer-types -Wno-format -c -o $@ data.c; \
 	fi
 
@@ -49,17 +49,17 @@ clean:
 	rm -f a.out core *.o ${PROGRAM}
 platform.o: platform.c
 	@if [ "`uname -m`" = "pdp11" ]; then \
-		echo "Building for PDP-11..."; \
+		echo "Building platform.c for PDP-11..."; \
 		${CC} ${PDP11_CFLAGS} -DLEGACY_CURSES -D__pdp11__ -c -o $@ platform.c; \
 	else \
-		echo "Building for modern system..."; \
+		echo "Building platform.c for modern system..."; \
 		${CC} ${CFLAGS} -Wno-deprecated-non-prototype -Wno-deprecated-declarations -Wno-pointer-sign -Wno-parentheses -Wno-incompatible-pointer-types -Wno-format -c -o $@ platform.c; \
 	fi
 menu.o: menu.c
 	@if [ "`uname -m`" = "pdp11" ]; then \
-		echo "Building for PDP-11..."; \
+		echo "Building menu.c for PDP-11..."; \
 		${CC} ${PDP11_CFLAGS} -DLEGACY_CURSES -D__pdp11__ -c -o $@ menu.c; \
 	else \
-		echo "Building for modern system..."; \
+		echo "Building menu.c for modern system..."; \
 		${CC} ${CFLAGS} -Wno-deprecated-non-prototype -Wno-deprecated-declarations -Wno-pointer-sign -Wno-parentheses -Wno-incompatible-pointer-types -Wno-format -c -o $@ menu.c; \
 	fi
