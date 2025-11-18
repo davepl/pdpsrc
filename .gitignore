@@ -21,3 +21,5 @@ bsd/socket/arch/LinuxX64/client
 bsd/dry/dry29
 bsd/menu/menu
 bsd/menu/menu
+bsd/menu/.vscode/sftp.json
+bsd/menu/menu

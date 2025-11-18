@@ -80,6 +80,35 @@ extern unsigned sleep();
 static int legacy_mvgetnstr(int y, int x, char *buf, int maxlen);
 #endif
 
+#ifndef L_tmpnam
+#define L_tmpnam 64
+#endif
+
+#if defined(__pdp11__)
+static int
+compat_snprintf(char *buf, size_t len, const char *fmt, ...)
+{
+    va_list ap;
+    int ret;
+
+    if (buf == NULL || len == 0)
+        return 0;
+    va_start(ap, fmt);
+    ret = vsprintf(buf, fmt, ap);
+    va_end(ap);
+    if (ret < 0) {
+        buf[0] = '\0';
+        return ret;
+    }
+    if ((size_t)ret >= len) {
+        buf[len - 1] = '\0';
+        ret = (int)strlen(buf);
+    }
+    return ret;
+}
+#define snprintf compat_snprintf
+#endif
+
 #define ESC_KEY 27
 
 enum screen_id {
@@ -554,6 +583,8 @@ draw_layout(const char *title, const char *status)
     platform_draw_header_line(header_left, header_right);
     platform_draw_breadcrumb(g_breadcrumb);
 
+    move(6, 1);
+    clrtoeol();
     mvprintw(6, 4, "%s", title);
     if (status && *status)
         mvprintw(6, COLS - (int)strlen(status) - 3, "%s", status);
@@ -1164,14 +1195,20 @@ group_list_screen(void)
     int choice;
     int entry_count;
     int i;
-    const int menu_start_row = 10;
-    const int notice_row = menu_start_row - 2;
+    int notice_row;
+    const int menu_start_row = 7;
 
     if (highlight < 0)
         highlight = 0;
 
     while (1) {
         draw_layout("Group Management", "Browse groups");
+
+        notice_row = LINES - PROMPT_ROW_OFFSET;
+        if (notice_row < menu_start_row)
+            notice_row = menu_start_row;
+        move(notice_row, 4);
+        clrtoeol();
         if (g_group_count == 0)
             mvprintw(notice_row, 4, "No groups defined. Create one to begin.");
         else
@@ -1179,18 +1216,28 @@ group_list_screen(void)
 
         entry_count = 0;
         for (i = 0; i < g_group_count && entry_count < MAX_GROUPS; ++i) {
-            labels[i][0] = '\0';
-            safe_copy(labels[i], sizeof labels[i], g_groups[i].name);
+            labels[entry_count][0] = '\0';
+            safe_copy(labels[entry_count], sizeof labels[entry_count], g_groups[i].name);
             if (g_groups[i].description[0] != '\0') {
-                safe_append(labels[i], sizeof labels[i], " - ");
-                safe_append(labels[i], sizeof labels[i], g_groups[i].description);
+                safe_append(labels[entry_count], sizeof labels[entry_count], " - ");
+                safe_append(labels[entry_count], sizeof labels[entry_count], g_groups[i].description);
             }
             if (g_groups[i].deleted)
-                safe_append(labels[i], sizeof labels[i], " [DELETED]");
+                safe_append(labels[entry_count], sizeof labels[entry_count], " [DELETED]");
             menu_items[entry_count].key = group_menu_key_for_index(entry_count);
-            menu_items[entry_count].label = labels[i];
+            menu_items[entry_count].label = labels[entry_count];
             entry_type[entry_count] = GROUP_MENU_ENTRY_GROUP;
             entry_data[entry_count] = i;
+            ++entry_count;
+        }
+
+        /* Add placeholder groups so scrolling can be tested with long lists. */
+        for (i = 0; i < 20 && entry_count < MAX_GROUPS; ++i) {
+            snprintf(labels[entry_count], sizeof labels[entry_count], "Dummy Group %02d", i + 1);
+            menu_items[entry_count].key = group_menu_key_for_index(entry_count);
+            menu_items[entry_count].label = labels[entry_count];
+            entry_type[entry_count] = GROUP_MENU_ENTRY_GROUP;
+            entry_data[entry_count] = -1;
             ++entry_count;
         }
 
