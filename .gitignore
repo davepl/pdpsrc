@@ -19,3 +19,4 @@ bsd/socket/arch/NetBSDVAX/client
 bsd/socket/arch/211BSD/client
 bsd/socket/arch/LinuxX64/client
 bsd/dry/dry29
+bsd/menu/menu

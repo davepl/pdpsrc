@@ -54,6 +54,12 @@
 #include <ctype.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
+#if !defined(__pdp11__)
+#include <time.h>
+#else
+extern time_t time();
+extern struct tm *localtime();
+#endif
 #include "data.h"
 #include "platform.h"
 #include "menu.h"
@@ -197,6 +203,8 @@ static void wait_for_ack(const char *msg);
 static void prompt_string(const char *label, char *buffer, int maxlen);
 static int prompt_yesno(const char *question);
 static int is_valid_username(const char *text);
+static void draw_post_commands_line(void);
+static void format_post_age(time_t created, char *buf, int buflen);
 static void show_help(const char *title, const char *body);
 static void login_screen(void);
 static void main_menu_screen(void);
@@ -1341,17 +1349,46 @@ draw_post_rows(int highlight)
 {
     int row;
     int i;
-    char stamp[32];
-    char status;
+    char age[32];
+    char subject_buf[96];
 
-    row = 8;
-    mvprintw(row - 1, 2, "%-4s %-2s %-5s %-16s %-40s", "No", "St", "ID", "Poster", "Subject");
+    row = 6;
+#ifdef LEGACY_CURSES
+    printf("\033[%d;%dHSubject", 6, 4);
+    printf("\033[%d;%dHPoster", 6, 46);
+    printf("\033[%d;%dHAge", 6, 64);
+    fflush(stdout);
+#else
+    mvprintw(5, 3, "Subject");
+    mvprintw(5, 45, "Poster");
+    mvprintw(5, 63, "Age");
+#endif
+    if (g_cached_message_count == 0) {
+#ifdef LEGACY_CURSES
+        printf("\033[%d;%dHNo posts in this group yet.", 7, 4);
+        fflush(stdout);
+#else
+        mvprintw(row, 3, "No posts in this group yet.");
+#endif
+        return;
+    }
+    if (highlight < 0)
+        highlight = 0;
+    if (highlight >= g_cached_message_count)
+        highlight = g_cached_message_count - 1;
     for (i = 0; i < g_cached_message_count && row < LINES - MENU_ROWS - 2; ++i, ++row) {
-        status = g_cached_messages[i].deleted ? 'D' : (g_cached_messages[i].answered ? 'A' : 'N');
-        draw_highlighted_text(row, 2, COLS - 4, i == highlight,
-            "%-4d %-2c %-5d %-16.16s %-40.40s",
-            i + 1, status, g_cached_messages[i].id,
-            g_cached_messages[i].author, g_cached_messages[i].subject);
+        format_post_age(g_cached_messages[i].created, age, sizeof age);
+        subject_buf[0] = '\0';
+        if (g_cached_messages[i].deleted)
+            safe_append(subject_buf, sizeof subject_buf, "(del) ");
+        if (g_cached_messages[i].answered && !g_cached_messages[i].deleted)
+            safe_append(subject_buf, sizeof subject_buf, "(ans) ");
+        safe_append(subject_buf, sizeof subject_buf, g_cached_messages[i].subject);
+        draw_highlighted_text(row, 3, COLS - 6, i == highlight,
+            "%-40.40s  %-16.16s  %-10s",
+            subject_buf[0] ? subject_buf : g_cached_messages[i].subject,
+            g_cached_messages[i].author,
+            age);
     }
 }
 
@@ -1366,12 +1403,57 @@ action_requires_group(void)
 }
 
 static void
+draw_post_commands_line(void)
+{
+    int row = LINES - PROMPT_ROW_OFFSET;
+    const int prompt_col = 4;
+    move(row, 2);
+    clrtoeol();
+    if (g_session.is_admin) {
+        if (g_cached_message_count > 0)
+            mvprintw(row, prompt_col, "(N)ew Post  (R)eply  (D)elete  (B)ack");
+        else
+            mvprintw(row, prompt_col, "(N)ew Post  (B)ack");
+    } else {
+        if (g_cached_message_count > 0)
+            mvprintw(row, prompt_col, "(N)ew Post  (R)eply  (B)ack");
+        else
+            mvprintw(row, prompt_col, "(N)ew Post  (B)ack");
+    }
+    refresh();
+}
+
+static void
+format_post_age(time_t created, char *buf, int buflen)
+{
+    long days;
+    time_t now;
+
+    if (buflen <= 0 || buf == NULL)
+        return;
+    now = time(NULL);
+    if (now <= created)
+        days = 0;
+    else
+        days = (long)((now - created) / 86400);
+    if (days <= 0) {
+        safe_copy(buf, buflen, "today");
+    } else {
+        safe_copy(buf, buflen, "");
+        safe_append_number(buf, buflen, days);
+        if (days == 1)
+            safe_append(buf, buflen, " day ago");
+        else
+            safe_append(buf, buflen, " days ago");
+    }
+}
+
+static void
 post_index_screen(void)
 {
     int highlight;
     int ch;
     int key;
-    const char *group;
 
     if (!action_requires_group()) {
         pop_screen();
@@ -1392,17 +1474,13 @@ post_index_screen(void)
     if (highlight < 0)
         highlight = 0;
 
-    group = current_group_name();
-
-    draw_layout("Post Index", group ? group : "");
-    draw_back_hint();
+    draw_layout("", "");
     draw_post_rows(highlight);
-    draw_menu_lines("V View  D Delete  U Undelete  R Reply  F Forward", "S Save  X Expunge  T Take Addr  Y Print (TODO)  W WhereIs", "O Other  < Groups  ? Help");
+    draw_post_commands_line();
     refresh();
 
     while (1) {
         ch = read_key();
-        key = normalize_key(ch);
         if (is_back_key(ch)) {
             if (handle_back_navigation())
                 break;
@@ -1411,47 +1489,55 @@ post_index_screen(void)
         if (ch == KEY_UP) {
             if (highlight > 0)
                 --highlight;
-        } else if (ch == KEY_DOWN) {
+            draw_post_rows(highlight);
+            refresh();
+            continue;
+        }
+        if (ch == KEY_DOWN) {
             if (highlight < g_cached_message_count - 1)
                 ++highlight;
-        } else if (key == 'V' || ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
+            draw_post_rows(highlight);
+            refresh();
+            continue;
+        }
+        if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
             if (g_cached_message_count > 0) {
                 open_post_view(highlight);
                 break;
             }
-        } else if (key == 'D') {
-            if (g_cached_message_count > 0)
-                delete_or_undelete(&g_cached_messages[highlight], 1);
-        } else if (key == 'U') {
-            if (g_cached_message_count > 0)
-                delete_or_undelete(&g_cached_messages[highlight], 0);
-        } else if (key == 'R') {
+            continue;
+        }
+        key = normalize_key(ch);
+        if (key == 'N') {
+            open_compose(NULL, 0);
+            break;
+        }
+        if (key == 'R') {
             if (g_cached_message_count > 0) {
                 open_compose(&g_cached_messages[highlight], 0);
                 break;
             }
-        } else if (key == 'F') {
-            if (g_cached_message_count > 0) {
-                open_compose(&g_cached_messages[highlight], 1);
-                break;
-            }
-        } else if (key == 'S') {
-            if (g_cached_message_count > 0)
-                save_message_to_group(&g_cached_messages[highlight]);
-        } else if (key == 'X') {
-            expunge_messages();
-        } else if (key == 'T') {
-            if (g_cached_message_count > 0)
-                take_address_from_message(&g_cached_messages[highlight]);
-        } else if (key == 'Y') {
-            wait_for_ack("Printing not yet implemented.");
-        } else if (key == 'W') {
-            search_messages();
-        } else if (ch == '?') {
-            show_help("Post Index Help", "Use commands to manage posts. Deleted posts are expunged with X.");
+            continue;
         }
-        draw_post_rows(highlight);
-        refresh();
+        if (key == 'D') {
+            if (!g_session.is_admin) {
+                wait_for_ack("Admins only.");
+                draw_post_commands_line();
+                continue;
+            }
+            if (g_cached_message_count > 0) {
+                int deleted = g_cached_messages[highlight].deleted ? 0 : 1;
+                delete_or_undelete(&g_cached_messages[highlight], deleted);
+            }
+            draw_post_rows(highlight);
+            refresh();
+            continue;
+        }
+        if (key == 'B') {
+            if (handle_back_navigation())
+                break;
+            continue;
+        }
     }
     g_last_highlight = highlight;
 }
