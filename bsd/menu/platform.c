@@ -37,9 +37,7 @@
 #include <stdarg.h>
 #include "platform.h"
 
-#ifdef LEGACY_CURSES
-static int legacy_mvgetnstr(int y, int x, char *buf, int maxlen);
-#endif
+static int platform_capture_input(int y, int x, char *buf, int maxlen);
 
 #ifdef LEGACY_CURSES
 
@@ -148,59 +146,7 @@ platform_draw_separator(int row)
 void
 platform_read_input(int y, int x, char *buf, int maxlen)
 {
-    echo();
-    legacy_mvgetnstr(y, x, buf, maxlen);
-    noecho();
-}
-
-// Minimal reimplementation of mvgetnstr for legacy curses that lack it.
-
-static int
-legacy_mvgetnstr(int y, int x, char *buf, int maxlen)
-{
-    int len;
-    int limit;
-    int ch;
-
-    if (buf == NULL || maxlen <= 0)
-        return 0;
-    len = 0;
-    limit = maxlen;
-    buf[0] = '\0';
-    move(y, x);
-    refresh();
-    while (1) {
-        ch = getch();
-        if (ch == '\n' || ch == '\r') {
-            break;
-        } else if (ch == '\b' || ch == 127 || ch == CTRL_KEY('H') || ch == KEY_BACKSPACE) {
-            if (len > 0) {
-                --len;
-                buf[len] = '\0';
-                mvaddch(y, x + len, ' ');
-                move(y, x + len);
-                refresh();
-            }
-        } else if (ch == CTRL_KEY('U')) {
-            while (len > 0) {
-                --len;
-                mvaddch(y, x + len, ' ');
-            }
-            move(y, x);
-            buf[0] = '\0';
-            refresh();
-        } else if (isprint(ch)) {
-            if (len < limit) {
-                buf[len++] = (char)ch;
-                buf[len] = '\0';
-                mvaddch(y, x + len - 1, ch);
-                move(y, x + len);
-                refresh();
-            }
-        }
-    }
-    buf[len] = '\0';
-    return len;
+    platform_capture_input(y, x, buf, maxlen);
 }
 
 // Draws a sample box using DEC special graphics; useful for demos.
@@ -332,13 +278,11 @@ platform_draw_separator(int row)
     mvaddch(row, COLS - 1, ACS_RTEE);
 }
 
-// Reads user input using mvgetnstr on modern curses implementations.
+// Reads user input using custom handler for consistent behavior.
 void
 platform_read_input(int y, int x, char *buf, int maxlen)
 {
-    echo();
-    mvgetnstr(y, x, buf, maxlen);
-    noecho();
+    platform_capture_input(y, x, buf, maxlen);
 }
 
 // Enables reverse video (standout) in ncurses.
@@ -356,3 +300,52 @@ platform_reverse_off(void)
 }
 
 #endif
+
+// Shared input handler for both legacy and modern builds.
+static int
+platform_capture_input(int y, int x, char *buf, int maxlen)
+{
+    int len;
+    int limit;
+    int ch;
+
+    if (buf == NULL || maxlen <= 0)
+        return 0;
+    limit = maxlen;
+    len = 0;
+    buf[0] = '\0';
+    move(y, x);
+    refresh();
+    while (1) {
+        ch = getch();
+        if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
+            break;
+        } else if (ch == '\b' || ch == 127 || ch == CTRL_KEY('H') || ch == KEY_BACKSPACE) {
+            if (len > 0) {
+                --len;
+                buf[len] = '\0';
+                mvaddch(y, x + len, ' ');
+                move(y, x + len);
+                refresh();
+            }
+        } else if (ch == CTRL_KEY('U')) {
+            while (len > 0) {
+                --len;
+                mvaddch(y, x + len, ' ');
+            }
+            move(y, x);
+            buf[0] = '\0';
+            refresh();
+        } else if (isprint(ch)) {
+            if (len < limit) {
+                buf[len++] = (char)ch;
+                buf[len] = '\0';
+                mvaddch(y, x + len - 1, ch);
+                move(y, x + len);
+                refresh();
+            }
+        }
+    }
+    buf[len] = '\0';
+    return len;
+}

@@ -116,8 +116,6 @@ enum main_menu_action {
 enum group_menu_entry_type {
     GROUP_MENU_ENTRY_GROUP = 0,
     GROUP_MENU_ENTRY_CREATE,
-    GROUP_MENU_ENTRY_DELETE,
-    GROUP_MENU_ENTRY_EDIT,
     GROUP_MENU_ENTRY_BACK
 };
 
@@ -198,10 +196,12 @@ static void show_status(const char *msg);
 static void wait_for_ack(const char *msg);
 static void prompt_string(const char *label, char *buffer, int maxlen);
 static int prompt_yesno(const char *question);
+static int is_valid_username(const char *text);
 static void show_help(const char *title, const char *body);
 static void login_screen(void);
 static void main_menu_screen(void);
 static void group_list_screen(void);
+static int group_action_menu(int group_index);
 static char group_menu_key_for_index(int idx);
 static void post_index_screen(void);
 static void post_view_screen(int message_index);
@@ -615,6 +615,20 @@ prompt_yesno(const char *question)
 }
 
 static int
+is_valid_username(const char *text)
+{
+    const unsigned char *p;
+
+    if (text == NULL)
+        return 0;
+    for (p = (const unsigned char *)text; *p; ++p) {
+        if (!isalnum(*p))
+            return 0;
+    }
+    return 1;
+}
+
+static int
 read_key(void)
 {
     int ch;
@@ -789,12 +803,19 @@ login_screen(void)
     platform_draw_separator(LINES - MENU_ROWS - 1);
     platform_draw_breadcrumb(g_breadcrumb);
     draw_menu_lines("Enter user id", "", "");
-    prompt_string("User id:", user, sizeof user);
-    if (user[0] == '\0') {
-        clear();
-        refresh();
-        stop_ui();
-        exit(0);
+    while (1) {
+        prompt_string("User id:", user, sizeof user);
+        if (user[0] == '\0') {
+            clear();
+            refresh();
+            stop_ui();
+            exit(0);
+        }
+        if (!is_valid_username(user)) {
+            wait_for_ack("User id must be alphanumeric.");
+            continue;
+        }
+        break;
     }
     if (strcasecmp(user, ADMIN_USER) == 0) {
         prompt_string("Admin password:", pass, sizeof pass);
@@ -1133,7 +1154,6 @@ group_list_screen(void)
     int highlight = g_last_highlight;
     int choice;
     int entry_count;
-    int current_group = (g_group_count > 0) ? 0 : -1;
     int i;
     const int start_row = 8;
 
@@ -1170,18 +1190,6 @@ group_list_screen(void)
             entry_type[entry_count] = GROUP_MENU_ENTRY_CREATE;
             entry_data[entry_count] = -1;
             ++entry_count;
-
-            menu_items[entry_count].key = 'E';
-            menu_items[entry_count].label = "Edit Highlighted Group";
-            entry_type[entry_count] = GROUP_MENU_ENTRY_EDIT;
-            entry_data[entry_count] = -1;
-            ++entry_count;
-
-            menu_items[entry_count].key = 'D';
-            menu_items[entry_count].label = "Delete/Restore Highlighted Group";
-            entry_type[entry_count] = GROUP_MENU_ENTRY_DELETE;
-            entry_data[entry_count] = -1;
-            ++entry_count;
         }
 
         menu_items[entry_count].key = 'B';
@@ -1199,9 +1207,6 @@ group_list_screen(void)
         focus_index = -1;
         choice = run_menu(start_row, menu_items, entry_count, highlight, &selected_index, &focus_index);
 
-        if (focus_index >= 0 && entry_type[focus_index] == GROUP_MENU_ENTRY_GROUP)
-            current_group = entry_data[focus_index];
-
         if (choice == 0) {
             if (handle_back_navigation())
                 return;
@@ -1215,25 +1220,12 @@ group_list_screen(void)
 
         switch (entry_type[selected_index]) {
         case GROUP_MENU_ENTRY_GROUP:
-            current_group = entry_data[selected_index];
-            select_group(current_group);
             g_last_highlight = selected_index;
-            push_screen(SCREEN_POST_INDEX, g_groups[current_group].name);
-            return;
+            if (group_action_menu(entry_data[selected_index]))
+                return;
+            break;
         case GROUP_MENU_ENTRY_CREATE:
             add_group();
-            break;
-        case GROUP_MENU_ENTRY_EDIT:
-            if (current_group >= 0)
-                handle_group_action('E', current_group);
-            else
-                wait_for_ack("Highlight a group first.");
-            break;
-        case GROUP_MENU_ENTRY_DELETE:
-            if (current_group >= 0)
-                handle_group_action('D', current_group);
-            else
-                wait_for_ack("Highlight a group first.");
             break;
         case GROUP_MENU_ENTRY_BACK:
         default:
@@ -1244,6 +1236,79 @@ group_list_screen(void)
 
         highlight = (focus_index >= 0) ? focus_index : highlight;
         g_last_highlight = highlight;
+    }
+}
+
+static int
+group_action_menu(int group_index)
+{
+    struct menu_item action_items[4];
+    int count;
+    int choice;
+    int highlight = 0;
+    int selected_index;
+    int focus_index;
+    int deleted;
+    const int menu_row = 12;
+
+    if (group_index < 0 || group_index >= g_group_count)
+        return 0;
+
+    while (1) {
+        deleted = g_groups[group_index].deleted;
+        draw_layout("Group Options", g_groups[group_index].name);
+        mvprintw(8, 4, "Name: %s", g_groups[group_index].name);
+        mvprintw(9, 4, "Description: %s", g_groups[group_index].description[0] ? g_groups[group_index].description : "(none)");
+        mvprintw(10, 4, "Status: %s", deleted ? "Marked deleted" : "Active");
+
+        count = 0;
+        action_items[count].key = 'V';
+        action_items[count].label = "View Messages";
+        ++count;
+        if (g_session.is_admin) {
+            action_items[count].key = 'E';
+            action_items[count].label = "Edit Group";
+            ++count;
+            action_items[count].key = 'D';
+            action_items[count].label = deleted ? "Restore Group" : "Delete Group";
+            ++count;
+        }
+        action_items[count].key = 'B';
+        action_items[count].label = "Back to Group List";
+        ++count;
+
+        selected_index = -1;
+        focus_index = -1;
+        choice = run_menu(menu_row, action_items, count, highlight, &selected_index, &focus_index);
+        if (focus_index >= 0)
+            highlight = focus_index;
+        if (choice == 0) {
+            return 0;
+        }
+        if (selected_index >= 0)
+            highlight = selected_index;
+
+        switch (choice) {
+        case 'V':
+            select_group(group_index);
+            push_screen(SCREEN_POST_INDEX, g_groups[group_index].name);
+            return 1;
+        case 'E':
+            if (g_session.is_admin)
+                handle_group_action('E', group_index);
+            else
+                wait_for_ack("Admins only.");
+            break;
+        case 'D':
+            if (g_session.is_admin)
+                handle_group_action('D', group_index);
+            else
+                wait_for_ack("Admins only.");
+            break;
+        case 'B':
+        default:
+            return 0;
+        }
     }
 }
 
