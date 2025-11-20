@@ -145,6 +145,10 @@ run_menu(int start_row,
     int indicator_width;
     int prev_indicator_top = -1;
     int prev_indicator_bottom = -1;
+    int prev_highlight = -1;
+    int prev_top_index = -1;
+    int prev_show_top = 0;
+    int prev_show_bottom = 0;
 
     if (items == NULL || count <= 0)
         return 0;
@@ -187,11 +191,23 @@ run_menu(int start_row,
             visible_rows = 1;
     }
 
+    prev_highlight = -1;
+    prev_top_index = -1;
+    prev_show_top = 0;
+    prev_show_bottom = 0;
+
     while (1) {
+        int need_full_redraw = 0;
+        int old_highlight;
+        int old_top_index;
+
         if (visible_rows > count)
             visible_rows = count;
         if (visible_rows < 1)
             visible_rows = 1;
+
+        old_highlight = prev_highlight;
+        old_top_index = prev_top_index;
 
         top_index = highlight - visible_rows + 1;
         if (top_index < 0)
@@ -205,39 +221,74 @@ run_menu(int start_row,
         show_bottom = (indicator_bottom_row >= 0) &&
             ((top_index + visible_rows) < count);
 
-        if (prev_indicator_top >= 0 && prev_indicator_top != indicator_top_row)
-            mvprintw(prev_indicator_top, indicator_col, "%-*s", indicator_width, "");
-        if (prev_indicator_bottom >= 0 && prev_indicator_bottom != indicator_bottom_row)
-            mvprintw(prev_indicator_bottom, indicator_col, "%-*s", indicator_width, "");
+        /* Only do full redraw if scrolling occurred or first time */
+        if (top_index != old_top_index || prev_highlight == -1) {
+            need_full_redraw = 1;
+            for (i = start_row; i <= bottom_row; ++i)
+                mvprintw(i, menu_col, "%-*s", menu_width, "");
 
-        for (i = 0; i < visible_rows; ++i) {
-            int item_index = top_index + i;
-            int row = first_row + i;
+            for (i = 0; i < visible_rows; ++i) {
+                int item_index = top_index + i;
+                int row = first_row + i;
 
-            if (item_index < count) {
-                if (items[item_index].key != 0)
-                    menu_draw_highlighted(row, menu_col, menu_width, item_index == highlight,
-                        "%c) %s", items[item_index].key, items[item_index].label);
+                if (item_index < count) {
+                    if (items[item_index].key != 0)
+                        menu_draw_highlighted(row, menu_col, menu_width, item_index == highlight,
+                            "%c) %s", items[item_index].key, items[item_index].label);
+                    else
+                        menu_draw_highlighted(row, menu_col, menu_width, item_index == highlight,
+                            "    %s", items[item_index].label);
+                } else {
+                    menu_draw_highlighted(row, menu_col, menu_width, 0, "%s", "");
+                }
+            }
+        } else {
+            /* Incremental update - only redraw changed highlight */
+            if (old_highlight != highlight) {
+                int old_item_index = old_highlight;
+                int old_row = first_row + (old_highlight - top_index);
+                int new_row = first_row + (highlight - top_index);
+
+                /* Redraw old highlight position (unhighlight) */
+                if (old_item_index >= top_index && old_item_index < top_index + visible_rows) {
+                    if (items[old_item_index].key != 0)
+                        menu_draw_highlighted(old_row, menu_col, menu_width, 0,
+                            "%c) %s", items[old_item_index].key, items[old_item_index].label);
+                    else
+                        menu_draw_highlighted(old_row, menu_col, menu_width, 0,
+                            "    %s", items[old_item_index].label);
+                }
+
+                /* Redraw new highlight position (highlight) */
+                if (items[highlight].key != 0)
+                    menu_draw_highlighted(new_row, menu_col, menu_width, 1,
+                        "%c) %s", items[highlight].key, items[highlight].label);
                 else
-                    menu_draw_highlighted(row, menu_col, menu_width, item_index == highlight,
-                        "    %s", items[item_index].label);
-            } else {
-                menu_draw_highlighted(row, menu_col, menu_width, 0, "%s", "");
+                    menu_draw_highlighted(new_row, menu_col, menu_width, 1,
+                        "    %s", items[highlight].label);
             }
         }
 
-        if (indicator_top_row >= 0) {
-            mvprintw(indicator_top_row, indicator_col, "%-*s", indicator_width, "");
-            if (show_top)
-                mvprintw(indicator_top_row, indicator_col, "<<<----");
+        /* Update indicators only if they changed */
+        if (need_full_redraw || show_top != prev_show_top) {
+            if (indicator_top_row >= 0) {
+                mvprintw(indicator_top_row, indicator_col, "%-*s", indicator_width, "");
+                if (show_top)
+                    mvprintw(indicator_top_row, indicator_col, "<<<----");
+            }
         }
-        if (indicator_bottom_row >= 0) {
-            mvprintw(indicator_bottom_row, indicator_col, "%-*s", indicator_width, "");
-            if (show_bottom)
-                mvprintw(indicator_bottom_row, indicator_col, "---->>>");
+        if (need_full_redraw || show_bottom != prev_show_bottom) {
+            if (indicator_bottom_row >= 0) {
+                mvprintw(indicator_bottom_row, indicator_col, "%-*s", indicator_width, "");
+                if (show_bottom)
+                    mvprintw(indicator_bottom_row, indicator_col, "---->>>");
+            }
         }
-        prev_indicator_top = show_top ? indicator_top_row : -1;
-        prev_indicator_bottom = show_bottom ? indicator_bottom_row : -1;
+
+        prev_highlight = highlight;
+        prev_top_index = top_index;
+        prev_show_top = show_top;
+        prev_show_bottom = show_bottom;
         refresh();
 
         ch = menu_read_key();
