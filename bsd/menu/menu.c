@@ -124,7 +124,8 @@ run_menu(int start_row,
          int count,
          int initial_highlight,
          int *selected_index,
-         int *focus_index)
+         int *focus_index,
+         int options)
 {
     int highlight;
     int ch;
@@ -160,7 +161,7 @@ run_menu(int start_row,
         highlight = count - 1;
 
     {
-        int content_right = COLS - 2;
+        int content_right = COLS - 4;
         if (content_right <= menu_col)
             menu_width = 1;
         else
@@ -342,6 +343,14 @@ run_menu(int start_row,
                     *focus_index = highlight;
                 return items[i].key;
             }
+        }
+
+        if (options & MENU_OPT_RETURN_UNHANDLED) {
+            if (selected_index)
+                *selected_index = -1;
+            if (focus_index)
+                *focus_index = highlight;
+            return ch;
         }
     }
 }

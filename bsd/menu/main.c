@@ -54,6 +54,7 @@
 #include <ctype.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
+#include <locale.h>
 #if !defined(__pdp11__)
 #include <time.h>
 #else
@@ -111,6 +112,20 @@ compat_snprintf(char *buf, size_t len, const char *fmt, ...)
 
 #define ESC_KEY 27
 
+static void
+debug_log(const char *fmt, ...)
+{
+    FILE *fp = fopen("debug.log", "a");
+    if (fp) {
+        va_list ap;
+        va_start(ap, fmt);
+        vfprintf(fp, fmt, ap);
+        fprintf(fp, "\n");
+        va_end(ap);
+        fclose(fp);
+    }
+}
+
 enum screen_id {
     SCREEN_LOGIN,
     SCREEN_MAIN,
@@ -154,6 +169,12 @@ enum group_menu_entry_type {
     GROUP_MENU_ENTRY_BACK
 };
 
+enum post_menu_entry_type {
+    POST_MENU_ENTRY_MESSAGE = 0,
+    POST_MENU_ENTRY_COMPOSE,
+    POST_MENU_ENTRY_BACK
+};
+
 struct main_menu_entry {
     char key;
     enum main_menu_action action;
@@ -163,6 +184,7 @@ struct main_menu_entry {
 
 #define MAX_MAIN_MENU_ENTRIES 16
 #define GROUP_MENU_LABEL_LEN (MAX_GROUP_NAME + MAX_GROUP_DESC + 16)
+#define POST_MENU_LABEL_LEN 128
 
 static struct session g_session;
 static enum screen_id g_screen = SCREEN_LOGIN;
@@ -235,6 +257,8 @@ static int is_valid_username(const char *text);
 static void draw_post_commands_line(void);
 static void format_post_age(time_t created, char *buf, int buflen);
 static void show_help(const char *title, const char *body);
+static int message_visible(const struct message *msg);
+static int visible_message_count(void);
 static void login_screen(void);
 static void main_menu_screen(void);
 static void group_list_screen(void);
@@ -243,12 +267,10 @@ static char group_menu_key_for_index(int idx);
 static void post_index_screen(void);
 static void post_view_screen(int message_index);
 static void compose_screen(struct message *reply_source, int forward_mode);
-static void address_book_screen(void);
 static void setup_screen(void);
 static void draw_group_rows(int highlight);
 static void handle_group_action(char action_key, int group_index);
 static void draw_post_rows(int highlight);
-static void draw_address_rows(int highlight);
 static int build_main_menu_entries(struct main_menu_entry *entries, int max_entries);
 static void update_status_line(void);
 static void render_body_text(const char *body, int start_row, int max_rows);
@@ -263,17 +285,11 @@ static void expunge_groups(void);
 static void select_group(int idx);
 static void goto_group_prompt(void);
 static void whereis_group(void);
-static void take_address_from_message(struct message *msg);
 static void save_message_to_group(struct message *msg);
 static void delete_or_undelete(struct message *msg, int deleted);
 static void expunge_messages(void);
 static void search_messages(void);
-static void add_address_entry(int is_list);
-static void edit_address_entry(int idx);
-static void delete_address_entry(int idx);
-static void compose_to_entry(int idx);
 static void edit_signature(void);
-static void edit_printer(void);
 static void change_password(void);
 static int read_key(void);
 static int input_has_data(void);
@@ -323,8 +339,6 @@ default_label_for_screen(enum screen_id id)
         return "Post";
     case SCREEN_COMPOSE:
         return "Compose";
-    case SCREEN_ADDRESS_BOOK:
-        return "Address Book";
     case SCREEN_SETUP:
         return "Setup";
     case SCREEN_HELP:
@@ -450,11 +464,13 @@ main(int argc, char **argv)
     argc = argc;
     argv = argv;
 
+    setlocale(LC_ALL, "");
+    debug_log("Main started");
+
     ensure_data_dir();
     init_config();
     load_config();
     load_groups();
-    load_address_book();
 
     start_ui();
     require_screen_size();
@@ -487,9 +503,6 @@ main(int argc, char **argv)
             g_compose_source = NULL;
             g_compose_forward = 0;
             break;
-        case SCREEN_ADDRESS_BOOK:
-            address_book_screen();
-            break;
         case SCREEN_SETUP:
             setup_screen();
             break;
@@ -516,6 +529,7 @@ start_ui(void)
     keypad(stdscr, TRUE);
 #endif
     platform_set_cursor(0);
+    refresh();
     g_ui_ready = 1;
 }
 
@@ -560,10 +574,10 @@ static void
 draw_layout(const char *title, const char *status)
 {
     int menu_bar;
-    char header_left[80];
-    char header_right[80];
+    char header_left[256];
+    char header_right[256];
 
-    clear();
+    erase();
 
     safe_copy(header_left, sizeof header_left, PROGRAM_TITLE);
     safe_append(header_left, sizeof header_left, " ");
@@ -577,6 +591,8 @@ draw_layout(const char *title, const char *status)
         int target_col = COLS - 40;
         if (target_col < 2)
             target_col = 2;
+        if (target_col > (int)sizeof(header_right) - 1)
+            target_col = (int)sizeof(header_right) - 1;
         while ((int)strlen(header_right) < target_col)
             safe_append_char(header_right, sizeof header_right, ' ');
     }
@@ -589,20 +605,42 @@ draw_layout(const char *title, const char *status)
     if (status && *status)
         mvprintw(4, COLS - (int)strlen(status) - 3, "%s", status);
     
-    /* Refresh curses buffer to screen, THEN draw DEC graphics border over it */
-    refresh();
-    platform_draw_border();
-
     menu_bar = LINES - MENU_ROWS - 1;
+
+#ifndef LEGACY_CURSES
+    platform_draw_border();
     platform_draw_separator(menu_bar);
+#endif
+
+    /* Refresh curses buffer to screen */
+    refresh();
+
+#ifdef LEGACY_CURSES
+    platform_draw_border();
+    platform_draw_separator(menu_bar);
+#endif
 }
 
 static void
 draw_menu_lines(const char *line1, const char *line2, const char *line3)
 {
-    (void)line1;
-    (void)line2;
-    (void)line3;
+    const char *lines[3];
+    int start_row;
+    int stop_row;
+    int i;
+
+    lines[0] = line1 ? line1 : "";
+    lines[1] = line2 ? line2 : "";
+    lines[2] = line3 ? line3 : "";
+
+    start_row = LINES - MENU_ROWS + 1; /* leave status line intact */
+    stop_row = LINES - PROMPT_ROW_OFFSET - 1; /* avoid clobbering separator */
+    for (i = 0; i < 3; ++i) {
+        int row = start_row + i;
+        if (row >= stop_row)
+            break; /* avoid clobbering prompt line */
+        mvprintw(row, 4, "%-*s", COLS - 6, lines[i]);
+    }
 }
 
 
@@ -629,6 +667,7 @@ prompt_string(const char *label, char *buffer, int maxlen)
     int row;
     int col;
 
+    debug_log("prompt_string: %s", label);
     row = LINES - PROMPT_ROW_OFFSET;
     move(row, 2);
     clrtoeol();
@@ -638,7 +677,9 @@ prompt_string(const char *label, char *buffer, int maxlen)
         col = COLS - 3;
     move(row, col);
     platform_set_cursor(1);
+    debug_log("Calling platform_read_input");
     platform_read_input(row, col, buffer, maxlen - 1);
+    debug_log("Returned from platform_read_input");
     platform_set_cursor(0);
     trim_newline(buffer);
 }
@@ -747,13 +788,20 @@ static int
 confirm_exit_prompt(void)
 {
     char buf[8];
+    const char *p;
+    int ch = 0;
     int row = LINES - PROMPT_ROW_OFFSET;
 
     prompt_string("Logout (Y/n):", buf, sizeof buf);
     move(row, 2);
     clrtoeol();
     refresh();
-    if (buf[0] == '\0' || buf[0] == 'y' || buf[0] == 'Y')
+    /* Accept Y/y as yes (default), ignore leading spaces */
+    for (p = buf; *p && isspace((unsigned char)*p); ++p)
+        ;
+    if (*p != '\0')
+        ch = toupper((unsigned char)*p);
+    if (ch == 0 || ch == 'Y')
         return 1;
     return 0;
 }
@@ -838,10 +886,21 @@ login_screen(void)
     row = 12;   // leave room for banner
     mvprintw(row + 1, 2, "Welcome to the PDP-11 message boards.");
     mvprintw(row + 3, 2, "Enter user id (admin requires password).");
-    refresh();
+
+#ifndef LEGACY_CURSES
     platform_draw_border();
     platform_draw_separator(LINES - MENU_ROWS - 1);
     platform_draw_breadcrumb(g_breadcrumb);
+#endif
+
+    refresh();
+
+#ifdef LEGACY_CURSES
+    platform_draw_border();
+    platform_draw_separator(LINES - MENU_ROWS - 1);
+    platform_draw_breadcrumb(g_breadcrumb);
+#endif
+
     draw_menu_lines("Enter user id", "", "");
     while (1) {
         prompt_string("User id:", user, sizeof user);
@@ -881,11 +940,11 @@ update_status_line(void)
     group = current_group_name();
     if (group == NULL)
         group = "(no group)";
-    posts = g_cached_message_count;
+    posts = visible_message_count();
     if (g_session.current_group >= 0 && g_session.current_group < g_group_count) {
         if (posts == 0)
             load_messages_for_group(g_session.current_group);
-        posts = g_cached_message_count;
+        posts = visible_message_count();
     }
     status[0] = '\0';
     safe_append(status, sizeof status, "Group: ");
@@ -979,7 +1038,7 @@ main_menu_screen(void)
             highlight = 0;
         selected_index = -1;
         focus_index = -1;
-        choice = run_menu(8, items, entry_count, highlight, &selected_index, &focus_index);
+        choice = run_menu(8, items, entry_count, highlight, &selected_index, &focus_index, 0);
         if (choice == 0) {
             if (handle_back_navigation() && g_screen != SCREEN_MAIN)
                 return;
@@ -1213,6 +1272,11 @@ group_list_screen(void)
             mvprintw(notice_row, 4, "No groups defined. Create one to begin.");
         else
             mvprintw(notice_row, 4, "Select a group to enter or choose an admin option.");
+        {
+            int verb_row = menu_start_row - 1;
+            if (verb_row >= 0 && verb_row < LINES - PROMPT_ROW_OFFSET - 1)
+                mvprintw(verb_row, 4, "%-*s", COLS - 6, "C) Create group   D) Delete group   E) Edit group");
+        }
 
         entry_count = 0;
         for (i = 0; i < g_group_count && entry_count < MAX_GROUPS; ++i) {
@@ -1231,24 +1295,6 @@ group_list_screen(void)
             ++entry_count;
         }
 
-        /* Add placeholder groups so scrolling can be tested with long lists. */
-        for (i = 0; i < 20 && entry_count < MAX_GROUPS; ++i) {
-            snprintf(labels[entry_count], sizeof labels[entry_count], "Dummy Group %02d", i + 1);
-            menu_items[entry_count].key = group_menu_key_for_index(entry_count);
-            menu_items[entry_count].label = labels[entry_count];
-            entry_type[entry_count] = GROUP_MENU_ENTRY_GROUP;
-            entry_data[entry_count] = -1;
-            ++entry_count;
-        }
-
-        if (g_session.is_admin) {
-            menu_items[entry_count].key = 'C';
-            menu_items[entry_count].label = "Create Group";
-            entry_type[entry_count] = GROUP_MENU_ENTRY_CREATE;
-            entry_data[entry_count] = -1;
-            ++entry_count;
-        }
-
         menu_items[entry_count].key = 'B';
         menu_items[entry_count].label = "Back - Return to previous menu";
         entry_type[entry_count] = GROUP_MENU_ENTRY_BACK;
@@ -1262,7 +1308,7 @@ group_list_screen(void)
 
         selected_index = -1;
         focus_index = -1;
-        choice = run_menu(menu_start_row, menu_items, entry_count, highlight, &selected_index, &focus_index);
+        choice = run_menu(menu_start_row, menu_items, entry_count, highlight, &selected_index, &focus_index, MENU_OPT_RETURN_UNHANDLED);
 
         if (choice == 0) {
             if (handle_back_navigation())
@@ -1273,14 +1319,38 @@ group_list_screen(void)
         }
 
         if (selected_index < 0 || selected_index >= entry_count)
-            continue;
+            selected_index = (focus_index >= 0) ? focus_index : highlight;
+
+        {
+            int key = normalize_key(choice);
+            if (key == 'C') {
+                add_group();
+                continue;
+            }
+            if (key == 'D') {
+                if (selected_index >= 0 && selected_index < entry_count &&
+                    entry_type[selected_index] == GROUP_MENU_ENTRY_GROUP)
+                    mark_delete_group(entry_data[selected_index]);
+                else
+                    wait_for_ack("Select a group first.");
+                continue;
+            }
+            if (key == 'E') {
+                if (selected_index >= 0 && selected_index < entry_count &&
+                    entry_type[selected_index] == GROUP_MENU_ENTRY_GROUP)
+                    edit_group_details(entry_data[selected_index]);
+                else
+                    wait_for_ack("Select a group first.");
+                continue;
+            }
+        }
 
         switch (entry_type[selected_index]) {
         case GROUP_MENU_ENTRY_GROUP:
             g_last_highlight = selected_index;
-            if (group_action_menu(entry_data[selected_index]))
-                return;
-            break;
+            select_group(entry_data[selected_index]);
+            push_screen(SCREEN_POST_INDEX, g_groups[entry_data[selected_index]].name);
+            return;
         case GROUP_MENU_ENTRY_CREATE:
             add_group();
             break;
@@ -1336,7 +1406,7 @@ group_action_menu(int group_index)
 
         selected_index = -1;
         focus_index = -1;
-        choice = run_menu(menu_row, action_items, count, highlight, &selected_index, &focus_index);
+        choice = run_menu(menu_row, action_items, count, highlight, &selected_index, &focus_index, 0);
         if (focus_index >= 0)
             highlight = focus_index;
         if (choice == 0) {
@@ -1400,6 +1470,13 @@ draw_post_rows(int highlight)
     int i;
     char age[32];
     char subject_buf[96];
+    int visible_index = 0;
+    int total_visible;
+    int age_width;
+    int author_width;
+    int subject_width;
+    int available;
+    int line_width;
 
     row = 6;
 #ifdef LEGACY_CURSES
@@ -1409,10 +1486,19 @@ draw_post_rows(int highlight)
     fflush(stdout);
 #else
     mvprintw(5, 3, "Subject");
-    mvprintw(5, 45, "Poster");
-    mvprintw(5, 63, "Age");
+    mvprintw(5, 41, "Poster");
+    mvprintw(5, 57, "Age");
 #endif
-    if (g_cached_message_count == 0) {
+    age_width = 8;
+    author_width = 16;
+    line_width = COLS - 7; /* match run_menu width (COLS - 7) */
+    available = line_width;
+    subject_width = available - author_width - age_width - 4; /* two gaps */
+    if (subject_width < 8)
+        subject_width = 8;
+
+    total_visible = visible_message_count();
+    if (total_visible == 0) {
 #ifdef LEGACY_CURSES
         printf("\033[%d;%dHNo posts in this group yet.", 7, 4);
         fflush(stdout);
@@ -1423,9 +1509,11 @@ draw_post_rows(int highlight)
     }
     if (highlight < 0)
         highlight = 0;
-    if (highlight >= g_cached_message_count)
-        highlight = g_cached_message_count - 1;
-    for (i = 0; i < g_cached_message_count && row < LINES - MENU_ROWS - 2; ++i, ++row) {
+    if (highlight >= total_visible)
+        highlight = total_visible - 1;
+    for (i = 0; i < g_cached_message_count && row < LINES - MENU_ROWS - 2; ++i) {
+        if (!message_visible(&g_cached_messages[i]))
+            continue;
         format_post_age(g_cached_messages[i].created, age, sizeof age);
         subject_buf[0] = '\0';
         if (g_cached_messages[i].deleted)
@@ -1433,11 +1521,13 @@ draw_post_rows(int highlight)
         if (g_cached_messages[i].answered && !g_cached_messages[i].deleted)
             safe_append(subject_buf, sizeof subject_buf, "(ans) ");
         safe_append(subject_buf, sizeof subject_buf, g_cached_messages[i].subject);
-        draw_highlighted_text(row, 3, COLS - 6, i == highlight,
-            "%-40.40s  %-16.16s  %-10s",
-            subject_buf[0] ? subject_buf : g_cached_messages[i].subject,
-            g_cached_messages[i].author,
-            age);
+        draw_highlighted_text(row, 3, line_width, visible_index == highlight,
+            "%-*.*s  %*.*s  %*.*s",
+            subject_width, subject_width, subject_buf[0] ? subject_buf : g_cached_messages[i].subject,
+            author_width, author_width, g_cached_messages[i].author,
+            age_width, age_width, age);
+        ++visible_index;
+        ++row;
     }
 }
 
@@ -1497,12 +1587,54 @@ format_post_age(time_t created, char *buf, int buflen)
     }
 }
 
+/* Returns 1 if a message should be visible to the current user. */
+static int
+message_visible(const struct message *msg)
+{
+    if (msg == NULL)
+        return 0;
+    if (!msg->deleted)
+        return 1;
+    if (g_session.is_admin)
+        return 1;
+    if (g_session.username[0] && strcmp(msg->author, g_session.username) == 0)
+        return 1;
+    return 0;
+}
+
+/* Counts messages visible to the current user. */
+static int
+visible_message_count(void)
+{
+    int i;
+    int count = 0;
+
+    for (i = 0; i < g_cached_message_count; ++i) {
+        if (message_visible(&g_cached_messages[i]))
+            ++count;
+    }
+    return count;
+}
+
 static void
 post_index_screen(void)
 {
+    struct menu_item menu_items[MAX_MESSAGES + 4];
+    char labels[MAX_MESSAGES + 4][POST_MENU_LABEL_LEN];
+    int entry_type[MAX_MESSAGES + 4];
+    int entry_data[MAX_MESSAGES + 4];
     int highlight;
-    int ch;
-    int key;
+    int choice;
+    int selected_index;
+    int focus_index;
+    int entry_count;
+    char title[96];
+    const int menu_start_row = 7;
+    int age_width;
+    int author_width;
+    int subject_width;
+    int available;
+    int line_width;
 
     if (!action_requires_group()) {
         pop_screen();
@@ -1516,79 +1648,102 @@ post_index_screen(void)
         push_screen(SCREEN_GROUP_LIST, "Groups");
         return;
     }
-
     highlight = g_last_highlight;
-    if (highlight >= g_cached_message_count)
-        highlight = g_cached_message_count - 1;
     if (highlight < 0)
         highlight = 0;
 
-    draw_layout("", "");
-    draw_post_rows(highlight);
-    draw_post_commands_line();
-    refresh();
+    age_width = 8;
+    author_width = 16;
+    line_width = COLS - 7; /* match run_menu width */
+    available = line_width;
+    subject_width = available - author_width - age_width - 4;
+    if (subject_width < 8)
+        subject_width = 8;
 
     while (1) {
-        ch = read_key();
-        if (is_back_key(ch)) {
+        int i;
+        entry_count = 0;
+        snprintf(title, sizeof title, "%s", current_group_name() ? current_group_name() : "");
+        draw_layout("", "");
+        mvprintw(5, 4, "%-*s  %*s  %*s", subject_width, "Subject", author_width, "Author", age_width, "Age");
+
+        /* Compose at top of menu for quick access */
+        menu_items[entry_count].key = 'C';
+        menu_items[entry_count].label = "Compose a new message";
+        entry_type[entry_count] = POST_MENU_ENTRY_COMPOSE;
+        entry_data[entry_count] = -1;
+        ++entry_count;
+
+        for (i = 0; i < g_cached_message_count && entry_count < MAX_MESSAGES; ++i) {
+            if (!message_visible(&g_cached_messages[i]))
+                continue;
+            char age[32];
+            char decorated_subject[MAX_SUBJECT + 16];
+
+            format_post_age(g_cached_messages[i].created, age, sizeof age);
+            decorated_subject[0] = '\0';
+            if (g_cached_messages[i].deleted)
+                safe_append(decorated_subject, sizeof decorated_subject, "[del] ");
+            if (g_cached_messages[i].answered && !g_cached_messages[i].deleted)
+                safe_append(decorated_subject, sizeof decorated_subject, "[ans] ");
+            safe_append(decorated_subject, sizeof decorated_subject,
+                g_cached_messages[i].subject[0] ? g_cached_messages[i].subject : "(no subject)");
+
+            snprintf(labels[entry_count], sizeof labels[entry_count],
+                "%-*.*s  %*.*s  %*.*s",
+                subject_width, subject_width, decorated_subject,
+                author_width, author_width, g_cached_messages[i].author[0] ? g_cached_messages[i].author : "(anon)",
+                age_width, age_width, age);
+            menu_items[entry_count].key = group_menu_key_for_index(entry_count);
+            menu_items[entry_count].label = labels[entry_count];
+            entry_type[entry_count] = POST_MENU_ENTRY_MESSAGE;
+            entry_data[entry_count] = i;
+            ++entry_count;
+        }
+
+        menu_items[entry_count].key = 'B';
+        menu_items[entry_count].label = "Back to group list";
+        entry_type[entry_count] = POST_MENU_ENTRY_BACK;
+        entry_data[entry_count] = -1;
+        ++entry_count;
+
+        if (highlight >= entry_count)
+            highlight = entry_count - 1;
+
+        selected_index = -1;
+        focus_index = -1;
+        draw_menu_lines("Enter/Open  C Compose  B Back", "", "");
+        choice = run_menu(menu_start_row, menu_items, entry_count, highlight, &selected_index, &focus_index, 0);
+
+        if (choice == 0) {
             if (handle_back_navigation())
-                break;
+                return;
+            highlight = (focus_index >= 0) ? focus_index : highlight;
             continue;
         }
-        if (ch == KEY_UP) {
-            if (highlight > 0)
-                --highlight;
-            draw_post_rows(highlight);
-            refresh();
+
+        if (selected_index < 0 || selected_index >= entry_count)
             continue;
-        }
-        if (ch == KEY_DOWN) {
-            if (highlight < g_cached_message_count - 1)
-                ++highlight;
-            draw_post_rows(highlight);
-            refresh();
-            continue;
-        }
-        if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
-            if (g_cached_message_count > 0) {
-                open_post_view(highlight);
-                break;
-            }
-            continue;
-        }
-        key = normalize_key(ch);
-        if (key == 'N') {
+
+        switch (entry_type[selected_index]) {
+        case POST_MENU_ENTRY_MESSAGE:
+            g_last_highlight = selected_index;
+            open_post_view(entry_data[selected_index]);
+            return;
+        case POST_MENU_ENTRY_COMPOSE:
+            g_last_highlight = (focus_index >= 0 && focus_index < entry_count) ?
+                focus_index : g_last_highlight;
             open_compose(NULL, 0);
+            return;
+        case POST_MENU_ENTRY_BACK:
+        default:
+            if (handle_back_navigation())
+                return;
             break;
         }
-        if (key == 'R') {
-            if (g_cached_message_count > 0) {
-                open_compose(&g_cached_messages[highlight], 0);
-                break;
-            }
-            continue;
-        }
-        if (key == 'D') {
-            if (!g_session.is_admin) {
-                wait_for_ack("Admins only.");
-                draw_post_commands_line();
-                continue;
-            }
-            if (g_cached_message_count > 0) {
-                int deleted = g_cached_messages[highlight].deleted ? 0 : 1;
-                delete_or_undelete(&g_cached_messages[highlight], deleted);
-            }
-            draw_post_rows(highlight);
-            refresh();
-            continue;
-        }
-        if (key == 'B') {
-            if (handle_back_navigation())
-                break;
-            continue;
-        }
+
+        highlight = (focus_index >= 0) ? focus_index : highlight;
     }
-    g_last_highlight = highlight;
 }
 
 static void
@@ -1604,15 +1759,18 @@ post_view_screen(int message_index)
     msg = &g_cached_messages[message_index];
 
     while (1) {
-        draw_layout("Post View", msg->subject);
+        draw_layout("", "");
         draw_back_hint();
         format_time(msg->created, stamp, sizeof stamp);
         mvprintw(5, 4, "From: %s", msg->author);
         mvprintw(6, 4, "Date: %s", stamp);
-        mvprintw(7, 4, "Parent: %d", msg->parent_id);
-        mvprintw(8, 4, "Status: %s", msg->deleted ? "Deleted" : (msg->answered ? "Answered" : "New"));
-        render_body_text(msg->body, 10, LINES - MENU_ROWS - 12);
-        draw_menu_lines("D Delete  U Undelete  R Reply  F Forward  S Save", "T Take Addr  V View Attach (TODO)  E Exit Attach (TODO)", "< Index  ? Help");
+        render_body_text(msg->body, 8, LINES - MENU_ROWS - 10);
+        if (g_config.signature[0]) {
+            int sig_row = LINES - MENU_ROWS - 2;
+            if (sig_row > 8)
+                mvprintw(sig_row, 4, "%s", g_config.signature);
+        }
+        draw_menu_lines("D Delete  U Undelete  R Reply", "V View Attach (TODO)  E Exit Attach (TODO)", "< Index  ? Help");
         refresh();
         ch = read_key();
         key = normalize_key(ch);
@@ -1626,13 +1784,6 @@ post_view_screen(int message_index)
         } else if (key == 'R') {
             open_compose(msg, 0);
             return;
-        } else if (key == 'F') {
-            open_compose(msg, 1);
-            return;
-        } else if (key == 'S') {
-            save_message_to_group(msg);
-        } else if (key == 'T') {
-            take_address_from_message(msg);
         } else if (ch == '?') {
             show_help("Post View Help", "Use commands to reply, forward, or save the current message.");
         }
@@ -1693,7 +1844,7 @@ edit_body(char *buffer, int maxlen)
 static int
 edit_body_with_editor(char *subject, char *buffer, int maxlen)
 {
-    char tmpname[L_tmpnam];
+    char tmpname[] = "/tmp/bbsmsgXXXXXX";
     const char *editor;
     char cmd[512];
     FILE *fp;
@@ -1702,6 +1853,7 @@ edit_body_with_editor(char *subject, char *buffer, int maxlen)
     int truncated = 0;
     int restart_ui = 0;
     int rc;
+    int fd;
 
     if (subject == NULL || buffer == NULL || maxlen <= 1)
         return 0;
@@ -1714,13 +1866,15 @@ edit_body_with_editor(char *subject, char *buffer, int maxlen)
         }
     }
 
-    if (tmpnam(tmpname) == NULL) {
+    fd = mkstemp(tmpname);
+    if (fd == -1) {
         wait_for_ack("Unable to create temp file for editor.");
         return 0;
     }
-
-    fp = fopen(tmpname, "w");
+    fp = fdopen(fd, "w");
     if (fp == NULL) {
+        close(fd);
+        remove(tmpname);
         wait_for_ack("Unable to open temp file for editor.");
         return 0;
     }
@@ -1807,6 +1961,7 @@ compose_screen(struct message *reply_source, int forward_mode)
     int ch;
     int parent;
     int key;
+    int initialized_body_with_editor = 0;
 
     if (!action_requires_group()) {
         if (pop_screen())
@@ -1848,21 +2003,27 @@ compose_screen(struct message *reply_source, int forward_mode)
             safe_copy(body, MAX_BODY, "> ");
             safe_append(body, MAX_BODY, reply_source->body);
         }
+        initialized_body_with_editor = 1; /* already have content */
     }
 
     field = 0;
     done = 0;
 
+    /* For new posts, immediately open the user's $EDITOR on a temp file to craft the body */
+    if (!initialized_body_with_editor) {
+        if (!edit_body_with_editor(subject, body, MAX_BODY))
+            edit_body(body, MAX_BODY);
+        else
+            initialized_body_with_editor = 1;
+    }
+
     while (!done) {
-        draw_layout("Compose", "");
+        draw_layout("", "");
         draw_back_hint();
-        mvprintw(5, 4, "To: %s", to);
-        mvprintw(6, 4, "Cc: %s", cc);
-        mvprintw(7, 4, "Attach: %s", attach);
-        mvprintw(8, 4, "Subject: %s", subject);
-        mvprintw(10, 4, "Body preview:");
-        render_body_text(body, 11, LINES - MENU_ROWS - 13);
-        draw_menu_lines("^X Send  ^C Cancel  ^O Postpone (TODO)  ^R Read File (TODO)", "^J Justify (TODO)  ^W WhereIs (TODO)  ^T Add Addr", "Enter edits field (body opens $EDITOR)  Arrows move field");
+    mvprintw(5, 4, "Subject: %s", subject);
+    mvprintw(7, 4, "Body preview:");
+    render_body_text(body, 8, LINES - MENU_ROWS - 10);
+        draw_menu_lines("^X Send  ^C Cancel", "^J Justify (TODO)  ^W WhereIs (TODO)  ^T Add Addr", "Enter edits field (body opens $EDITOR)  Arrows move field");
         refresh();
         ch = read_key();
         key = normalize_key(ch);
@@ -1874,18 +2035,12 @@ compose_screen(struct message *reply_source, int forward_mode)
             if (field > 0)
                 --field;
         } else if (ch == KEY_DOWN) {
-            if (field < 4)
+            if (field < 1)
                 ++field;
         } else if (ch == '\n' || ch == '\r') {
             if (field == 0)
-                prompt_string("To:", to, MAX_ADDRESS);
-            else if (field == 1)
-                prompt_string("Cc:", cc, MAX_ADDRESS);
-            else if (field == 2)
-                prompt_string("Attach:", attach, MAX_ADDRESS);
-            else if (field == 3)
                 prompt_string("Subject:", subject, MAX_SUBJECT);
-            else if (field == 4) {
+            else if (field == 1) {
                 if (!edit_body_with_editor(subject, body, MAX_BODY))
                     edit_body(body, MAX_BODY);
             }
@@ -1925,8 +2080,6 @@ compose_screen(struct message *reply_source, int forward_mode)
         } else if (key == 'Q') {
             if (prompt_yesno("Discard draft? y/n"))
                 done = 1;
-        } else if (ch == CTRL_KEY('T')) {
-            add_address_entry(0);
         }
     }
     pop_screen();
@@ -1958,30 +2111,6 @@ save_message_to_group(struct message *msg)
     } else {
         wait_for_ack("Unable to save message.");
     }
-}
-
-static void
-take_address_from_message(struct message *msg)
-{
-    char nick[MAX_AUTHOR];
-    int idx;
-
-    if (msg == NULL)
-        return;
-    if (g_addr_count >= MAX_ADDRBOOK) {
-        wait_for_ack("Address book full.");
-        return;
-    }
-    prompt_string("Nickname for address:", nick, sizeof nick);
-    if (nick[0] == '\0')
-        return;
-    idx = g_addr_count++;
-        safe_copy(g_addrbook[idx].nickname, sizeof g_addrbook[idx].nickname, nick);
-        safe_copy(g_addrbook[idx].fullname, sizeof g_addrbook[idx].fullname, msg->author);
-        safe_copy(g_addrbook[idx].address, sizeof g_addrbook[idx].address, msg->author);
-    g_addrbook[idx].is_list = 0;
-    save_address_book();
-    wait_for_ack("Address added.");
 }
 
 static void
@@ -2026,118 +2155,6 @@ search_messages(void)
 }
 
 static void
-draw_address_rows(int highlight)
-{
-    int row;
-    int i;
-
-    row = 8;
-    mvprintw(row - 1, 3, "%-4s %-12s %-20s %-32s", "No", "Nick", "Fullname", "Address/List");
-    for (i = 0; i < g_addr_count && row < LINES - MENU_ROWS - 2; ++i, ++row) {
-        draw_highlighted_text(row, 3, COLS - 5, i == highlight,
-            "%-4d %-12s %-20.20s %-32.32s%s", i + 1, g_addrbook[i].nickname,
-            g_addrbook[i].fullname, g_addrbook[i].address,
-            g_addrbook[i].is_list ? " (list)" : "");
-    }
-}
-
-static void
-address_book_screen(void)
-{
-    int highlight;
-    int ch;
-    int key;
-
-    highlight = 0;
-    draw_layout("Address Book", "");
-    draw_back_hint();
-    draw_address_rows(highlight);
-    draw_menu_lines("A Add  S Create List  V View/Update  D Delete", "C Compose To  T Take (TODO)  O Other", "< Main  ? Help");
-    refresh();
-
-    while (1) {
-        ch = read_key();
-        key = normalize_key(ch);
-        if (is_back_key(ch)) {
-            if (handle_back_navigation())
-                break;
-            continue;
-        }
-        if (ch == KEY_UP) {
-            if (highlight > 0)
-                --highlight;
-        } else if (ch == KEY_DOWN) {
-            if (highlight < g_addr_count - 1)
-                ++highlight;
-        } else if (key == 'A') {
-            add_address_entry(0);
-        } else if (key == 'S') {
-            add_address_entry(1);
-        } else if (key == 'V' || ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
-            edit_address_entry(highlight);
-        } else if (key == 'D') {
-            delete_address_entry(highlight);
-        } else if (key == 'C') {
-            compose_to_entry(highlight);
-            break;
-        } else if (ch == '?') {
-            show_help("Address Book Help", "Manage nicknames and distribution lists from this screen.");
-        }
-        draw_address_rows(highlight);
-        refresh();
-    }
-}
-
-static void
-add_address_entry(int is_list)
-{
-    if (g_addr_count >= MAX_ADDRBOOK) {
-        wait_for_ack("Address book full.");
-        return;
-    }
-    prompt_string("Nickname:", g_addrbook[g_addr_count].nickname, MAX_AUTHOR);
-    if (g_addrbook[g_addr_count].nickname[0] == '\0')
-        return;
-    prompt_string("Full name:", g_addrbook[g_addr_count].fullname, MAX_GROUP_DESC);
-    prompt_string(is_list ? "List members:" : "Address:", g_addrbook[g_addr_count].address, MAX_ADDRESS);
-    g_addrbook[g_addr_count].is_list = is_list;
-    ++g_addr_count;
-    save_address_book();
-}
-
-static void
-edit_address_entry(int idx)
-{
-    if (idx < 0 || idx >= g_addr_count)
-        return;
-    prompt_string("Full name:", g_addrbook[idx].fullname, MAX_GROUP_DESC);
-    prompt_string(g_addrbook[idx].is_list ? "List members:" : "Address:", g_addrbook[idx].address, MAX_ADDRESS);
-    save_address_book();
-}
-
-static void
-delete_address_entry(int idx)
-{
-    int i;
-
-    if (idx < 0 || idx >= g_addr_count)
-        return;
-    for (i = idx; i < g_addr_count - 1; ++i)
-        g_addrbook[i] = g_addrbook[i + 1];
-    --g_addr_count;
-    save_address_book();
-}
-
-static void
-compose_to_entry(int idx)
-{
-    if (idx < 0 || idx >= g_addr_count)
-        return;
-    safe_copy(g_compose_prefill_to, sizeof g_compose_prefill_to, g_addrbook[idx].address);
-    open_compose(NULL, 0);
-}
-
-static void
 setup_screen(void)
 {
     struct menu_item setup_menu[4];
@@ -2146,23 +2163,20 @@ setup_screen(void)
     int focus_index;
     int highlight = 0;
 
-    setup_menu[0].key = 'P';
-    setup_menu[0].label = "Printer Command";
-    setup_menu[1].key = 'G';
-    setup_menu[1].label = "Edit Signature";
-    setup_menu[2].key = 'N';
-    setup_menu[2].label = "Change Password";
-    setup_menu[3].key = 'B';
-    setup_menu[3].label = "Back - Return to previous menu";
+    setup_menu[0].key = 'S';
+    setup_menu[0].label = "Edit Signature";
+    setup_menu[1].key = 'N';
+    setup_menu[1].label = "Change Password";
+    setup_menu[2].key = 'B';
+    setup_menu[2].label = "Back - Return to previous menu";
 
     while (1) {
         draw_layout("Setup", "Configure session");
-        mvprintw(5, 4, "Printer: %s", g_config.printer[0] ? g_config.printer : "(default)");
-        mvprintw(6, 4, "Signature: %s", g_config.signature[0] ? g_config.signature : "(none)");
-        mvprintw(7, 4, "Password changes require admin privileges.");
+        mvprintw(5, 4, "Signature: %s", g_config.signature[0] ? g_config.signature : "(none)");
+        mvprintw(6, 4, "Password changes require admin privileges.");
         selected_index = -1;
         focus_index = -1;
-        choice = run_menu(9, setup_menu, 4, highlight, &selected_index, &focus_index);
+        choice = run_menu(9, setup_menu, 3, highlight, &selected_index, &focus_index, 0);
         if (focus_index >= 0)
             highlight = focus_index;
         if (choice == 0) {
@@ -2174,10 +2188,7 @@ setup_screen(void)
             highlight = selected_index;
 
         switch (choice) {
-        case 'P':
-            edit_printer();
-            break;
-        case 'G':
+        case 'S':
             edit_signature();
             break;
         case 'N':
@@ -2197,13 +2208,6 @@ static void
 edit_signature(void)
 {
     edit_body(g_config.signature, sizeof g_config.signature);
-    save_config();
-}
-
-static void
-edit_printer(void)
-{
-    prompt_string("Printer command:", g_config.printer, sizeof g_config.printer);
     save_config();
 }
 

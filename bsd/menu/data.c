@@ -50,8 +50,6 @@ extern unsigned sleep();
 
 struct group g_groups[MAX_GROUPS];
 int g_group_count;
-struct address_entry g_addrbook[MAX_ADDRBOOK];
-int g_addr_count;
 struct config_data g_config;
 struct message *g_cached_messages = NULL;
 int g_cached_message_count = 0;
@@ -199,7 +197,6 @@ ensure_data_dir(void)
 void
 init_config(void)
 {
-    g_config.printer[0] = '\0';
     g_config.signature[0] = '\0';
     g_config.password[0] = '\0';
 }
@@ -488,67 +485,7 @@ copy_message_to_group(struct message *msg, const char *group_name)
     return rc;
 }
 
-// Loads the address book file into memory.
-
-void
-load_address_book(void)
-{
-    FILE *fp;
-    char line[512];
-    char *nick;
-    char *full;
-    char *addr;
-    char *flag;
-
-    g_addr_count = 0;
-    lock_guard();
-    fp = fopen(ADDRESS_FILE, "r");
-    if (fp == NULL) {
-        unlock_guard();
-        return;
-    }
-
-    while (fgets(line, sizeof line, fp) != NULL && g_addr_count < MAX_ADDRBOOK) {
-        trim_newline(line);
-        nick = strtok(line, "|");
-        full = strtok(NULL, "|");
-        addr = strtok(NULL, "|");
-        flag = strtok(NULL, "|");
-        if (nick == NULL || addr == NULL)
-            continue;
-        safe_copy(g_addrbook[g_addr_count].nickname, sizeof g_addrbook[g_addr_count].nickname, nick);
-        safe_copy(g_addrbook[g_addr_count].fullname, sizeof g_addrbook[g_addr_count].fullname, full ? full : "");
-        safe_copy(g_addrbook[g_addr_count].address, sizeof g_addrbook[g_addr_count].address, addr);
-        g_addrbook[g_addr_count].is_list = (flag && *flag == 'L') ? 1 : 0;
-        ++g_addr_count;
-    }
-    fclose(fp);
-    unlock_guard();
-}
-
-// Saves the in-memory address book out to disk.
-
-void
-save_address_book(void)
-{
-    FILE *fp;
-    int i;
-
-    lock_guard();
-    fp = fopen(ADDRESS_FILE, "w");
-    if (fp == NULL) {
-        unlock_guard();
-        return;
-    }
-    for (i = 0; i < g_addr_count; ++i)
-        fprintf(fp, "%s|%s|%s|%c\n", g_addrbook[i].nickname,
-            g_addrbook[i].fullname, g_addrbook[i].address,
-            g_addrbook[i].is_list ? 'L' : 'A');
-    fclose(fp);
-    unlock_guard();
-}
-
-// Loads key/value configuration file for printer/signature/password.
+// Loads key/value configuration file for signature/password.
 
 void
 load_config(void)
@@ -571,9 +508,7 @@ load_config(void)
         value = strtok(NULL, "");
         if (key == NULL || value == NULL)
             continue;
-        if (strcmp(key, "printer") == 0)
-            safe_copy(g_config.printer, sizeof g_config.printer, value);
-        else if (strcmp(key, "signature") == 0)
+        if (strcmp(key, "signature") == 0)
             safe_copy(g_config.signature, sizeof g_config.signature, value);
         else if (strcmp(key, "password") == 0)
             safe_copy(g_config.password, sizeof g_config.password, value);
@@ -595,7 +530,6 @@ save_config(void)
         unlock_guard();
         return;
     }
-    fprintf(fp, "printer=%s\n", g_config.printer);
     fprintf(fp, "signature=%s\n", g_config.signature);
     fprintf(fp, "password=%s\n", g_config.password);
     fclose(fp);

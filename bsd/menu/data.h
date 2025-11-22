@@ -26,7 +26,6 @@
 #define MAX_BODY 1024
 #define MAX_AUTHOR 32
 #define MAX_ADDRESS 64
-#define MAX_ADDRBOOK 32
 #define MAX_CONFIG_VALUE 128
 #define MAX_MENU_OPTIONS 16
 #else
@@ -38,7 +37,6 @@
 #define MAX_BODY 4096
 #define MAX_AUTHOR 48
 #define MAX_ADDRESS 128
-#define MAX_ADDRBOOK 128
 #define MAX_CONFIG_VALUE 256
 #define MAX_MENU_OPTIONS 16
 #endif
@@ -60,23 +58,13 @@ struct message {
     char body[MAX_BODY];
 };
 
-struct address_entry {
-    char nickname[MAX_AUTHOR];
-    char fullname[MAX_GROUP_DESC];
-    char address[MAX_ADDRESS];
-    int is_list;
-};
-
 struct config_data {
-    char printer[MAX_CONFIG_VALUE];
     char signature[MAX_CONFIG_VALUE];
     char password[MAX_CONFIG_VALUE];
 };
 
 extern struct group g_groups[MAX_GROUPS];
 extern int g_group_count;
-extern struct address_entry g_addrbook[MAX_ADDRBOOK];
-extern int g_addr_count;
 extern struct config_data g_config;
 extern struct message *g_cached_messages;
 extern int g_cached_message_count;
@@ -96,8 +84,6 @@ int save_messages_for_group(int group_index);
 void free_cached_messages(void);
 int next_message_id(void);
 int copy_message_to_group(struct message *msg, const char *group_name);
-void load_address_book(void);
-void save_address_book(void);
 void load_config(void);
 void save_config(void);
 void lock_guard(void);
