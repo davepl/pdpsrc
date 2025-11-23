@@ -1,6 +1,10 @@
 #ifndef DATA_H
 #define DATA_H
 
+#ifndef TEST
+#define TEST 1
+#endif
+
 #include <sys/types.h>
 
 #define DATA_DIR "bbsdata"
@@ -11,7 +15,6 @@
 #define PROGRAM_TITLE "Dave's Garage PDP-11 BBS"
 #define PROGRAM_VERSION "0.2"
 #define ADMIN_USER "admin"
-#define ADMIN_PASS "2326"
 
 #define MIN_COLS 80
 #define MIN_ROWS 24
@@ -60,7 +63,8 @@ struct message {
 
 struct config_data {
     char signature[MAX_CONFIG_VALUE];
-    char password[MAX_CONFIG_VALUE];
+    char password_hash[MAX_CONFIG_VALUE];
+    char admin_password_hash[MAX_CONFIG_VALUE];
 };
 
 extern struct group g_groups[MAX_GROUPS];
@@ -88,5 +92,7 @@ void load_config(void);
 void save_config(void);
 void lock_guard(void);
 void unlock_guard(void);
+void hash_password(const char *password, char *out, size_t outlen);
+int verify_password(const char *password, const char *hash);
 
 #endif

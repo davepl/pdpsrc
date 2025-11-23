@@ -259,6 +259,15 @@ static void format_post_age(time_t created, char *buf, int buflen);
 static void show_help(const char *title, const char *body);
 static int message_visible(const struct message *msg);
 static int visible_message_count(void);
+#ifdef TEST
+static void delete_group_messages(const char *group_name);
+static void run_tests_menu(void);
+static void run_group_stress_test(void);
+#endif
+#ifdef TEST
+static void run_tests_menu(void);
+static void run_group_stress_test(void);
+#endif
 static void login_screen(void);
 static void main_menu_screen(void);
 static void group_list_screen(void);
@@ -601,7 +610,7 @@ draw_layout(const char *title, const char *status)
 
     move(4, 1);
     clrtoeol();
-    mvprintw(4, 4, "%s", title);
+    mvprintw(4, 2, "%s", title);
     if (status && *status)
         mvprintw(4, COLS - (int)strlen(status) - 3, "%s", status);
     
@@ -877,6 +886,7 @@ login_screen(void)
 {
     char user[MAX_AUTHOR];
     char pass[MAX_AUTHOR];
+    char confirm[MAX_AUTHOR];
     int i;
     int row;
 
@@ -885,7 +895,7 @@ login_screen(void)
         mvprintw(5 + i, 2, "%s", g_login_banner[i]);
     row = 12;   // leave room for banner
     mvprintw(row + 1, 2, "Welcome to the PDP-11 message boards.");
-    mvprintw(row + 3, 2, "Enter user id (admin requires password).");
+    mvprintw(row + 3, 2, "Enter user id.");
 
 #ifndef LEGACY_CURSES
     platform_draw_border();
@@ -901,7 +911,7 @@ login_screen(void)
     platform_draw_breadcrumb(g_breadcrumb);
 #endif
 
-    draw_menu_lines("Enter user id", "", "");
+    draw_menu_lines("", "", "");
     while (1) {
         prompt_string("User id:", user, sizeof user);
         if (user[0] == '\0') {
@@ -917,14 +927,45 @@ login_screen(void)
         break;
     }
     if (strcasecmp(user, ADMIN_USER) == 0) {
-        prompt_string("Admin password:", pass, sizeof pass);
-        if (strcmp(pass, ADMIN_PASS) != 0) {
-            wait_for_ack("Invalid password.");
-            return;
-        }
         g_session.is_admin = 1;
+        if (g_config.admin_password_hash[0] == '\0') {
+            prompt_string("Set admin password:", pass, sizeof pass);
+            if (pass[0] == '\0')
+                return;
+            prompt_string("Confirm password:", confirm, sizeof confirm);
+            if (strcmp(pass, confirm) != 0) {
+                wait_for_ack("Passwords do not match.");
+                return;
+            }
+            hash_password(pass, g_config.admin_password_hash, sizeof g_config.admin_password_hash);
+            save_config();
+        } else {
+            prompt_string("Admin password:", pass, sizeof pass);
+            if (!verify_password(pass, g_config.admin_password_hash)) {
+                wait_for_ack("Invalid password.");
+                return;
+            }
+        }
     } else {
         g_session.is_admin = 0;
+        if (g_config.password_hash[0] == '\0') {
+            prompt_string("Set password:", pass, sizeof pass);
+            if (pass[0] == '\0')
+                return;
+            prompt_string("Confirm password:", confirm, sizeof confirm);
+            if (strcmp(pass, confirm) != 0) {
+                wait_for_ack("Passwords do not match.");
+                return;
+            }
+            hash_password(pass, g_config.password_hash, sizeof g_config.password_hash);
+            save_config();
+        } else {
+            prompt_string("Password:", pass, sizeof pass);
+            if (!verify_password(pass, g_config.password_hash)) {
+                wait_for_ack("Invalid password.");
+                return;
+            }
+        }
     }
     safe_copy(g_session.username, sizeof g_session.username, user);
     reset_navigation(SCREEN_MAIN, "");
@@ -1616,6 +1657,30 @@ visible_message_count(void)
     return count;
 }
 
+#ifdef TEST
+static void
+delete_group_messages(const char *group_name)
+{
+    char safe_name[MAX_GROUP_NAME];
+    char path[256];
+    int i;
+
+    if (group_name == NULL || group_name[0] == '\0')
+        return;
+    for (i = 0; group_name[i] != '\0' && i < MAX_GROUP_NAME - 1; ++i) {
+        if (isalnum((unsigned char)group_name[i]))
+            safe_name[i] = (char)tolower((unsigned char)group_name[i]);
+        else
+            safe_name[i] = '_';
+    }
+    safe_name[i] = '\0';
+    safe_copy(path, sizeof path, DATA_DIR "/");
+    safe_append(path, sizeof path, safe_name);
+    safe_append(path, sizeof path, ".msg");
+    remove(path);
+}
+#endif
+
 static void
 post_index_screen(void)
 {
@@ -2023,7 +2088,7 @@ compose_screen(struct message *reply_source, int forward_mode)
     mvprintw(5, 4, "Subject: %s", subject);
     mvprintw(7, 4, "Body preview:");
     render_body_text(body, 8, LINES - MENU_ROWS - 10);
-        draw_menu_lines("^X Send  ^C Cancel", "^J Justify (TODO)  ^W WhereIs (TODO)  ^T Add Addr", "Enter edits field (body opens $EDITOR)  Arrows move field");
+        draw_menu_lines("^X Send  ^C Cancel", "^J Justify (TODO)  ^W WhereIs (TODO)", "Enter edits field (body opens $EDITOR)  Arrows move field");
         refresh();
         ch = read_key();
         key = normalize_key(ch);
@@ -2162,6 +2227,7 @@ setup_screen(void)
     int selected_index;
     int focus_index;
     int highlight = 0;
+    int menu_count = 3;
 
     setup_menu[0].key = 'S';
     setup_menu[0].label = "Edit Signature";
@@ -2169,14 +2235,19 @@ setup_screen(void)
     setup_menu[1].label = "Change Password";
     setup_menu[2].key = 'B';
     setup_menu[2].label = "Back - Return to previous menu";
+#ifdef TEST
+    setup_menu[3].key = 'T';
+    setup_menu[3].label = "Run Tests (admin only)";
+    menu_count = 4;
+#endif
 
     while (1) {
         draw_layout("Setup", "Configure session");
         mvprintw(5, 4, "Signature: %s", g_config.signature[0] ? g_config.signature : "(none)");
-        mvprintw(6, 4, "Password changes require admin privileges.");
+        mvprintw(6, 4, "Users can change their own password; admin can change both.");
         selected_index = -1;
         focus_index = -1;
-        choice = run_menu(9, setup_menu, 3, highlight, &selected_index, &focus_index, 0);
+        choice = run_menu(9, setup_menu, menu_count, highlight, &selected_index, &focus_index, 0);
         if (focus_index >= 0)
             highlight = focus_index;
         if (choice == 0) {
@@ -2198,6 +2269,14 @@ setup_screen(void)
             if (handle_back_navigation())
                 return;
             break;
+#ifdef TEST
+        case 'T':
+            if (g_session.is_admin)
+                run_tests_menu();
+            else
+                wait_for_ack("Admins only.");
+            break;
+#endif
         default:
             break;
         }
@@ -2215,16 +2294,50 @@ static void
 change_password(void)
 {
     char buf[MAX_CONFIG_VALUE];
+    char confirm[MAX_CONFIG_VALUE];
+    char current[MAX_CONFIG_VALUE];
+    char target[8];
+    int change_admin;
+    char *hash_slot;
+    size_t hash_slot_len;
 
-    if (!g_session.is_admin) {
-        wait_for_ack("Only admin may change password.");
-        return;
+    change_admin = 0;
+    if (g_session.is_admin) {
+        while (1) {
+            prompt_string("Change password for (A)dmin or (U)ser?:", target, sizeof target);
+            if (target[0] == '\0')
+                return;
+            target[0] = toupper((unsigned char)target[0]);
+            if (target[0] == 'A' || target[0] == 'U')
+                break;
+            wait_for_ack("Please enter A or U.");
+        }
+        change_admin = (target[0] == 'A');
     }
+
+    hash_slot = change_admin ? g_config.admin_password_hash : g_config.password_hash;
+    hash_slot_len = change_admin ?
+        sizeof g_config.admin_password_hash : sizeof g_config.password_hash;
+
+    if (hash_slot[0] != '\0') {
+        prompt_string("Current password:", current, sizeof current);
+        if (!verify_password(current, hash_slot)) {
+            wait_for_ack("Incorrect password.");
+            return;
+        }
+    }
+
     prompt_string("New password:", buf, sizeof buf);
     if (buf[0] == '\0')
         return;
-    safe_copy(g_config.password, sizeof g_config.password, buf);
+    prompt_string("Confirm new password:", confirm, sizeof confirm);
+    if (strcmp(buf, confirm) != 0) {
+        wait_for_ack("Passwords do not match.");
+        return;
+    }
+    hash_password(buf, hash_slot, hash_slot_len);
     save_config();
+    wait_for_ack("Password updated.");
 }
 static void
 handle_group_action(char action_key, int group_index)
@@ -2247,3 +2360,112 @@ handle_group_action(char action_key, int group_index)
         break;
     }
 }
+
+#ifdef TEST
+static void
+run_group_stress_test(void)
+{
+    const int group_target = 5;
+    const int msgs_per_group = 3;
+    int orig_count = g_group_count;
+    int added = 0;
+    int i, j;
+    int saved_admin = g_session.is_admin;
+    char msgbuf[64];
+
+    for (i = 0; i < group_target && g_group_count < MAX_GROUPS; ++i) {
+        char name[MAX_GROUP_NAME];
+        char desc[MAX_GROUP_DESC];
+        snprintf(name, sizeof name, "TestGroup%02d", i + 1);
+        snprintf(desc, sizeof desc, "Stress test group %d", i + 1);
+        safe_copy(g_groups[g_group_count].name, sizeof g_groups[g_group_count].name, name);
+        safe_copy(g_groups[g_group_count].description, sizeof g_groups[g_group_count].description, desc);
+        g_groups[g_group_count].deleted = 0;
+        ++g_group_count;
+        ++added;
+    }
+    save_groups();
+
+    for (i = 0; i < added; ++i) {
+        int idx = orig_count + i;
+        g_session.current_group = idx;
+        free_cached_messages();
+        load_messages_for_group(idx);
+        for (j = 0; j < msgs_per_group; ++j) {
+            struct message newmsg;
+            memset(&newmsg, 0, sizeof newmsg);
+            newmsg.id = next_message_id();
+            newmsg.parent_id = 0;
+            newmsg.created = time(NULL);
+            newmsg.deleted = 0;
+            newmsg.answered = 0;
+            safe_copy(newmsg.author, sizeof newmsg.author,
+                g_session.username[0] ? g_session.username : "tester");
+            snprintf(msgbuf, sizeof msgbuf, "Message %02d", j + 1);
+            safe_copy(newmsg.subject, sizeof newmsg.subject, msgbuf);
+            safe_copy(newmsg.body, sizeof newmsg.body, "Stress test message\n");
+            append_cached_message(&newmsg);
+        }
+        save_messages_for_group(idx);
+        free_cached_messages();
+    }
+
+    for (i = 0; i < added; ++i) {
+        int idx = orig_count + i;
+        g_groups[idx].deleted = 1;
+        delete_group_messages(g_groups[idx].name);
+    }
+    save_groups();
+
+    {
+        int dst = 0;
+        for (i = 0; i < g_group_count; ++i) {
+            if (i >= orig_count && i < orig_count + added)
+                continue;
+            if (dst != i)
+                g_groups[dst] = g_groups[i];
+            ++dst;
+        }
+        g_group_count = dst;
+        save_groups();
+    }
+
+    g_session.is_admin = saved_admin;
+    g_session.current_group = (orig_count > 0) ? orig_count - 1 : 0;
+    free_cached_messages();
+}
+
+static void
+run_tests_menu(void)
+{
+    struct menu_item items[2];
+    int selected = -1;
+    int focus = -1;
+    int highlight = 0;
+    int choice;
+
+    items[0].key = 'G';
+    items[0].label = "Group Stress Test";
+    items[1].key = 'B';
+    items[1].label = "Back";
+
+    while (1) {
+        draw_layout("Tests", "Diagnostics");
+        draw_menu_lines("Select a test to run", "", "");
+        choice = run_menu(8, items, 2, highlight, &selected, &focus, 0);
+        if (focus >= 0)
+            highlight = focus;
+        if (choice == 0 || choice == 'B') {
+            return;
+        }
+        switch (choice) {
+        case 'G':
+            run_group_stress_test();
+            wait_for_ack("Group stress test complete.");
+            break;
+        default:
+            break;
+        }
+    }
+}
+#endif

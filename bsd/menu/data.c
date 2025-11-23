@@ -46,6 +46,10 @@ extern int getpid();
 extern unsigned sleep();
 #endif
 
+#ifndef HAVE_CRYPT_PROTO
+extern char *crypt(const char *, const char *);
+#endif
+
 #include "data.h"
 
 struct group g_groups[MAX_GROUPS];
@@ -56,6 +60,7 @@ int g_cached_message_count = 0;
 
 static struct message g_temp_message;
 static int g_lock_depth = 0;
+static const char g_salt_chars[] = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 static int build_group_path(const char *group_name, char *path, int maxlen);
 static int load_messages_direct(const char *group_name, struct message **messages, int *count);
@@ -198,7 +203,64 @@ void
 init_config(void)
 {
     g_config.signature[0] = '\0';
-    g_config.password[0] = '\0';
+    g_config.password_hash[0] = '\0';
+    g_config.admin_password_hash[0] = '\0';
+}
+
+// Creates a short DES-compatible salt for 211BSD crypt(3).
+// Uses time and pid to reduce collisions on repeated runs.
+static void
+make_salt(char *salt, size_t salt_len)
+{
+    unsigned long v;
+
+    if (salt == NULL || salt_len < 3)
+        return;
+    v = (unsigned long)time(NULL);
+#ifdef __unix__
+    v ^= (unsigned long)getpid();
+#endif
+    salt[0] = g_salt_chars[v % 64];
+    salt[1] = g_salt_chars[(v >> 6) % 64];
+    salt[2] = '\0';
+}
+
+// Hashes a password using traditional crypt(3) so the result
+// works on 2.11BSD. Output buffer is cleared on failure.
+void
+hash_password(const char *password, char *out, size_t outlen)
+{
+    char salt[3];
+    char *enc;
+
+    if (out == NULL || outlen == 0) {
+        return;
+    }
+    if (password == NULL || password[0] == '\0') {
+        out[0] = '\0';
+        return;
+    }
+    make_salt(salt, sizeof salt);
+    enc = crypt(password, salt);
+    if (enc == NULL) {
+        out[0] = '\0';
+        return;
+    }
+    safe_copy(out, outlen, enc);
+}
+
+// Verifies a password against a stored crypt(3) hash.
+int
+verify_password(const char *password, const char *hash)
+{
+    char *enc;
+
+    if (password == NULL || hash == NULL || hash[0] == '\0')
+        return 0;
+    enc = crypt(password, hash);
+    if (enc == NULL)
+        return 0;
+    return strcmp(enc, hash) == 0;
 }
 
 // Loads groups from disk into memory, respecting deletion flags.
@@ -494,7 +556,13 @@ load_config(void)
     char line[512];
     char *key;
     char *value;
+    char legacy_password[MAX_CONFIG_VALUE];
+    int legacy_password_found;
+    int need_save;
 
+    legacy_password[0] = '\0';
+    legacy_password_found = 0;
+    need_save = 0;
     lock_guard();
     fp = fopen(CONFIG_FILE, "r");
     if (fp == NULL) {
@@ -510,11 +578,25 @@ load_config(void)
             continue;
         if (strcmp(key, "signature") == 0)
             safe_copy(g_config.signature, sizeof g_config.signature, value);
-        else if (strcmp(key, "password") == 0)
-            safe_copy(g_config.password, sizeof g_config.password, value);
+        else if (strcmp(key, "password_hash") == 0)
+            safe_copy(g_config.password_hash, sizeof g_config.password_hash, value);
+        else if (strcmp(key, "admin_password_hash") == 0)
+            safe_copy(g_config.admin_password_hash, sizeof g_config.admin_password_hash, value);
+        else if (strcmp(key, "password") == 0) {
+            legacy_password_found = 1;
+            safe_copy(legacy_password, sizeof legacy_password, value);
+        }
     }
     fclose(fp);
     unlock_guard();
+
+    if (legacy_password_found && legacy_password[0] != '\0' &&
+        g_config.password_hash[0] == '\0') {
+        hash_password(legacy_password, g_config.password_hash, sizeof g_config.password_hash);
+        need_save = 1;
+    }
+    if (need_save)
+        save_config();
 }
 
 // Writes configuration data back to disk.
@@ -531,7 +613,8 @@ save_config(void)
         return;
     }
     fprintf(fp, "signature=%s\n", g_config.signature);
-    fprintf(fp, "password=%s\n", g_config.password);
+    fprintf(fp, "password_hash=%s\n", g_config.password_hash);
+    fprintf(fp, "admin_password_hash=%s\n", g_config.admin_password_hash);
     fclose(fp);
     unlock_guard();
 }
