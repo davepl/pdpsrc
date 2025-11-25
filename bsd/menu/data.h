@@ -11,6 +11,7 @@
 #define GROUPS_FILE DATA_DIR "/groups.txt"
 #define ADDRESS_FILE DATA_DIR "/addrbook.txt"
 #define CONFIG_FILE DATA_DIR "/config.txt"
+#define USERS_FILE DATA_DIR "/users.txt"
 #define LOCK_FILE DATA_DIR "/.lock"
 #define PROGRAM_TITLE "Dave's Garage PDP-11 BBS"
 #define PROGRAM_VERSION "0.2"
@@ -19,6 +20,7 @@
 #define MIN_COLS 80
 #define MIN_ROWS 24
 #define MENU_ROWS 5
+#define MIN_PASSWORD_LEN 8
 
 #ifdef __pdp11__
 #define MAX_GROUPS 16
@@ -53,6 +55,7 @@ struct group {
 struct message {
     int id;
     int parent_id;
+    int thread_id;
     time_t created;
     int deleted;
     int answered;
@@ -65,6 +68,13 @@ struct config_data {
     char signature[MAX_CONFIG_VALUE];
     char password_hash[MAX_CONFIG_VALUE];
     char admin_password_hash[MAX_CONFIG_VALUE];
+};
+
+struct user_record {
+    char username[MAX_AUTHOR];
+    char password_hash[MAX_CONFIG_VALUE];
+    int is_admin;
+    int locked;
 };
 
 extern struct group g_groups[MAX_GROUPS];
@@ -94,5 +104,8 @@ void lock_guard(void);
 void unlock_guard(void);
 void hash_password(const char *password, char *out, size_t outlen);
 int verify_password(const char *password, const char *hash);
+int load_user_record(const char *username, struct user_record *out);
+int save_user_record(const struct user_record *user);
+int load_all_users(struct user_record *users, int max_users, int *out_count);
 
 #endif

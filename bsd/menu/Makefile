@@ -4,8 +4,8 @@ LDFLAGS= -O
 PDP11_CFLAGS= -O -i
 PDP11_LDFLAGS= -i
 PROGRAM=	menu
-SRCS=		main.c data.c platform.c menu.c
-OBJS=		main.o data.o platform.o menu.o
+SRCS=		main.c data.c platform.c menu.c auth.c msgs.c tests.c
+OBJS=		main.o data.o platform.o menu.o auth.o msgs.o tests.o
 LIBS=		-lcurses
 LIBS_PDP11=	-lcurses -ltermcap
 
@@ -62,4 +62,28 @@ menu.o: menu.c
 	else \
 		echo "Building menu.c for modern system..."; \
 		${CC} ${CFLAGS} -Wno-deprecated-non-prototype -Wno-deprecated-declarations -Wno-pointer-sign -Wno-parentheses -Wno-incompatible-pointer-types -Wno-format -c -o $@ menu.c; \
+	fi
+auth.o: auth.c
+	@if [ "`uname -m`" = "pdp11" ]; then \
+		echo "Building auth.c for PDP-11..."; \
+		${CC} ${PDP11_CFLAGS} -DLEGACY_CURSES -D__pdp11__ -c -o $@ auth.c; \
+	else \
+		echo "Building auth.c for modern system..."; \
+		${CC} ${CFLAGS} -Wno-deprecated-non-prototype -Wno-deprecated-declarations -Wno-pointer-sign -Wno-parentheses -Wno-incompatible-pointer-types -Wno-format -c -o $@ auth.c; \
+	fi
+msgs.o: msgs.c
+	@if [ "`uname -m`" = "pdp11" ]; then \
+		echo "Building msgs.c for PDP-11..."; \
+		${CC} ${PDP11_CFLAGS} -DLEGACY_CURSES -D__pdp11__ -c -o $@ msgs.c; \
+	else \
+		echo "Building msgs.c for modern system..."; \
+		${CC} ${CFLAGS} -Wno-deprecated-non-prototype -Wno-deprecated-declarations -Wno-pointer-sign -Wno-parentheses -Wno-incompatible-pointer-types -Wno-format -c -o $@ msgs.c; \
+	fi
+tests.o: tests.c
+	@if [ "`uname -m`" = "pdp11" ]; then \
+		echo "Building tests.c for PDP-11..."; \
+		${CC} ${PDP11_CFLAGS} -DLEGACY_CURSES -D__pdp11__ -c -o $@ tests.c; \
+	else \
+		echo "Building tests.c for modern system..."; \
+		${CC} ${CFLAGS} -Wno-deprecated-non-prototype -Wno-deprecated-declarations -Wno-pointer-sign -Wno-parentheses -Wno-incompatible-pointer-types -Wno-format -c -o $@ tests.c; \
 	fi

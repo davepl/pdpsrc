@@ -415,6 +415,8 @@ load_messages_direct(const char *group_name, struct message **messages, int *cou
             msg.id = atoi(line + 4);
         } else if (strncmp(line, "PARENT ", 7) == 0) {
             msg.parent_id = atoi(line + 7);
+        } else if (strncmp(line, "THREAD ", 7) == 0) {
+            msg.thread_id = atoi(line + 7);
         } else if (strncmp(line, "TIME ", 5) == 0) {
             msg.created = (time_t)atol(line + 5);
         } else if (strncmp(line, "STATUS ", 7) == 0) {
@@ -436,6 +438,12 @@ load_messages_direct(const char *group_name, struct message **messages, int *cou
                 safe_append_char(msg.body, sizeof msg.body, '\n');
             }
         } else if (strcmp(line, "END") == 0) {
+            if (msg.thread_id == 0) {
+                if (msg.parent_id > 0)
+                    msg.thread_id = msg.parent_id;
+                else
+                    msg.thread_id = msg.id;
+            }
             if (*count >= capacity) {
                 capacity *= 2;
                 list = (struct message *)realloc(list, sizeof(struct message) * capacity);
@@ -476,6 +484,7 @@ save_messages_direct(const char *group_name, struct message *messages, int count
     for (i = 0; i < count; ++i) {
         fprintf(fp, "MSG %d\n", messages[i].id);
         fprintf(fp, "PARENT %d\n", messages[i].parent_id);
+        fprintf(fp, "THREAD %d\n", messages[i].thread_id ? messages[i].thread_id : messages[i].id);
         fprintf(fp, "TIME %ld\n", (long)messages[i].created);
         fprintf(fp, "STATUS %c\n", messages[i].deleted ? 'D' : (messages[i].answered ? 'A' : 'N'));
         fprintf(fp, "AUTHOR %s\n", messages[i].author);
@@ -534,10 +543,13 @@ copy_message_to_group(struct message *msg, const char *group_name)
     *copy = *msg;
     copy->id = 0;
     copy->parent_id = 0;
+    copy->thread_id = 0;
     copy->deleted = 0;
     copy->answered = 0;
     copy->created = time(NULL);
     copy->id = count > 0 ? msgs[count - 1].id + 1 : 1;
+    if (copy->thread_id == 0)
+        copy->thread_id = copy->id;
     msgs = (struct message *)realloc(msgs, sizeof(struct message) * (count + 1));
     if (msgs == NULL)
         return -1;
@@ -556,13 +568,7 @@ load_config(void)
     char line[512];
     char *key;
     char *value;
-    char legacy_password[MAX_CONFIG_VALUE];
-    int legacy_password_found;
-    int need_save;
 
-    legacy_password[0] = '\0';
-    legacy_password_found = 0;
-    need_save = 0;
     lock_guard();
     fp = fopen(CONFIG_FILE, "r");
     if (fp == NULL) {
@@ -582,21 +588,9 @@ load_config(void)
             safe_copy(g_config.password_hash, sizeof g_config.password_hash, value);
         else if (strcmp(key, "admin_password_hash") == 0)
             safe_copy(g_config.admin_password_hash, sizeof g_config.admin_password_hash, value);
-        else if (strcmp(key, "password") == 0) {
-            legacy_password_found = 1;
-            safe_copy(legacy_password, sizeof legacy_password, value);
-        }
     }
     fclose(fp);
     unlock_guard();
-
-    if (legacy_password_found && legacy_password[0] != '\0' &&
-        g_config.password_hash[0] == '\0') {
-        hash_password(legacy_password, g_config.password_hash, sizeof g_config.password_hash);
-        need_save = 1;
-    }
-    if (need_save)
-        save_config();
 }
 
 // Writes configuration data back to disk.
@@ -613,10 +607,178 @@ save_config(void)
         return;
     }
     fprintf(fp, "signature=%s\n", g_config.signature);
-    fprintf(fp, "password_hash=%s\n", g_config.password_hash);
-    fprintf(fp, "admin_password_hash=%s\n", g_config.admin_password_hash);
     fclose(fp);
     unlock_guard();
+}
+
+// Looks up a user record by username (case-insensitive).
+// Returns 0 on success, -1 if not found or on error.
+int
+load_user_record(const char *username, struct user_record *out)
+{
+    FILE *fp;
+    char line[512];
+    char *name;
+    char *hash;
+    char *role;
+    int found = 0;
+
+    if (username == NULL || *username == '\0')
+        return -1;
+
+    lock_guard();
+    fp = fopen(USERS_FILE, "r");
+    if (fp == NULL) {
+        unlock_guard();
+        return -1;
+    }
+
+    while (fgets(line, sizeof line, fp) != NULL) {
+        trim_newline(line);
+        name = strtok(line, "|");
+        hash = strtok(NULL, "|");
+        role = strtok(NULL, "|");
+        if (name == NULL || hash == NULL)
+            continue;
+        if (strcasecmp(name, username) != 0)
+            continue;
+        found = 1;
+        if (out != NULL) {
+            safe_copy(out->username, sizeof out->username, name);
+            safe_copy(out->password_hash, sizeof out->password_hash, hash);
+            out->is_admin = 0;
+            out->locked = 0;
+            if (role != NULL) {
+                if (role[0] == 'A' || role[0] == 'a')
+                    out->is_admin = (strcasecmp(name, ADMIN_USER) == 0) ? 1 : 0;
+                if (role[0] == 'L' || role[0] == 'l')
+                    out->locked = 1;
+            }
+            {
+                char *lock = strtok(NULL, "|");
+                if (lock && (lock[0] == 'L' || lock[0] == 'l'))
+                    out->locked = 1;
+            }
+        }
+        break;
+    }
+
+    fclose(fp);
+    unlock_guard();
+    return found ? 0 : -1;
+}
+
+// Saves or replaces a user record, ensuring only ADMIN_USER can be admin.
+// Returns 0 on success, -1 on error.
+int
+save_user_record(const struct user_record *user)
+{
+    FILE *in;
+    FILE *out;
+    char line[512];
+    char tmpfile[256];
+    int wrote = 0;
+
+    if (user == NULL || user->username[0] == '\0')
+        return -1;
+
+    if (user->is_admin && strcasecmp(user->username, ADMIN_USER) != 0) {
+        // Never allow non-admin username to persist an admin flag.
+        return -1;
+    }
+
+    lock_guard();
+    safe_copy(tmpfile, sizeof tmpfile, USERS_FILE);
+    safe_append(tmpfile, sizeof tmpfile, ".tmp");
+
+    out = fopen(tmpfile, "w");
+    if (out == NULL) {
+        unlock_guard();
+        return -1;
+    }
+
+    in = fopen(USERS_FILE, "r");
+    if (in != NULL) {
+        while (fgets(line, sizeof line, in) != NULL) {
+            char copy[512];
+            char *name;
+            size_t len;
+
+            safe_copy(copy, sizeof copy, line);
+            trim_newline(copy);
+            name = strtok(copy, "|");
+            if (name != NULL && strcasecmp(name, user->username) == 0)
+                continue; /* replace existing entry */
+            fputs(line, out);
+            len = strlen(line);
+            if (len > 0 && line[len - 1] != '\n')
+                fputc('\n', out);
+        }
+        fclose(in);
+    }
+
+    fprintf(out, "%s|%s|%s|%s\n", user->username, user->password_hash,
+        user->is_admin ? "A" : "U", user->locked ? "L" : "U");
+    wrote = 1;
+    fclose(out);
+
+    if (wrote) {
+        if (rename(tmpfile, USERS_FILE) != 0) {
+            remove(USERS_FILE);
+            rename(tmpfile, USERS_FILE);
+        }
+    } else {
+        remove(tmpfile);
+    }
+    unlock_guard();
+    return wrote ? 0 : -1;
+}
+
+// Loads all user records into caller-provided array. Returns 0 on success.
+int
+load_all_users(struct user_record *users, int max_users, int *out_count)
+{
+    FILE *fp;
+    char line[512];
+    int count = 0;
+
+    if (users == NULL || max_users <= 0)
+        return -1;
+    lock_guard();
+    fp = fopen(USERS_FILE, "r");
+    if (fp == NULL) {
+        unlock_guard();
+        if (out_count)
+            *out_count = 0;
+        return 0;
+    }
+
+    while (fgets(line, sizeof line, fp) != NULL && count < max_users) {
+        struct user_record rec;
+        char *name;
+        char *hash;
+        char *role;
+        char *locked;
+
+        trim_newline(line);
+        name = strtok(line, "|");
+        hash = strtok(NULL, "|");
+        role = strtok(NULL, "|");
+        locked = strtok(NULL, "|");
+        if (name == NULL || hash == NULL)
+            continue;
+        safe_copy(rec.username, sizeof rec.username, name);
+        safe_copy(rec.password_hash, sizeof rec.password_hash, hash);
+        rec.is_admin = (role && (role[0] == 'A' || role[0] == 'a') && strcasecmp(name, ADMIN_USER) == 0);
+        rec.locked = (locked && (locked[0] == 'L' || locked[0] == 'l')) ||
+            (role && (role[0] == 'L' || role[0] == 'l'));
+        users[count++] = rec;
+    }
+    fclose(fp);
+    unlock_guard();
+    if (out_count)
+        *out_count = count;
+    return 0;
 }
 
 // Attempts to acquire a simple lock by creating a .lock file.
