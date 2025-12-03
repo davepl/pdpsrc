@@ -53,7 +53,7 @@ struct stat *st;
     if (stat(path, st) != 0) {
         if (errno & (ENOENT | ENOTDIR | EINVAL | ENAMETOOLONG)) {
             fprintf(htlog, "404 %s\n", strerror(errno));
-            printf("%s\r\n", HTTP_403);
+            printf("%s\r\n", HTTP_404);
         } else if (errno & EACCES) {
             fprintf(htlog, "403 %s\n", strerror(errno));
             printf("%s\r\n", HTTP_403);
