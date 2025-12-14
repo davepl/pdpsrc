@@ -1,6 +1,8 @@
 #ifndef DATA_H
 #define DATA_H
 
+#include "compat.h"
+
 #ifndef TEST
 #define TEST 1
 #endif

@@ -192,7 +192,7 @@ show_user_list(void)
     mvprintw(6, 4, "Name               Role    Locked");
     mvprintw(7, 4, "---------------------------------");
     for (i = 0; i < count && 8 + i < LINES - MENU_ROWS - 1; ++i) {
-        mvprintw(8 + i, 4, "%-18s %-6s %-6s", users[i].username,
+        mvprintw(8 + i, 4, "%-18.18s %-6.6s %-6.6s", users[i].username,
             users[i].is_admin ? "admin" : "user",
             users[i].locked ? "yes" : "no");
     }

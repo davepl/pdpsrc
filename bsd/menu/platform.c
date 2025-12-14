@@ -35,6 +35,7 @@
 #include <ctype.h>
 #include <string.h>
 #include <stdarg.h>
+#include "data.h"
 #include "platform.h"
 
 static int platform_capture_input(int y, int x, char *buf, int maxlen);
@@ -120,7 +121,6 @@ platform_draw_breadcrumb(const char *text)
         addch(' ');
     mvprintw(2, 2, "%s", text ? text : "");
     platform_reverse_off();
-    refresh();
 }
 
 // Draws the menu separator line using DEC graphics characters.
@@ -301,6 +301,27 @@ platform_reverse_off(void)
 
 #endif
 
+void
+platform_refresh(void)
+{
+    int cy;
+    int cx;
+
+    getyx(stdscr, cy, cx);
+#ifdef LEGACY_CURSES
+    refresh();
+    platform_draw_border();
+    platform_draw_separator(LINES - MENU_ROWS - 1);
+    printf("\033[%d;%dH", cy + 1, cx + 1);
+    fflush(stdout);
+#else
+    platform_draw_border();
+    platform_draw_separator(LINES - MENU_ROWS - 1);
+    move(cy, cx);
+    refresh();
+#endif
+}
+
 // Shared input handler for both legacy and modern builds.
 static int
 platform_capture_input(int y, int x, char *buf, int maxlen)
@@ -315,7 +336,7 @@ platform_capture_input(int y, int x, char *buf, int maxlen)
     len = 0;
     buf[0] = '\0';
     move(y, x);
-    refresh();
+    platform_refresh();
     while (1) {
         ch = getch();
         if (ch == '\n' || ch == '\r' || ch == KEY_ENTER) {
@@ -326,7 +347,7 @@ platform_capture_input(int y, int x, char *buf, int maxlen)
                 buf[len] = '\0';
                 mvaddch(y, x + len, ' ');
                 move(y, x + len);
-                refresh();
+                platform_refresh();
             }
         } else if (ch == CTRL_KEY('U')) {
             while (len > 0) {
@@ -335,14 +356,14 @@ platform_capture_input(int y, int x, char *buf, int maxlen)
             }
             move(y, x);
             buf[0] = '\0';
-            refresh();
+            platform_refresh();
         } else if (isprint(ch)) {
             if (len < limit) {
                 buf[len++] = (char)ch;
                 buf[len] = '\0';
                 mvaddch(y, x + len - 1, ch);
                 move(y, x + len);
-                refresh();
+                platform_refresh();
             }
         }
     }

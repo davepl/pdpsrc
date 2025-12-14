@@ -1,7 +1,7 @@
 DESTDIR= /usr/libexec
 CFLAGS= -O
 LDFLAGS= -O
-PDP11_CFLAGS= -O -i
+PDP11_CFLAGS= -O -i -I.
 PDP11_LDFLAGS= -i
 PROGRAM=	menu
 SRCS=		main.c data.c platform.c menu.c auth.c msgs.c tests.c

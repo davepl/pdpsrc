@@ -103,8 +103,7 @@ draw_post_commands_line(void)
 {
     int row = LINES - PROMPT_ROW_OFFSET;
     const int prompt_col = 4;
-    move(row, 2);
-    clrtoeol();
+    mvprintw(row, 2, "%-*.*s", COLS - 4, COLS - 4, "");
     if (g_session.is_admin) {
         if (g_cached_message_count > 0)
             mvprintw(row, prompt_col, "(N)ew Post  (R)eply  (D)elete  (B)ack");
@@ -116,7 +115,7 @@ draw_post_commands_line(void)
         else
             mvprintw(row, prompt_col, "(N)ew Post  (B)ack");
     }
-    refresh();
+    platform_refresh();
 }
 
 static void
@@ -273,7 +272,7 @@ msgs_edit_body(char *buffer, int maxlen)
 static int
 edit_body_with_editor(char *subject, char *buffer, int maxlen)
 {
-    char tmpname[] = "/tmp/bbsmsgXXXXXX";
+    char tmpname[32];
     const char *editor;
     char cmd[512];
     FILE *fp;
@@ -286,6 +285,8 @@ edit_body_with_editor(char *subject, char *buffer, int maxlen)
 
     if (subject == NULL || buffer == NULL || maxlen <= 1)
         return 0;
+
+    safe_copy(tmpname, sizeof tmpname, "/tmp/bbsmsgXXXXXX");
 
 #ifdef __unix__
     fd = mkstemp(tmpname);
@@ -332,7 +333,7 @@ edit_body_with_editor(char *subject, char *buffer, int maxlen)
     }
     if (restart_ui) {
         platform_set_cursor(0);
-        refresh();
+        platform_refresh();
     }
 
     fp = fopen(tmpname, "r");
@@ -510,11 +511,18 @@ compose_screen(struct message *reply_source, int forward_mode, int *last_highlig
     while (!done) {
         draw_layout("", "");
         draw_back_hint();
-        mvprintw(5, 4, "Subject: %s", subject);
+        {
+            const int label_col = 4;
+            const char *label = "Subject: ";
+            int available = COLS - label_col - (int)strlen(label) - 2;
+            if (available < 0)
+                available = 0;
+            mvprintw(5, label_col, "%s%-*.*s", label, available, available, subject);
+        }
         mvprintw(7, 4, "Body preview:");
         render_body_text(body, 8, LINES - MENU_ROWS - 10);
         draw_menu_lines("^X Send  ^C Cancel", "^J Justify (TODO)  ^W WhereIs (TODO)", "Enter edits field (body opens $EDITOR)  Arrows move field");
-        refresh();
+        platform_refresh();
         ch = read_key();
         key = normalize_key(ch);
         if (is_back_key(ch) || key == 'B') {
@@ -594,16 +602,30 @@ post_view_screen(int message_index, int *last_highlight)
         draw_layout("", "");
         draw_back_hint();
         format_time_local(msg->created, stamp, sizeof stamp);
-        mvprintw(5, 4, "From: %s", msg->author);
-        mvprintw(6, 4, "Date: %s", stamp);
+        {
+            const int label_col = 4;
+            const char *from_label = "From: ";
+            int avail = COLS - label_col - (int)strlen(from_label) - 2;
+            if (avail < 0)
+                avail = 0;
+            mvprintw(5, label_col, "%s%-*.*s", from_label, avail, avail, msg->author);
+        }
+        {
+            const int label_col = 4;
+            const char *date_label = "Date: ";
+            int avail = COLS - label_col - (int)strlen(date_label) - 2;
+            if (avail < 0)
+                avail = 0;
+            mvprintw(6, label_col, "%s%-*.*s", date_label, avail, avail, stamp);
+        }
         render_body_text(msg->body, 8, LINES - MENU_ROWS - 10);
         if (g_config.signature[0]) {
             int sig_row = LINES - MENU_ROWS - 2;
             if (sig_row > 8)
-                mvprintw(sig_row, 4, "%s", g_config.signature);
+                mvprintw(sig_row, 4, "%-*.*s", COLS - 6, COLS - 6, g_config.signature);
         }
         draw_menu_lines("D Delete  U Undelete  R Reply", "V View Attach (TODO)  E Exit Attach (TODO)", "< Index  ? Help");
-        refresh();
+        platform_refresh();
         ch = read_key();
         key = normalize_key(ch);
         if (is_back_key(ch) || key == 'B' || key == 'E') {
@@ -657,13 +679,13 @@ post_index_screen_internal(int *last_highlight)
     }
     highlight = (last_highlight && *last_highlight >= 0) ? *last_highlight : 0;
 
-    age_width = 8;
-    author_width = 16;
+    age_width = 10;
+    author_width = 18;
     line_width = COLS - 7; /* match run_menu width (COLS - 7) */
     available = line_width;
     subject_width = available - author_width - age_width - 4; /* two gaps */
-    if (subject_width < 8)
-        subject_width = 8;
+    if (subject_width < 12)
+        subject_width = 12;
 
     while (1) {
         draw_layout("Messages", "");

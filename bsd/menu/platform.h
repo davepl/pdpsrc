@@ -61,6 +61,7 @@ void platform_draw_header_line(const char *left, const char *right);
 void platform_draw_separator(int row);
 void platform_read_input(int y, int x, char *buf, int maxlen);
 void platform_draw_breadcrumb(const char *text);
+void platform_refresh(void);
 void platform_reverse_on(void);
 void platform_reverse_off(void);
 #ifdef LEGACY_CURSES

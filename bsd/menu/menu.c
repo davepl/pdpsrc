@@ -41,22 +41,29 @@ static void
 menu_draw_highlighted(int row, int col, int width, int highlighted, const char *fmt, ...)
 {
     char buf[256];
+    char render[256];
     va_list ap;
+    int fill;
 
     va_start(ap, fmt);
     vsprintf(buf, fmt, ap);
     va_end(ap);
+    fill = width > 0 ? width : (int)strlen(buf);
+    if (fill >= (int)sizeof(render))
+        fill = (int)sizeof(render) - 1;
+    safe_copy(render, sizeof render, buf);
+    if ((int)strlen(render) > fill)
+        render[fill] = '\0';
 
 #ifdef LEGACY_CURSES
     {
-        int fill = width > 0 ? width : (int)strlen(buf);
         printf("\033[%d;%dH", row + 1, col + 1);
         if (highlighted)
-            printf("\033[7m%s\033[0m", buf);
+            printf("\033[7m%s\033[0m", render);
         else
-            printf("%s", buf);
-        if (width > 0 && (int)strlen(buf) < fill) {
-            int pad = fill - (int)strlen(buf);
+            printf("%s", render);
+        if (width > 0 && (int)strlen(render) < fill) {
+            int pad = fill - (int)strlen(render);
             while (pad-- > 0)
                 printf(" ");
         }
@@ -66,9 +73,9 @@ menu_draw_highlighted(int row, int col, int width, int highlighted, const char *
     if (highlighted)
         attron(A_REVERSE);
     if (width > 0)
-        mvprintw(row, col, "%-*s", width, buf);
+        mvprintw(row, col, "%-*.*s", width, width, render);
     else
-        mvprintw(row, col, "%s", buf);
+        mvprintw(row, col, "%s", render);
     if (highlighted)
         attroff(A_REVERSE);
 #endif
@@ -114,6 +121,15 @@ menu_read_key(void)
         pending = dir;
         return ch;
     }
+    /* Handle VT52-style arrows: ESC A/B/C/D */
+    if (next == 'A')
+        return KEY_UP;
+    if (next == 'B')
+        return KEY_DOWN;
+    if (next == 'C')
+        return KEY_RIGHT;
+    if (next == 'D')
+        return KEY_LEFT;
     pending = next;
     return ch;
 }
@@ -170,7 +186,8 @@ run_menu(int start_row,
     indicator_col = menu_col;
     indicator_width = menu_width;
 
-    bottom_row = LINES - PROMPT_ROW_OFFSET - 2;
+    /* Leave the separator, status, and prompt rows untouched so borders stay intact. */
+    bottom_row = LINES - MENU_ROWS - 2;
     if (bottom_row < start_row)
         bottom_row = start_row;
     available_rows = bottom_row - start_row + 1;
@@ -290,7 +307,7 @@ run_menu(int start_row,
         prev_top_index = top_index;
         prev_show_top = show_top;
         prev_show_bottom = show_bottom;
-        refresh();
+        platform_refresh();
 
         ch = menu_read_key();
         if (ch == KEY_UP) {

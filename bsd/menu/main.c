@@ -54,7 +54,9 @@
 #include <ctype.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
+#if !defined(__pdp11__)
 #include <locale.h>
+#endif
 #if !defined(__pdp11__)
 #include <time.h>
 #else
@@ -80,9 +82,6 @@ extern int link();
 extern int getpid();
 extern unsigned sleep();
 #endif
-#if defined(__pdp11__)
-#define remove unlink
-#endif
 
 #ifdef LEGACY_CURSES
 static int legacy_mvgetnstr(int y, int x, char *buf, int maxlen);
@@ -93,7 +92,7 @@ static int legacy_mvgetnstr(int y, int x, char *buf, int maxlen);
 #endif
 
 #if defined(__pdp11__)
-static int
+int
 compat_snprintf(char *buf, size_t len, const char *fmt, ...)
 {
     va_list ap;
@@ -114,7 +113,6 @@ compat_snprintf(char *buf, size_t len, const char *fmt, ...)
     }
     return ret;
 }
-#define snprintf compat_snprintf
 #endif
 
 #define ESC_KEY 27
@@ -134,13 +132,12 @@ debug_log(const char *fmt, ...)
 }
 
 static const char *g_login_banner[] = {
-"\n"
-"    _____  _____  _____        ____  ____   _____  \n"
-"   |  __ \\|  __ \\|  __ \\      |  _ \\|  _ \\ / ____| \n"
-"   | |__) | |  | | |__) |_____| |_) | |_) | (___   \n"
-"   |  ___/| |  | |  ___/______|  _ <|  _ < \\___ \\  \n"
-"   | |    | |__| | |          | |_) | |_) |____) | \n"
-"   |_|    |_____/|_|          |____/|____/|_____/  \n"
+"   _____  _____  _____        ____  ____   _____  ",
+"   |  __ \\|  __ \\|  __ \\      |  _ \\|  _ \\ / ____| ",
+"   | |__) | |  | | |__) |_____| |_) | |_) | (___   ",
+"   |  ___/| |  | |  ___/______|  _ <|  _ < \\___ \\  ",
+"   | |    | |__| | |          | |_) | |_) |____) | ",
+"   |_|    |_____/|_|          |____/|____/|_____/  "
 };
 
 #define LOGIN_BANNER_LINES (int)(sizeof(g_login_banner) / sizeof(g_login_banner[0]))
@@ -178,24 +175,29 @@ static void
 draw_highlighted_text(int row, int col, int width, int highlighted, const char *fmt, ...)
 {
     char buf[256];
+    char render[256];
     va_list ap;
+    int fill;
 
     va_start(ap, fmt);
     vsprintf(buf, fmt, ap);
     va_end(ap);
+    fill = width > 0 ? width : (int)strlen(buf);
+    if (fill >= (int)sizeof(render))
+        fill = (int)sizeof(render) - 1;
+    safe_copy(render, sizeof render, buf);
+    if ((int)strlen(render) > fill)
+        render[fill] = '\0';
 
 #ifdef LEGACY_CURSES
     {
-        int fill = width > 0 ? width : (int)strlen(buf);
-        move(row, col);
-        clrtoeol();
         printf("\033[%d;%dH", row + 1, col + 1);
         if (highlighted)
-            printf("\033[7m%s\033[0m", buf);
+            printf("\033[7m%s\033[0m", render);
         else
-            printf("%s", buf);
-        if (width > 0 && (int)strlen(buf) < fill) {
-            int pad = fill - (int)strlen(buf);
+            printf("%s", render);
+        if (width > 0 && (int)strlen(render) < fill) {
+            int pad = fill - (int)strlen(render);
             while (pad-- > 0)
                 printf(" ");
         }
@@ -205,9 +207,9 @@ draw_highlighted_text(int row, int col, int width, int highlighted, const char *
     if (highlighted)
         attron(A_REVERSE);
     if (width > 0)
-        mvprintw(row, col, "%-*s", width, buf);
+        mvprintw(row, col, "%-*.*s", width, width, render);
     else
-        mvprintw(row, col, "%s", buf);
+        mvprintw(row, col, "%s", render);
     if (highlighted)
         attroff(A_REVERSE);
 #endif
@@ -421,7 +423,9 @@ main(int argc, char **argv)
     argc = argc;
     argv = argv;
 
+#if !defined(__pdp11__)
     setlocale(LC_ALL, "");
+#endif
     debug_log("Main started");
 
     ensure_data_dir();
@@ -485,7 +489,7 @@ start_ui(void)
     keypad(stdscr, TRUE);
 #endif
     platform_set_cursor(0);
-    refresh();
+    platform_refresh();
     g_ui_ready = 1;
 }
 
@@ -555,26 +559,22 @@ draw_layout(const char *title, const char *status)
     platform_draw_header_line(header_left, header_right);
     platform_draw_breadcrumb(g_breadcrumb);
 
-    move(4, 1);
-    clrtoeol();
-    mvprintw(4, 2, "%s", title);
-    if (status && *status)
-        mvprintw(4, COLS - (int)strlen(status) - 3, "%s", status);
+    mvprintw(4, 2, "%-*s", COLS - 4, "");
+    mvprintw(4, 2, "%-*.*s", COLS - 4, COLS - 4, title ? title : "");
+    if (status && *status) {
+        int status_col = COLS - (int)strlen(status) - 3;
+        int status_width;
+        if (status_col < 2)
+            status_col = 2;
+        status_width = COLS - status_col - 2;
+        if (status_width < 1)
+            status_width = 1;
+        mvprintw(4, status_col, "%-*.*s", status_width, status_width, status);
+    }
     
     menu_bar = LINES - MENU_ROWS - 1;
-
-#ifndef LEGACY_CURSES
-    platform_draw_border();
-    platform_draw_separator(menu_bar);
-#endif
-
-    /* Refresh curses buffer to screen */
-    refresh();
-
-#ifdef LEGACY_CURSES
-    platform_draw_border();
-    platform_draw_separator(menu_bar);
-#endif
+    (void)menu_bar;
+    platform_refresh();
 }
 
 void
@@ -590,12 +590,14 @@ draw_menu_lines(const char *line1, const char *line2, const char *line3)
     lines[2] = line3 ? line3 : "";
 
     start_row = LINES - MENU_ROWS + 1; /* leave status line intact */
-    stop_row = LINES - PROMPT_ROW_OFFSET - 1; /* avoid clobbering separator */
+    stop_row = LINES - PROMPT_ROW_OFFSET; /* avoid clobbering prompt row */
+    if (start_row >= stop_row)
+        start_row = stop_row - 1;
     for (i = 0; i < 3; ++i) {
         int row = start_row + i;
         if (row >= stop_row)
             break; /* avoid clobbering prompt line */
-        mvprintw(row, 4, "%-*s", COLS - 6, lines[i]);
+        mvprintw(row, 4, "%-*.*s", COLS - 6, COLS - 6, lines[i]);
     }
 }
 
@@ -606,8 +608,8 @@ show_status(const char *msg)
     int row;
 
     row = LINES - MENU_ROWS;
-    mvprintw(row, 2, "%-*s", COLS - 4, msg ? msg : "");
-    refresh();
+    mvprintw(row, 2, "%-*.*s", COLS - 4, COLS - 4, msg ? msg : "");
+    platform_refresh();
 }
 
 void
@@ -651,13 +653,19 @@ prompt_string(const char *label, char *buffer, int maxlen)
 {
     int row;
     int col;
+    int inside_width;
+    const int start_col = 2;
 
     debug_log("prompt_string: %s", label);
     row = LINES - PROMPT_ROW_OFFSET;
-    move(row, 2);
-    clrtoeol();
-    mvprintw(row, 2, "%s ", label);
-    col = 2 + (int)strlen(label) + 1;
+    inside_width = COLS - 2 * start_col;
+    if (inside_width < 1)
+        inside_width = 1;
+    move(row, start_col);
+    /* Clear the prompt line without touching the border columns. */
+    mvprintw(row, start_col, "%-*s", inside_width, "");
+    mvprintw(row, start_col, "%s ", label);
+    col = start_col + (int)strlen(label) + 1;
     if (col >= COLS - 2)
         col = COLS - 3;
     move(row, col);
@@ -673,10 +681,18 @@ int
 prompt_yesno(const char *question)
 {
     char buf[8];
+    const char *p;
+    int ch = 0;
 
     prompt_string(question, buf, sizeof buf);
-    if (buf[0] == 'y' || buf[0] == 'Y')
+    for (p = buf; *p && isspace((unsigned char)*p); ++p)
+        ;
+    if (*p != '\0')
+        ch = toupper((unsigned char)*p);
+    if (ch == 'Y')
         return 1;
+    if (ch == 'N')
+        return 0;
     return 0;
 }
 
@@ -802,17 +818,16 @@ confirm_exit_prompt(void)
     int row = LINES - PROMPT_ROW_OFFSET;
 
     prompt_string("Logout (Y/n):", buf, sizeof buf);
-    move(row, 2);
-    clrtoeol();
-    refresh();
+    mvprintw(row, 2, "%-*s", COLS - 4, "");
+    platform_refresh();
     /* Accept Y/y as yes (default), ignore leading spaces */
     for (p = buf; *p && isspace((unsigned char)*p); ++p)
         ;
     if (*p != '\0')
         ch = toupper((unsigned char)*p);
-    if (ch == 0 || ch == 'Y')
-        return 1;
-    return 0;
+    if (ch == 'N')
+        return 0;
+    return (ch == 0 || ch == 'Y');
 }
 
 void
@@ -891,28 +906,49 @@ show_layout_login_banner(void)
 {
     int i;
     int row;
+    int banner_col = 2;
+    int banner_width = 0;
+    int min_leading = 256;
 
     draw_layout("Login", "");
-    for (i = 0; i < LOGIN_BANNER_LINES; ++i)
-        mvprintw(5 + i, 2, "%s", g_login_banner[i]);
+    for (i = 0; i < LOGIN_BANNER_LINES; ++i) {
+        const char *line = g_login_banner[i];
+        int len = (int)strlen(line);
+        int lead = 0;
+
+        while (len > 0 && line[len - 1] == ' ')
+            --len;
+        while (lead < len && line[lead] == ' ')
+            ++lead;
+        if (lead < min_leading)
+            min_leading = lead;
+        if (len - lead > banner_width)
+            banner_width = len - lead;
+    }
+    if (min_leading == 256)
+        min_leading = 0;
+    if (banner_width > COLS - 4)
+        banner_width = COLS - 4;
+    banner_col = (COLS - banner_width) / 2;
+    if (banner_col < 2)
+        banner_col = 2;
+
+    for (i = 0; i < LOGIN_BANNER_LINES; ++i) {
+        const char *line = g_login_banner[i];
+        int len = (int)strlen(line);
+
+        while (len > 0 && line[len - 1] == ' ')
+            --len;
+        if (len < min_leading)
+            len = min_leading;
+        mvprintw(5 + i, banner_col, "%.*s",
+            banner_width, line + min_leading);
+    }
     row = 12;   // leave room for banner
     mvprintw(row + 1, 2, "Welcome to the PDP-11 message boards.");
     mvprintw(row + 3, 2, "Enter user id.");
 
-#ifndef LEGACY_CURSES
-    platform_draw_border();
-    platform_draw_separator(LINES - MENU_ROWS - 1);
-    platform_draw_breadcrumb(g_breadcrumb);
-#endif
-
-    refresh();
-
-#ifdef LEGACY_CURSES
-    platform_draw_border();
-    platform_draw_separator(LINES - MENU_ROWS - 1);
-    platform_draw_breadcrumb(g_breadcrumb);
-#endif
-
+    platform_refresh();
     draw_menu_lines("", "", "");
 }
 
@@ -944,7 +980,7 @@ update_status_line(void)
     safe_append(status, sizeof status, group);
     safe_append(status, sizeof status, "  Posts: ");
     safe_append_number(status, sizeof status, posts);
-    mvprintw(4, 2, "%-*s", COLS - 4, status);
+    mvprintw(4, 2, "%-*.*s", COLS - 4, COLS - 4, status);
 }
 
 static int
@@ -1418,16 +1454,15 @@ group_list_screen(void)
         notice_row = LINES - PROMPT_ROW_OFFSET;
         if (notice_row < menu_start_row)
             notice_row = menu_start_row;
-        move(notice_row, 4);
-        clrtoeol();
+        mvprintw(notice_row, 4, "%-*.*s", COLS - 8, COLS - 8, "");
         if (g_group_count == 0)
-            mvprintw(notice_row, 4, "No groups defined. Create one to begin.");
+            mvprintw(notice_row, 4, "%-*.*s", COLS - 8, COLS - 8, "No groups defined. Create one to begin.");
         else
-            mvprintw(notice_row, 4, "Select a group to enter or choose an admin option.");
+            mvprintw(notice_row, 4, "%-*.*s", COLS - 8, COLS - 8, "Select a group to enter or choose an admin option.");
         {
             int verb_row = menu_start_row - 1;
             if (verb_row >= 0 && verb_row < LINES - PROMPT_ROW_OFFSET - 1)
-                mvprintw(verb_row, 4, "%-*s", COLS - 6, "C) Create group   D) Delete group   E) Edit group");
+                mvprintw(verb_row, 4, "%-*.*s", COLS - 6, COLS - 6, "C) Create group   D) Delete group   E) Edit group");
         }
 
         entry_count = 0;
