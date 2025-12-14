@@ -1,3 +1,25 @@
+/*
+ * Tiny BASIC-like interpreter targeting CBM BASIC v2 style programs.
+ * Copyright (C) 2024  Davepl with various AI assists
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * BASIC banner: implements a minimal 6502 Microsoft/CBM BASIC v2 compatible
+ * interpreter (PRINT, INPUT, IF/THEN, FOR/NEXT, GOTO, GOSUB, DIM, etc.).
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -5,6 +27,17 @@
 #include <math.h>
 #if defined(__unix__) || defined(__APPLE__) || defined(__MACH__)
 #include <unistd.h>
+#endif
+#ifndef HAVE_USLEEP
+#include <sys/types.h>
+#include <sys/times.h>
+#include <sys/param.h>
+#include <sys/time.h>
+#endif
+#ifndef HAVE_USLEEP
+#if defined(__APPLE__) || defined(__MACH__) || defined(__linux__) || defined(_POSIX_VERSION)
+#define HAVE_USLEEP 1
+#endif
 #endif
 
 /* 211BSD-friendly BASIC interpreter targeting CBM BASIC v2 style programs.
@@ -20,6 +53,13 @@
 #define MAX_STR_LEN 256
 #define DEFAULT_ARRAY_SIZE 11
 #define PRINT_WIDTH 80
+#ifndef TICKS_PER_SEC_FALLBACK
+#ifdef HZ
+#define TICKS_PER_SEC_FALLBACK HZ
+#else
+#define TICKS_PER_SEC_FALLBACK 60
+#endif
+#endif
 
 enum value_type { VAL_NUM = 0, VAL_STR = 1 };
 
@@ -31,7 +71,7 @@ struct value {
 
 struct line {
     int number;
-    char text[MAX_LINE_LEN];
+    char *text;
 };
 
 struct var {
@@ -60,7 +100,7 @@ struct for_frame {
     struct value *var;
 };
 
-static struct line program_lines[MAX_LINES];
+static struct line *program_lines[MAX_LINES];
 static int line_count = 0;
 
 static struct var vars[MAX_VARS];
@@ -84,6 +124,7 @@ static int starts_with_kw(char *p, const char *kw);
 static void skip_spaces(char **p);
 static int parse_number_literal(char **p, double *out);
 static int read_identifier(char **p, char *buf, int buf_size);
+static char *dupstr_local(const char *s);
 static struct value eval_expr(char **p);
 static int eval_condition(char **p);
 static void execute_statement(char **p);
@@ -97,12 +138,14 @@ static void print_spaces(int count);
 static void statement_sleep(char **p);
 static void do_sleep_ticks(double ticks);
 
+// Report an error and halt further execution.
 static void runtime_error(const char *msg)
 {
     fprintf(stderr, "Error: %s\n", msg);
     halted = 1;
 }
 
+// Strip trailing newline from a buffer if present.
 static void trim_newline(char *s)
 {
     char *p;
@@ -112,6 +155,7 @@ static void trim_newline(char *s)
     }
 }
 
+// Advance pointer past spaces/tabs.
 static void skip_spaces(char **p)
 {
     while (**p == ' ' || **p == '\t') {
@@ -119,6 +163,7 @@ static void skip_spaces(char **p)
     }
 }
 
+// Parse a numeric literal from the character stream.
 static int parse_number_literal(char **p, double *out)
 {
     char buf[64];
@@ -166,6 +211,22 @@ static int parse_number_literal(char **p, double *out)
     return 1;
 }
 
+// Duplicate a string into heap memory.
+static char *dupstr_local(const char *s)
+{
+    size_t len;
+    char *p;
+    len = strlen(s) + 1;
+    p = (char *)malloc(len);
+    if (!p) {
+        runtime_error("Out of memory");
+        return NULL;
+    }
+    memcpy(p, s, len);
+    return p;
+}
+
+// Check if the input starts with the keyword (case-insensitive).
 static int starts_with_kw(char *p, const char *kw)
 {
     int i;
@@ -180,6 +241,7 @@ static int starts_with_kw(char *p, const char *kw)
     return 0;
 }
 
+// Construct a numeric value wrapper.
 static struct value make_num(double v)
 {
     struct value out;
@@ -189,6 +251,7 @@ static struct value make_num(double v)
     return out;
 }
 
+// Construct a string value wrapper.
 static struct value make_str(const char *s)
 {
     struct value out;
@@ -199,6 +262,7 @@ static struct value make_str(const char *s)
     return out;
 }
 
+// Ensure the value is numeric or raise a runtime error.
 static void ensure_num(struct value *v)
 {
     if (v->type != VAL_NUM) {
@@ -206,6 +270,7 @@ static void ensure_num(struct value *v)
     }
 }
 
+// Ensure the value is string or raise a runtime error.
 static void ensure_str(struct value *v)
 {
     if (v->type != VAL_STR) {
@@ -213,6 +278,7 @@ static void ensure_str(struct value *v)
     }
 }
 
+// Emit spaces and track current print column.
 static void print_spaces(int count)
 {
     int i;
@@ -226,6 +292,7 @@ static void print_spaces(int count)
     }
 }
 
+// Emit a value (number or string) updating column tracking.
 static void print_value(struct value *v)
 {
     if (v->type == VAL_STR) {
@@ -252,10 +319,18 @@ static void print_value(struct value *v)
     }
 }
 
+// Sleep for a number of 60Hz ticks, using the best timer available.
 static void do_sleep_ticks(double ticks)
 {
     long usec;
     unsigned int sec;
+#ifndef HAVE_USLEEP
+    long start;
+    long target_ticks;
+    int tps;
+    struct tms tm;
+    double remaining_ticks;
+#endif
     if (ticks <= 0.0) {
         return;
     }
@@ -273,15 +348,22 @@ static void do_sleep_ticks(double ticks)
         usleep((unsigned int)usec);
     }
 #else
-    if (sec == 0 && usec > 0) {
-        sec = 1;
-    }
-    if (sec > 0) {
-        sleep(sec);
+    /* No usleep; use select() for sub-second delay if available */
+    {
+        struct timeval tv;
+        if (sec > 0) {
+            sleep(sec);
+        }
+        if (usec > 0) {
+            tv.tv_sec = 0;
+            tv.tv_usec = usec;
+            select(0, (fd_set *)0, (fd_set *)0, (fd_set *)0, &tv);
+        }
     }
 #endif
 }
 
+// Parse SLEEP statement and pause execution.
 static void statement_sleep(char **p)
 {
     struct value v;
@@ -303,6 +385,7 @@ static void statement_sleep(char **p)
     do_sleep_ticks(v.num);
 }
 
+// Case-insensitive string match helper for function names.
 static int name_equals(const char *a, const char *b)
 {
     while (*a && *b) {
@@ -315,6 +398,7 @@ static int name_equals(const char *a, const char *b)
     return *a == '\0' && *b == '\0';
 }
 
+// Evaluate BASIC intrinsic functions (math/string/tab).
 static struct value eval_function(const char *name, char **p)
 {
     char tmp[8];
@@ -444,6 +528,7 @@ static struct value eval_function(const char *name, char **p)
     return make_num(0.0);
 }
 
+// Break a BASIC variable name into two-letter uppercase key and detect strings.
 static void uppercase_name(const char *src, char *n1, char *n2, int *is_string)
 {
     int len;
@@ -466,6 +551,7 @@ static void uppercase_name(const char *src, char *n1, char *n2, int *is_string)
     }
 }
 
+// Look up a variable (and optional array) or create it with requested size.
 static struct var *find_or_create_var(char name1, char name2, int is_string, int want_array, int array_size)
 {
     int i, idx;
@@ -520,6 +606,7 @@ static struct var *find_or_create_var(char name1, char name2, int is_string, int
     return v;
 }
 
+// Read an identifier (letters/digits/$) into buf, advancing the pointer.
 static int read_identifier(char **p, char *buf, int buf_size)
 {
     int i;
@@ -532,6 +619,7 @@ static int read_identifier(char **p, char *buf, int buf_size)
     return i;
 }
 
+// Resolve a variable (and optional array index) creating it if needed.
 static struct value *get_var_reference(char **p, int *is_array_out, int *is_string_out)
 {
     char namebuf[8];
@@ -610,6 +698,7 @@ static struct value *get_var_reference(char **p, int *is_array_out, int *is_stri
     return valp;
 }
 
+// Parse a factor: number, string, variable, function call, or parenthesized expr.
 static struct value eval_factor(char **p)
 {
     struct value v;
@@ -644,7 +733,8 @@ static struct value eval_factor(char **p)
         return make_str(buf);
     }
     if (isalpha((unsigned char)**p)) {
-        if (starts_with_kw(*p, "SIN") || starts_with_kw(*p, "COS") || starts_with_kw(*p, "TAN") ||
+    /* Function call? */
+    if (starts_with_kw(*p, "SIN") || starts_with_kw(*p, "COS") || starts_with_kw(*p, "TAN") ||
             starts_with_kw(*p, "ABS") || starts_with_kw(*p, "INT") || starts_with_kw(*p, "SQR") ||
             starts_with_kw(*p, "SGN") || starts_with_kw(*p, "EXP") || starts_with_kw(*p, "LOG") ||
             starts_with_kw(*p, "RND") || starts_with_kw(*p, "LEN") || starts_with_kw(*p, "VAL") ||
@@ -683,6 +773,7 @@ static struct value eval_factor(char **p)
     return make_num(0.0);
 }
 
+// Parse exponentiation (right-associative ^).
 static struct value eval_power(char **p)
 {
     struct value left, right;
@@ -699,6 +790,7 @@ static struct value eval_power(char **p)
     return left;
 }
 
+// Parse *,/ terms.
 static struct value eval_term(char **p)
 {
     struct value left, right;
@@ -725,6 +817,7 @@ static struct value eval_term(char **p)
     return left;
 }
 
+// Parse + and - expressions (with string concatenation on +).
 static struct value eval_expr(char **p)
 {
     struct value left, right;
@@ -757,6 +850,7 @@ static struct value eval_expr(char **p)
     return left;
 }
 
+// Evaluate IF conditions with BASIC relational operators.
 static int eval_condition(char **p)
 {
     struct value left, right;
@@ -824,11 +918,13 @@ static int eval_condition(char **p)
     return left.num != 0.0;
 }
 
+// Skip rest of line (REM or ' comment).
 static void statement_rem(char **p)
 {
     *p += strlen(*p);
 }
 
+// Handle PRINT/? output with separators and column tracking.
 static void statement_print(char **p)
 {
     int newline;
@@ -870,6 +966,7 @@ static void statement_print(char **p)
     fflush(stdout);
 }
 
+// Handle INPUT, prompting and storing numeric/string values.
 static void statement_input(char **p)
 {
     char prompt[MAX_STR_LEN];
@@ -931,6 +1028,7 @@ static void statement_input(char **p)
     }
 }
 
+// Handle LET (and implicit assignment).
 static void statement_let(char **p)
 {
     struct value *vp;
@@ -959,6 +1057,7 @@ static void statement_let(char **p)
     *vp = rhs;
 }
 
+// Branch to a line number.
 static void statement_goto(char **p)
 {
     int line_number;
@@ -975,6 +1074,7 @@ static void statement_goto(char **p)
     statement_pos = NULL;
 }
 
+// Push return address and jump to subroutine.
 static void statement_gosub(char **p)
 {
     int target;
@@ -1001,6 +1101,7 @@ static void statement_gosub(char **p)
     statement_pos = NULL;
 }
 
+// Return from GOSUB.
 static void statement_return(char **p)
 {
     if (gosub_top <= 0) {
@@ -1012,6 +1113,7 @@ static void statement_return(char **p)
     statement_pos = gosub_stack[gosub_top].position;
 }
 
+// Evaluate IF/THEN and either jump or execute remainder of line.
 static void statement_if(char **p)
 {
     int cond_true;
@@ -1048,6 +1150,7 @@ static void statement_if(char **p)
     }
 }
 
+// Initialize FOR loop control variables.
 static void statement_for(char **p)
 {
     struct value *vp;
@@ -1117,6 +1220,7 @@ static void statement_for(char **p)
     for_top++;
 }
 
+// Handle NEXT, advancing or exiting loop.
 static void statement_next(char **p)
 {
     char namebuf[8];
@@ -1156,6 +1260,7 @@ static void statement_next(char **p)
     }
 }
 
+// Allocate arrays via DIM.
 static void statement_dim(char **p)
 {
     for (;;) {
@@ -1202,6 +1307,7 @@ static void statement_dim(char **p)
     }
 }
 
+// Dispatch a single statement starting at the current pointer.
 static void execute_statement(char **p)
 {
     skip_spaces(p);
@@ -1288,13 +1394,14 @@ static void execute_statement(char **p)
     runtime_error("Unknown statement");
 }
 
+// Sort program lines by line number.
 static void sort_program(void)
 {
     int i, j;
     for (i = 0; i < line_count; i++) {
         for (j = i + 1; j < line_count; j++) {
-            if (program_lines[j].number < program_lines[i].number) {
-                struct line tmp;
+            if (program_lines[j]->number < program_lines[i]->number) {
+                struct line *tmp;
                 tmp = program_lines[i];
                 program_lines[i] = program_lines[j];
                 program_lines[j] = tmp;
@@ -1303,24 +1410,28 @@ static void sort_program(void)
     }
 }
 
+// Find the index of a line number in the program table.
 static int find_line_index(int number)
 {
     int i;
     for (i = 0; i < line_count; i++) {
-        if (program_lines[i].number == number) {
+        if (program_lines[i] && program_lines[i]->number == number) {
             return i;
         }
     }
     return -1;
 }
 
+// Insert or replace a program line.
 static void add_or_replace_line(int number, const char *text)
 {
     int i;
     for (i = 0; i < line_count; i++) {
-        if (program_lines[i].number == number) {
-            strncpy(program_lines[i].text, text, MAX_LINE_LEN - 1);
-            program_lines[i].text[MAX_LINE_LEN - 1] = '\0';
+        if (program_lines[i] && program_lines[i]->number == number) {
+            if (program_lines[i]->text) {
+                free(program_lines[i]->text);
+            }
+            program_lines[i]->text = dupstr_local(text);
             return;
         }
     }
@@ -1328,12 +1439,17 @@ static void add_or_replace_line(int number, const char *text)
         runtime_error("Program too large");
         return;
     }
-    program_lines[line_count].number = number;
-    strncpy(program_lines[line_count].text, text, MAX_LINE_LEN - 1);
-    program_lines[line_count].text[MAX_LINE_LEN - 1] = '\0';
+    program_lines[line_count] = (struct line *)malloc(sizeof(struct line));
+    if (!program_lines[line_count]) {
+        runtime_error("Out of memory");
+        return;
+    }
+    program_lines[line_count]->number = number;
+    program_lines[line_count]->text = dupstr_local(text);
     line_count++;
 }
 
+// Read a tokenized source file into the line table.
 static void load_program(const char *path)
 {
     FILE *f;
@@ -1376,6 +1492,7 @@ static void load_program(const char *path)
     sort_program();
 }
 
+// Run the program from the first line until END/halt.
 static void run_program(void)
 {
     halted = 0;
@@ -1385,7 +1502,7 @@ static void run_program(void)
     while (!halted && current_line >= 0 && current_line < line_count) {
         char *p;
         if (statement_pos == NULL) {
-            statement_pos = program_lines[current_line].text;
+            statement_pos = program_lines[current_line]->text;
         }
         p = statement_pos;
         skip_spaces(&p);
@@ -1415,6 +1532,7 @@ static void run_program(void)
     }
 }
 
+// Entry point: load a .bas file and execute.
 int main(int argc, char **argv)
 {
     if (argc < 2) {
