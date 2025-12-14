@@ -137,6 +137,7 @@ static void print_value(struct value *v);
 static void print_spaces(int count);
 static void statement_sleep(char **p);
 static void do_sleep_ticks(double ticks);
+static int function_lookup(const char *name, int len);
 
 // Report an error and halt further execution.
 static void runtime_error(const char *msg)
@@ -319,6 +320,53 @@ static void print_value(struct value *v)
     }
 }
 
+// Map function name to a small integer code for fast dispatch.
+static int function_lookup(const char *name, int len)
+{
+    char c1;
+    c1 = name[0];
+    switch (c1) {
+    case 'S':
+        if (len == 3 && name[0] == 'S' && name[1] == 'I' && name[2] == 'N') return 1; /* SIN */
+        if (len == 3 && name[0] == 'S' && name[1] == 'G' && name[2] == 'N') return 7; /* SGN */
+        if (len == 3 && name[0] == 'S' && name[1] == 'Q' && name[2] == 'R') return 6; /* SQR */
+        if ((len == 3 && name[0] == 'S' && name[1] == 'T' && name[2] == 'R') ||
+            (len == 4 && name[0] == 'S' && name[1] == 'T' && name[2] == 'R' && name[3] == '$')) return 12; /* STR/STR$ */
+        return 0;
+    case 'C':
+        if ((len == 3 && name[0] == 'C' && name[1] == 'H' && name[2] == 'R') ||
+            (len == 4 && name[0] == 'C' && name[1] == 'H' && name[2] == 'R' && name[3] == '$')) return 13; /* CHR/CHR$ */
+        if (len == 3 && name[0] == 'C' && name[1] == 'O' && name[2] == 'S') return 2; /* COS */
+        return 0;
+    case 'T':
+        if (len == 3 && name[0] == 'T' && name[1] == 'A' && name[2] == 'N') return 3; /* TAN */
+        if (len == 3 && name[0] == 'T' && name[1] == 'A' && name[2] == 'B') return 16; /* TAB */
+        return 0;
+    case 'A':
+        if (len == 3 && name[0] == 'A' && name[1] == 'B' && name[2] == 'S') return 4; /* ABS */
+        if (len == 3 && name[0] == 'A' && name[1] == 'S' && name[2] == 'C') return 14; /* ASC */
+        return 0;
+    case 'I':
+        if (len == 3 && name[0] == 'I' && name[1] == 'N' && name[2] == 'T') return 5; /* INT */
+        return 0;
+    case 'E':
+        if (len == 3 && name[0] == 'E' && name[1] == 'X' && name[2] == 'P') return 8; /* EXP */
+        return 0;
+    case 'L':
+        if (len == 3 && name[0] == 'L' && name[1] == 'O' && name[2] == 'G') return 9; /* LOG */
+        if (len == 3 && name[0] == 'L' && name[1] == 'E' && name[2] == 'N') return 11; /* LEN */
+        return 0;
+    case 'R':
+        if (len == 3 && name[0] == 'R' && name[1] == 'N' && name[2] == 'D') return 10; /* RND */
+        return 0;
+    case 'V':
+        if (len == 3 && name[0] == 'V' && name[1] == 'A' && name[2] == 'L') return 15; /* VAL */
+        return 0;
+    default:
+        return 0;
+    }
+}
+
 // Sleep for a number of 60Hz ticks, using the best timer available.
 static void do_sleep_ticks(double ticks)
 {
@@ -385,28 +433,21 @@ static void statement_sleep(char **p)
     do_sleep_ticks(v.num);
 }
 
-// Case-insensitive string match helper for function names.
-static int name_equals(const char *a, const char *b)
-{
-    while (*a && *b) {
-        if (toupper((unsigned char)*a) != *b) {
-            return 0;
-        }
-        a++;
-        b++;
-    }
-    return *a == '\0' && *b == '\0';
-}
-
 // Evaluate BASIC intrinsic functions (math/string/tab).
 static struct value eval_function(const char *name, char **p)
 {
     char tmp[8];
     struct value arg;
     char outbuf[MAX_STR_LEN];
+    int code;
+    int len;
 
     /* Advance past function name */
     read_identifier(p, tmp, sizeof(tmp));
+    for (len = 0; tmp[len]; len++) {
+        tmp[len] = toupper((unsigned char)tmp[len]);
+    }
+    code = function_lookup(tmp, len);
     skip_spaces(p);
     if (**p != '(') {
         runtime_error("Function requires '('");
@@ -421,31 +462,26 @@ static struct value eval_function(const char *name, char **p)
         runtime_error("Missing ')'");
     }
 
-    if (name_equals(name, "SIN")) {
+    switch (code) {
+    case 1:
         ensure_num(&arg);
         return make_num(sin(arg.num));
-    }
-    if (name_equals(name, "COS")) {
+    case 2:
         ensure_num(&arg);
         return make_num(cos(arg.num));
-    }
-    if (name_equals(name, "TAN")) {
+    case 3:
         ensure_num(&arg);
         return make_num(tan(arg.num));
-    }
-    if (name_equals(name, "ABS")) {
+    case 4:
         ensure_num(&arg);
         return make_num(fabs(arg.num));
-    }
-    if (name_equals(name, "INT")) {
+    case 5:
         ensure_num(&arg);
         return make_num(floor(arg.num));
-    }
-    if (name_equals(name, "SQR")) {
+    case 6:
         ensure_num(&arg);
         return make_num(sqrt(arg.num));
-    }
-    if (name_equals(name, "SGN")) {
+    case 7:
         ensure_num(&arg);
         if (arg.num > 0) {
             return make_num(1.0);
@@ -454,49 +490,40 @@ static struct value eval_function(const char *name, char **p)
         } else {
             return make_num(0.0);
         }
-    }
-    if (name_equals(name, "EXP")) {
+    case 8:
         ensure_num(&arg);
         return make_num(exp(arg.num));
-    }
-    if (name_equals(name, "LOG")) {
+    case 9:
         ensure_num(&arg);
         return make_num(log(arg.num));
-    }
-    if (name_equals(name, "RND")) {
+    case 10:
         ensure_num(&arg);
         if (arg.num < 0) {
             srand((unsigned int)(-arg.num));
         }
         return make_num((double)rand() / (double)RAND_MAX);
-    }
-    if (name_equals(name, "LEN")) {
+    case 11:
         ensure_str(&arg);
         return make_num((double)strlen(arg.str));
-    }
-    if (name_equals(name, "VAL")) {
+    case 15:
         ensure_str(&arg);
         return make_num(atof(arg.str));
-    }
-    if (name_equals(name, "STR") || name_equals(name, "STR$")) {
+    case 12:
         ensure_num(&arg);
         sprintf(outbuf, "%g", arg.num);
         return make_str(outbuf);
-    }
-    if (name_equals(name, "CHR") || name_equals(name, "CHR$")) {
+    case 13:
         ensure_num(&arg);
         outbuf[0] = (char)((int)arg.num & 0xff);
         outbuf[1] = '\0';
         return make_str(outbuf);
-    }
-    if (name_equals(name, "ASC")) {
+    case 14:
         ensure_str(&arg);
         if (arg.str[0] == '\0') {
             return make_num(0.0);
         }
         return make_num((unsigned char)arg.str[0]);
-    }
-    if (name_equals(name, "TAB")) {
+    case 16: {
         int target;
         int cur;
         int width;
@@ -506,7 +533,6 @@ static struct value eval_function(const char *name, char **p)
         if (width <= 0) {
             width = 80;
         }
-        /* Map to screen width so large or negative values wrap visibly */
         target = target % width;
         if (target < 0) {
             target += width;
@@ -523,9 +549,10 @@ static struct value eval_function(const char *name, char **p)
         print_col = cur;
         return make_str("");
     }
-
-    runtime_error("Unknown function");
-    return make_num(0.0);
+    default:
+        runtime_error("Unknown function");
+        return make_num(0.0);
+    }
 }
 
 // Break a BASIC variable name into two-letter uppercase key and detect strings.
