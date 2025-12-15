@@ -139,14 +139,14 @@ static void statement_sleep(char **p);
 static void do_sleep_ticks(double ticks);
 static int function_lookup(const char *name, int len);
 
-// Report an error and halt further execution.
+/* Report an error and halt further execution. */
 static void runtime_error(const char *msg)
 {
     fprintf(stderr, "Error: %s\n", msg);
     halted = 1;
 }
 
-// Strip trailing newline from a buffer if present.
+/* Strip trailing newline from a buffer if present. */
 static void trim_newline(char *s)
 {
     char *p;
@@ -156,7 +156,7 @@ static void trim_newline(char *s)
     }
 }
 
-// Advance pointer past spaces/tabs.
+/* Advance pointer past spaces/tabs. */
 static void skip_spaces(char **p)
 {
     while (**p == ' ' || **p == '\t') {
@@ -164,7 +164,7 @@ static void skip_spaces(char **p)
     }
 }
 
-// Parse a numeric literal from the character stream.
+/* Parse a numeric literal from the character stream. */
 static int parse_number_literal(char **p, double *out)
 {
     char buf[64];
@@ -212,7 +212,7 @@ static int parse_number_literal(char **p, double *out)
     return 1;
 }
 
-// Duplicate a string into heap memory.
+/* Duplicate a string into heap memory. */
 static char *dupstr_local(const char *s)
 {
     size_t len;
@@ -227,7 +227,7 @@ static char *dupstr_local(const char *s)
     return p;
 }
 
-// Check if the input starts with the keyword (case-insensitive).
+/* Check if the input starts with the keyword (case-insensitive). */
 static int starts_with_kw(char *p, const char *kw)
 {
     int i;
@@ -242,7 +242,7 @@ static int starts_with_kw(char *p, const char *kw)
     return 0;
 }
 
-// Construct a numeric value wrapper.
+/* Construct a numeric value wrapper. */
 static struct value make_num(double v)
 {
     struct value out;
@@ -252,7 +252,7 @@ static struct value make_num(double v)
     return out;
 }
 
-// Construct a string value wrapper.
+/* Construct a string value wrapper. */
 static struct value make_str(const char *s)
 {
     struct value out;
@@ -263,7 +263,7 @@ static struct value make_str(const char *s)
     return out;
 }
 
-// Ensure the value is numeric or raise a runtime error.
+/* Ensure the value is numeric or raise a runtime error. */
 static void ensure_num(struct value *v)
 {
     if (v->type != VAL_NUM) {
@@ -271,7 +271,7 @@ static void ensure_num(struct value *v)
     }
 }
 
-// Ensure the value is string or raise a runtime error.
+/* Ensure the value is string or raise a runtime error. */
 static void ensure_str(struct value *v)
 {
     if (v->type != VAL_STR) {
@@ -279,7 +279,7 @@ static void ensure_str(struct value *v)
     }
 }
 
-// Emit spaces and track current print column.
+/* Emit spaces and track current print column. */
 static void print_spaces(int count)
 {
     int i;
@@ -293,7 +293,7 @@ static void print_spaces(int count)
     }
 }
 
-// Emit a value (number or string) updating column tracking.
+/* Emit a value (number or string) updating column tracking. */
 static void print_value(struct value *v)
 {
     if (v->type == VAL_STR) {
@@ -320,7 +320,7 @@ static void print_value(struct value *v)
     }
 }
 
-// Map function name to a small integer code for fast dispatch.
+/* Map function name to a small integer code for fast dispatch. */
 static int function_lookup(const char *name, int len)
 {
     char c1;
@@ -367,7 +367,7 @@ static int function_lookup(const char *name, int len)
     }
 }
 
-// Sleep for a number of 60Hz ticks, using the best timer available.
+/* Sleep for a number of 60Hz ticks, using the best timer available. */
 static void do_sleep_ticks(double ticks)
 {
     long usec;
@@ -411,7 +411,7 @@ static void do_sleep_ticks(double ticks)
 #endif
 }
 
-// Parse SLEEP statement and pause execution.
+/* Parse SLEEP statement and pause execution. */
 static void statement_sleep(char **p)
 {
     struct value v;
@@ -433,7 +433,7 @@ static void statement_sleep(char **p)
     do_sleep_ticks(v.num);
 }
 
-// Evaluate BASIC intrinsic functions (math/string/tab).
+/* Evaluate BASIC intrinsic functions (math/string/tab). */
 static struct value eval_function(const char *name, char **p)
 {
     char tmp[8];
@@ -555,7 +555,7 @@ static struct value eval_function(const char *name, char **p)
     }
 }
 
-// Break a BASIC variable name into two-letter uppercase key and detect strings.
+/* Break a BASIC variable name into two-letter uppercase key and detect strings. */
 static void uppercase_name(const char *src, char *n1, char *n2, int *is_string)
 {
     int len;
@@ -578,7 +578,7 @@ static void uppercase_name(const char *src, char *n1, char *n2, int *is_string)
     }
 }
 
-// Look up a variable (and optional array) or create it with requested size.
+/* Look up a variable (and optional array) or create it with requested size. */
 static struct var *find_or_create_var(char name1, char name2, int is_string, int want_array, int array_size)
 {
     int i, idx;
@@ -633,7 +633,7 @@ static struct var *find_or_create_var(char name1, char name2, int is_string, int
     return v;
 }
 
-// Read an identifier (letters/digits/$) into buf, advancing the pointer.
+/* Read an identifier (letters/digits/$) into buf, advancing the pointer. */
 static int read_identifier(char **p, char *buf, int buf_size)
 {
     int i;
@@ -646,7 +646,7 @@ static int read_identifier(char **p, char *buf, int buf_size)
     return i;
 }
 
-// Resolve a variable (and optional array index) creating it if needed.
+/* Resolve a variable (and optional array index) creating it if needed. */
 static struct value *get_var_reference(char **p, int *is_array_out, int *is_string_out)
 {
     char namebuf[8];
@@ -725,7 +725,7 @@ static struct value *get_var_reference(char **p, int *is_array_out, int *is_stri
     return valp;
 }
 
-// Parse a factor: number, string, variable, function call, or parenthesized expr.
+/* Parse a factor: number, string, variable, function call, or parenthesized expr. */
 static struct value eval_factor(char **p)
 {
     struct value v;
@@ -800,7 +800,7 @@ static struct value eval_factor(char **p)
     return make_num(0.0);
 }
 
-// Parse exponentiation (right-associative ^).
+/* Parse exponentiation (right-associative ^). */
 static struct value eval_power(char **p)
 {
     struct value left, right;
@@ -817,7 +817,7 @@ static struct value eval_power(char **p)
     return left;
 }
 
-// Parse *,/ terms.
+/* Parse *,/ terms. */
 static struct value eval_term(char **p)
 {
     struct value left, right;
@@ -844,7 +844,7 @@ static struct value eval_term(char **p)
     return left;
 }
 
-// Parse + and - expressions (with string concatenation on +).
+/* Parse + and - expressions (with string concatenation on +). */
 static struct value eval_expr(char **p)
 {
     struct value left, right;
@@ -877,7 +877,7 @@ static struct value eval_expr(char **p)
     return left;
 }
 
-// Evaluate IF conditions with BASIC relational operators.
+/* Evaluate IF conditions with BASIC relational operators. */
 static int eval_condition(char **p)
 {
     struct value left, right;
@@ -945,13 +945,13 @@ static int eval_condition(char **p)
     return left.num != 0.0;
 }
 
-// Skip rest of line (REM or ' comment).
+/* Skip rest of line (REM or ' comment). */
 static void statement_rem(char **p)
 {
     *p += strlen(*p);
 }
 
-// Handle PRINT/? output with separators and column tracking.
+/* Handle PRINT/? output with separators and column tracking. */
 static void statement_print(char **p)
 {
     int newline;
@@ -993,7 +993,7 @@ static void statement_print(char **p)
     fflush(stdout);
 }
 
-// Handle INPUT, prompting and storing numeric/string values.
+/* Handle INPUT, prompting and storing numeric/string values. */
 static void statement_input(char **p)
 {
     char prompt[MAX_STR_LEN];
@@ -1055,7 +1055,7 @@ static void statement_input(char **p)
     }
 }
 
-// Handle LET (and implicit assignment).
+/* Handle LET (and implicit assignment). */
 static void statement_let(char **p)
 {
     struct value *vp;
@@ -1084,7 +1084,7 @@ static void statement_let(char **p)
     *vp = rhs;
 }
 
-// Branch to a line number.
+/* Branch to a line number. */
 static void statement_goto(char **p)
 {
     int line_number;
@@ -1101,7 +1101,7 @@ static void statement_goto(char **p)
     statement_pos = NULL;
 }
 
-// Push return address and jump to subroutine.
+/* Push return address and jump to subroutine. */
 static void statement_gosub(char **p)
 {
     int target;
@@ -1128,7 +1128,7 @@ static void statement_gosub(char **p)
     statement_pos = NULL;
 }
 
-// Return from GOSUB.
+/* Return from GOSUB. */
 static void statement_return(char **p)
 {
     if (gosub_top <= 0) {
@@ -1140,7 +1140,7 @@ static void statement_return(char **p)
     statement_pos = gosub_stack[gosub_top].position;
 }
 
-// Evaluate IF/THEN and either jump or execute remainder of line.
+/* Evaluate IF/THEN and either jump or execute remainder of line. */
 static void statement_if(char **p)
 {
     int cond_true;
@@ -1177,7 +1177,7 @@ static void statement_if(char **p)
     }
 }
 
-// Initialize FOR loop control variables.
+/* Initialize FOR loop control variables. */
 static void statement_for(char **p)
 {
     struct value *vp;
@@ -1247,7 +1247,7 @@ static void statement_for(char **p)
     for_top++;
 }
 
-// Handle NEXT, advancing or exiting loop.
+/* Handle NEXT, advancing or exiting loop. */
 static void statement_next(char **p)
 {
     char namebuf[8];
@@ -1287,7 +1287,7 @@ static void statement_next(char **p)
     }
 }
 
-// Allocate arrays via DIM.
+/* Allocate arrays via DIM. */
 static void statement_dim(char **p)
 {
     for (;;) {
@@ -1334,7 +1334,7 @@ static void statement_dim(char **p)
     }
 }
 
-// Dispatch a single statement starting at the current pointer.
+/* Dispatch a single statement starting at the current pointer. */
 static void execute_statement(char **p)
 {
     skip_spaces(p);
@@ -1421,7 +1421,7 @@ static void execute_statement(char **p)
     runtime_error("Unknown statement");
 }
 
-// Sort program lines by line number.
+/* Sort program lines by line number. */
 static void sort_program(void)
 {
     int i, j;
@@ -1437,7 +1437,7 @@ static void sort_program(void)
     }
 }
 
-// Find the index of a line number in the program table.
+/* Find the index of a line number in the program table. */
 static int find_line_index(int number)
 {
     int i;
@@ -1449,7 +1449,7 @@ static int find_line_index(int number)
     return -1;
 }
 
-// Insert or replace a program line.
+/* Insert or replace a program line. */
 static void add_or_replace_line(int number, const char *text)
 {
     int i;
@@ -1476,7 +1476,7 @@ static void add_or_replace_line(int number, const char *text)
     line_count++;
 }
 
-// Read a tokenized source file into the line table.
+/* Read a tokenized source file into the line table. */
 static void load_program(const char *path)
 {
     FILE *f;
@@ -1519,7 +1519,7 @@ static void load_program(const char *path)
     sort_program();
 }
 
-// Run the program from the first line until END/halt.
+/* Run the program from the first line until END/halt. */
 static void run_program(void)
 {
     halted = 0;
@@ -1559,7 +1559,7 @@ static void run_program(void)
     }
 }
 
-// Entry point: load a .bas file and execute.
+/* Entry point: load a .bas file and execute. */
 int main(int argc, char **argv)
 {
     if (argc < 2) {
