@@ -146,14 +146,14 @@ static void print_spaces(int count);
 static void statement_sleep(char **p);
 static void do_sleep_ticks(double ticks);
 
-// Report an error and halt further execution.
+/* Report an error and halt further execution. */
 static void runtime_error(const char *msg)
 {
     fprintf(stderr, "Error: %s\n", msg);
     halted = 1;
 }
 
-// Strip trailing newline from a buffer if present.
+/* Strip trailing newline from a buffer if present. */
 static void trim_newline(char *s)
 {
     char *p;
@@ -163,7 +163,7 @@ static void trim_newline(char *s)
     }
 }
 
-// Advance pointer past spaces/tabs.
+/* Advance pointer past spaces/tabs. */
 static void skip_spaces(char **p)
 {
     while (**p == ' ' || **p == '\t') {
@@ -171,7 +171,7 @@ static void skip_spaces(char **p)
     }
 }
 
-// Parse a numeric literal from the character stream.
+/* Parse a numeric literal from the character stream. */
 static int parse_number_literal(char **p, double *out)
 {
     char buf[64];
@@ -219,7 +219,7 @@ static int parse_number_literal(char **p, double *out)
     return 1;
 }
 
-// Duplicate a string into heap memory.
+/* Duplicate a string into heap memory. */
 static char *dupstr_local(const char *s)
 {
     size_t len;
@@ -234,7 +234,7 @@ static char *dupstr_local(const char *s)
     return p;
 }
 
-// Check if the input starts with the keyword (case-insensitive).
+/* Check if the input starts with the keyword (case-insensitive). */
 static int starts_with_kw(char *p, const char *kw)
 {
     int i;
@@ -249,7 +249,7 @@ static int starts_with_kw(char *p, const char *kw)
     return 0;
 }
 
-// Construct a numeric value wrapper.
+/* Construct a numeric value wrapper. */
 static struct value make_num(double v)
 {
     struct value out;
@@ -259,7 +259,7 @@ static struct value make_num(double v)
     return out;
 }
 
-// Construct a string value wrapper.
+/* Construct a string value wrapper. */
 static struct value make_str(const char *s)
 {
     struct value out;
@@ -270,7 +270,7 @@ static struct value make_str(const char *s)
     return out;
 }
 
-// Ensure the value is numeric or raise a runtime error.
+/* Ensure the value is numeric or raise a runtime error. */
 static void ensure_num(struct value *v)
 {
     if (v->type != VAL_NUM) {
@@ -278,7 +278,7 @@ static void ensure_num(struct value *v)
     }
 }
 
-// Ensure the value is string or raise a runtime error.
+/* Ensure the value is string or raise a runtime error. */
 static void ensure_str(struct value *v)
 {
     if (v->type != VAL_STR) {
@@ -286,7 +286,7 @@ static void ensure_str(struct value *v)
     }
 }
 
-// Emit spaces and track current print column.
+/* Emit spaces and track current print column. */
 static void print_spaces(int count)
 {
     int i;
@@ -300,7 +300,7 @@ static void print_spaces(int count)
     }
 }
 
-// Emit a value (number or string) updating column tracking.
+/* Emit a value (number or string) updating column tracking. */
 static void print_value(struct value *v)
 {
     if (v->type == VAL_STR) {
@@ -327,7 +327,7 @@ static void print_value(struct value *v)
     }
 }
 
-// Sleep for a number of 60Hz ticks, using the best timer available.
+/* Sleep for a number of 60Hz ticks, using the best timer available. */
 static void do_sleep_ticks(double ticks)
 {
     long usec;
@@ -371,7 +371,7 @@ static void do_sleep_ticks(double ticks)
 #endif
 }
 
-// Parse SLEEP statement and pause execution.
+/* Parse SLEEP statement and pause execution. */
 static void statement_sleep(char **p)
 {
     struct value v;
@@ -393,7 +393,7 @@ static void statement_sleep(char **p)
     do_sleep_ticks(v.num);
 }
 
-// Case-insensitive string match helper for function names.
+/* Case-insensitive string match helper for function names. */
 static int name_equals(const char *a, const char *b)
 {
     while (*a && *b) {
@@ -406,7 +406,7 @@ static int name_equals(const char *a, const char *b)
     return *a == '\0' && *b == '\0';
 }
 
-// Evaluate BASIC intrinsic functions (math/string/tab).
+/* Evaluate BASIC intrinsic functions (math/string/tab). */
 static struct value eval_function(const char *name, char **p)
 {
     char tmp[8];
@@ -536,7 +536,7 @@ static struct value eval_function(const char *name, char **p)
     return make_num(0.0);
 }
 
-// Break a BASIC variable name into two-letter uppercase key and detect strings.
+/* Break a BASIC variable name into two-letter uppercase key and detect strings. */
 static void uppercase_name(const char *src, char *n1, char *n2, int *is_string)
 {
     int len;
@@ -613,7 +613,7 @@ static struct var *find_or_create_var(char name1, char name2, int is_string, int
     return v;
 }
 
-// Read an identifier (letters/digits/$) into buf, advancing the pointer.
+/* Read an identifier (letters/digits/$) into buf, advancing the pointer. */
 static int read_identifier(char **p, char *buf, int buf_size)
 {
     int i;
@@ -626,7 +626,7 @@ static int read_identifier(char **p, char *buf, int buf_size)
     return i;
 }
 
-// Resolve a variable (and optional array index) creating it if needed.
+/* Resolve a variable (and optional array index) creating it if needed. */
 static struct value *get_var_reference(char **p, int *is_array_out, int *is_string_out)
 {
     char namebuf[8];
@@ -705,7 +705,7 @@ static struct value *get_var_reference(char **p, int *is_array_out, int *is_stri
     return valp;
 }
 
-// Parse a factor: number, string, variable, function call, or parenthesized expr.
+/* Parse a factor: number, string, variable, function call, or parenthesized expr. */
 static struct value eval_factor(char **p)
 {
     struct value v;
@@ -780,7 +780,7 @@ static struct value eval_factor(char **p)
     return make_num(0.0);
 }
 
-// Parse exponentiation (right-associative ^).
+/* Parse exponentiation (right-associative ^). */
 static struct value eval_power(char **p)
 {
     struct value left, right;
@@ -797,7 +797,7 @@ static struct value eval_power(char **p)
     return left;
 }
 
-// Parse *,/ terms.
+/* Parse *,/ terms. */
 static struct value eval_term(char **p)
 {
     struct value left, right;
@@ -824,7 +824,7 @@ static struct value eval_term(char **p)
     return left;
 }
 
-// Parse + and - expressions (with string concatenation on +).
+/* Parse + and - expressions (with string concatenation on +). */
 static struct value eval_expr(char **p)
 {
     struct value left, right;
@@ -857,7 +857,7 @@ static struct value eval_expr(char **p)
     return left;
 }
 
-// Evaluate IF conditions with BASIC relational operators.
+/* Evaluate IF conditions with BASIC relational operators. */
 static int eval_condition(char **p)
 {
     struct value left, right;
@@ -925,7 +925,7 @@ static int eval_condition(char **p)
     return left.num != 0.0;
 }
 
-// Skip rest of line (REM or ' comment).
+/* Skip rest of line (REM or ' comment). */
 static void statement_rem(char **p)
 {
     *p += strlen(*p);
