@@ -4,10 +4,14 @@ Your target for functionality is CBM BASIC v2 equivalency, and you should be as 
 
 Your code must compile and run on the PDP-11 running 211BSD unix. That means you are limited to K&R C v2. You can use regular function prototypes, but all declarations of variables must be at the beginning of a scope block and so on.
 
-Create a makefile to build your application on both MacOS and on 211BSD.
+Create a makefile to build your application on both MacOS and on 211BSD.  You may need to specify split I/D space to get it to fit.  Build and test your code until it passes.
 
-Your code must also run on MacOS, but you can use conditional compilation to achieve that where required. The code must still be 211BSD compatible as much as possible, but still work on MacOS when compiled for it.
+Your code must also run on MacOS, but you can use conditional compilation to achieve that where required. The code must still be 211BSD compatible as much as possible, but still work on MacOS when compiled for it.  Your makefile should use uname to detect the PDP11 and build for it if detected or the MacOS/Linux otherwise.
 
-Add a new BASIC command called "sleep" that accepts a number of ticks to sleep, so SLEEP(60) would sleep for one second
+Add a new BASIC command called "sleep" that accepts a number of ticks to sleep, so SLEEP(60) would sleep for one second.  Note that 211BSD uses a very different timing mechanism than modern MacOS, where you can't sleep less than 1/30th of a second.
 
-Your makefile should use uname to detect the PDP11 and build for it if detected or the MacOS/Linux otherwise.
+Make the code as performant as possible when executing script.  
+
+From Zero to READY: Recreating C64 BASIC
+Teaching a Modern AI to Think Like a Commodore 64
+Let's Write C64 BASIC in VSCode from Scratch!

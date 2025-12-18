@@ -145,6 +145,27 @@ static void print_value(struct value *v);
 static void print_spaces(int count);
 static void statement_sleep(char **p);
 static void do_sleep_ticks(double ticks);
+static int function_lookup(const char *name, int len);
+
+enum func_code {
+    FN_NONE = 0,
+    FN_SIN = 1,
+    FN_COS = 2,
+    FN_TAN = 3,
+    FN_ABS = 4,
+    FN_INT = 5,
+    FN_SQR = 6,
+    FN_SGN = 7,
+    FN_EXP = 8,
+    FN_LOG = 9,
+    FN_RND = 10,
+    FN_LEN = 11,
+    FN_STR = 12,
+    FN_CHR = 13,
+    FN_ASC = 14,
+    FN_VAL = 15,
+    FN_TAB = 16
+};
 
 /* Report an error and halt further execution. */
 static void runtime_error(const char *msg)
@@ -327,6 +348,53 @@ static void print_value(struct value *v)
     }
 }
 
+/* Map function name to a small integer code for fast dispatch. */
+static int function_lookup(const char *name, int len)
+{
+    char c1;
+    c1 = name[0];
+    switch (c1) {
+    case 'S':
+        if (len == 3 && name[0] == 'S' && name[1] == 'I' && name[2] == 'N') return FN_SIN;
+        if (len == 3 && name[0] == 'S' && name[1] == 'G' && name[2] == 'N') return FN_SGN;
+        if (len == 3 && name[0] == 'S' && name[1] == 'Q' && name[2] == 'R') return FN_SQR;
+        if ((len == 3 && name[0] == 'S' && name[1] == 'T' && name[2] == 'R') ||
+            (len == 4 && name[0] == 'S' && name[1] == 'T' && name[2] == 'R' && name[3] == '$')) return FN_STR;
+        return FN_NONE;
+    case 'C':
+        if ((len == 3 && name[0] == 'C' && name[1] == 'H' && name[2] == 'R') ||
+            (len == 4 && name[0] == 'C' && name[1] == 'H' && name[2] == 'R' && name[3] == '$')) return FN_CHR;
+        if (len == 3 && name[0] == 'C' && name[1] == 'O' && name[2] == 'S') return FN_COS;
+        return FN_NONE;
+    case 'T':
+        if (len == 3 && name[0] == 'T' && name[1] == 'A' && name[2] == 'N') return FN_TAN;
+        if (len == 3 && name[0] == 'T' && name[1] == 'A' && name[2] == 'B') return FN_TAB;
+        return FN_NONE;
+    case 'A':
+        if (len == 3 && name[0] == 'A' && name[1] == 'B' && name[2] == 'S') return FN_ABS;
+        if (len == 3 && name[0] == 'A' && name[1] == 'S' && name[2] == 'C') return FN_ASC;
+        return FN_NONE;
+    case 'I':
+        if (len == 3 && name[0] == 'I' && name[1] == 'N' && name[2] == 'T') return FN_INT;
+        return FN_NONE;
+    case 'E':
+        if (len == 3 && name[0] == 'E' && name[1] == 'X' && name[2] == 'P') return FN_EXP;
+        return FN_NONE;
+    case 'L':
+        if (len == 3 && name[0] == 'L' && name[1] == 'O' && name[2] == 'G') return FN_LOG;
+        if (len == 3 && name[0] == 'L' && name[1] == 'E' && name[2] == 'N') return FN_LEN;
+        return FN_NONE;
+    case 'R':
+        if (len == 3 && name[0] == 'R' && name[1] == 'N' && name[2] == 'D') return FN_RND;
+        return FN_NONE;
+    case 'V':
+        if (len == 3 && name[0] == 'V' && name[1] == 'A' && name[2] == 'L') return FN_VAL;
+        return FN_NONE;
+    default:
+        return FN_NONE;
+    }
+}
+
 /* Sleep for a number of 60Hz ticks, using the best timer available. */
 static void do_sleep_ticks(double ticks)
 {
@@ -394,27 +462,21 @@ static void statement_sleep(char **p)
 }
 
 /* Case-insensitive string match helper for function names. */
-static int name_equals(const char *a, const char *b)
-{
-    while (*a && *b) {
-        if (toupper((unsigned char)*a) != *b) {
-            return 0;
-        }
-        a++;
-        b++;
-    }
-    return *a == '\0' && *b == '\0';
-}
-
 /* Evaluate BASIC intrinsic functions (math/string/tab). */
 static struct value eval_function(const char *name, char **p)
 {
     char tmp[8];
     struct value arg;
     char outbuf[MAX_STR_LEN];
+    int code;
+    int len;
 
     /* Advance past function name */
     read_identifier(p, tmp, sizeof(tmp));
+    for (len = 0; tmp[len]; len++) {
+        tmp[len] = toupper((unsigned char)tmp[len]);
+    }
+    code = function_lookup(tmp, len);
     skip_spaces(p);
     if (**p != '(') {
         runtime_error("Function requires '('");
@@ -429,31 +491,26 @@ static struct value eval_function(const char *name, char **p)
         runtime_error("Missing ')'");
     }
 
-    if (name_equals(name, "SIN")) {
+    switch (code) {
+    case FN_SIN:
         ensure_num(&arg);
         return make_num(sin(arg.num));
-    }
-    if (name_equals(name, "COS")) {
+    case FN_COS:
         ensure_num(&arg);
         return make_num(cos(arg.num));
-    }
-    if (name_equals(name, "TAN")) {
+    case FN_TAN:
         ensure_num(&arg);
         return make_num(tan(arg.num));
-    }
-    if (name_equals(name, "ABS")) {
+    case FN_ABS:
         ensure_num(&arg);
         return make_num(fabs(arg.num));
-    }
-    if (name_equals(name, "INT")) {
+    case FN_INT:
         ensure_num(&arg);
         return make_num(floor(arg.num));
-    }
-    if (name_equals(name, "SQR")) {
+    case FN_SQR:
         ensure_num(&arg);
         return make_num(sqrt(arg.num));
-    }
-    if (name_equals(name, "SGN")) {
+    case FN_SGN:
         ensure_num(&arg);
         if (arg.num > 0) {
             return make_num(1.0);
@@ -462,49 +519,40 @@ static struct value eval_function(const char *name, char **p)
         } else {
             return make_num(0.0);
         }
-    }
-    if (name_equals(name, "EXP")) {
+    case FN_EXP:
         ensure_num(&arg);
         return make_num(exp(arg.num));
-    }
-    if (name_equals(name, "LOG")) {
+    case FN_LOG:
         ensure_num(&arg);
         return make_num(log(arg.num));
-    }
-    if (name_equals(name, "RND")) {
+    case FN_RND:
         ensure_num(&arg);
         if (arg.num < 0) {
             srand((unsigned int)(-arg.num));
         }
         return make_num((double)rand() / (double)RAND_MAX);
-    }
-    if (name_equals(name, "LEN")) {
+    case FN_LEN:
         ensure_str(&arg);
         return make_num((double)strlen(arg.str));
-    }
-    if (name_equals(name, "VAL")) {
+    case FN_VAL:
         ensure_str(&arg);
         return make_num(atof(arg.str));
-    }
-    if (name_equals(name, "STR") || name_equals(name, "STR$")) {
+    case FN_STR:
         ensure_num(&arg);
         sprintf(outbuf, "%g", arg.num);
         return make_str(outbuf);
-    }
-    if (name_equals(name, "CHR") || name_equals(name, "CHR$")) {
+    case FN_CHR:
         ensure_num(&arg);
         outbuf[0] = (char)((int)arg.num & 0xff);
         outbuf[1] = '\0';
         return make_str(outbuf);
-    }
-    if (name_equals(name, "ASC")) {
+    case FN_ASC:
         ensure_str(&arg);
         if (arg.str[0] == '\0') {
             return make_num(0.0);
         }
         return make_num((unsigned char)arg.str[0]);
-    }
-    if (name_equals(name, "TAB")) {
+    case FN_TAB: {
         int target;
         int cur;
         int width;
@@ -514,7 +562,6 @@ static struct value eval_function(const char *name, char **p)
         if (width <= 0) {
             width = 80;
         }
-        /* Map to screen width so large or negative values wrap visibly */
         target = target % width;
         if (target < 0) {
             target += width;
@@ -531,9 +578,10 @@ static struct value eval_function(const char *name, char **p)
         print_col = cur;
         return make_str("");
     }
-
-    runtime_error("Unknown function");
-    return make_num(0.0);
+    default:
+        runtime_error("Unknown function");
+        return make_num(0.0);
+    }
 }
 
 /* Break a BASIC variable name into two-letter uppercase key and detect strings. */
@@ -1306,84 +1354,95 @@ static void statement_dim(char **p)
 
 static void execute_statement(char **p)
 {
+    char c;
     skip_spaces(p);
     if (**p == '\0') {
         return;
     }
-    if (starts_with_kw(*p, "REM")) {
+    c = toupper((unsigned char)**p);
+    if (c == '\0') {
+        return;
+    }
+    if (c == '\'') {
         statement_rem(p);
         return;
     }
-    if (**p == '\'') {
-        statement_rem(p);
-        return;
-    }
-    if (starts_with_kw(*p, "PRINT") || **p == '?') {
-        if (**p == '?') {
-            (*p)++;
-        } else {
-            *p += 5;
-        }
+    if (c == '?') {
+        (*p)++;
         statement_print(p);
         return;
     }
-    if (starts_with_kw(*p, "INPUT")) {
+    if (c == 'R' && starts_with_kw(*p, "REM")) {
+        *p += 3;
+        statement_rem(p);
+        return;
+    }
+    if (c == 'P' && starts_with_kw(*p, "PRINT")) {
+        *p += 5;
+        statement_print(p);
+        return;
+    }
+    if (c == 'I' && starts_with_kw(*p, "INPUT")) {
         *p += 5;
         statement_input(p);
         return;
     }
-    if (starts_with_kw(*p, "LET")) {
+    if (c == 'L' && starts_with_kw(*p, "LET")) {
         *p += 3;
         statement_let(p);
         return;
     }
-    if (starts_with_kw(*p, "GOTO")) {
+    if (c == 'G' && starts_with_kw(*p, "GOTO")) {
         *p += 4;
         statement_goto(p);
         return;
     }
-    if (starts_with_kw(*p, "GOSUB")) {
+    if (c == 'G' && starts_with_kw(*p, "GOSUB")) {
         *p += 5;
         statement_gosub(p);
         return;
     }
-    if (starts_with_kw(*p, "RETURN")) {
+    if (c == 'R' && starts_with_kw(*p, "RETURN")) {
         *p += 6;
         statement_return(p);
         return;
     }
-    if (starts_with_kw(*p, "IF")) {
+    if (c == 'I' && starts_with_kw(*p, "IF")) {
         *p += 2;
         statement_if(p);
         return;
     }
-    if (starts_with_kw(*p, "FOR")) {
+    if (c == 'F' && starts_with_kw(*p, "FOR")) {
         *p += 3;
         statement_for(p);
         return;
     }
-    if (starts_with_kw(*p, "NEXT")) {
+    if (c == 'N' && starts_with_kw(*p, "NEXT")) {
         *p += 4;
         statement_next(p);
         return;
     }
-    if (starts_with_kw(*p, "DIM")) {
+    if (c == 'D' && starts_with_kw(*p, "DIM")) {
         *p += 3;
         statement_dim(p);
         return;
     }
-    if (starts_with_kw(*p, "SLEEP")) {
+    if (c == 'S' && starts_with_kw(*p, "SLEEP")) {
         *p += 5;
         statement_sleep(p);
         return;
     }
-    if (starts_with_kw(*p, "END") || starts_with_kw(*p, "STOP")) {
+    if (c == 'E' && starts_with_kw(*p, "END")) {
         halted = 1;
         *p += strlen(*p);
         return;
     }
-    /* Default to LET style assignment */
-    if (isalpha((unsigned char)**p)) {
+    if (c == 'S' && starts_with_kw(*p, "STOP")) {
+        halted = 1;
+        *p += strlen(*p);
+        return;
+    }
+    if (isalpha((unsigned char)c)) {
         statement_let(p);
         return;
     }
