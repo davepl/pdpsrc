@@ -1,0 +1,73 @@
+;
+; FORWRD.MAC - Forward pass and Q16->Q8 weight conversion
+;
+
+; ============================================================
+; FORWRD - Full forward pass
+; ============================================================
+
+FORWRD:
+        ; 1. Embedding: X = tok_emb[token] + pos_emb
+        JSR     R5, EMBED
+        .WORD   TOKENS, TKEQ8, PSEQ8, XX, SEQ.LN, D.MODL
+
+        ; 2. Self-attention: Y = attn(X, Wq, Wk, Wv)
+        JSR     R5, ATTN
+        .WORD   XX, WQQ8, WKQ8, WVQ8, YY, WORK
+        .WORD   SEQ.LN, D.MODL, SQRTSH
+
+        ; 3. Output projection: logits = Y . Wout
+        JSR     R5, PROJ
+        .WORD   YY, WOTQ8, LOGITS, SEQ.LN, D.MODL, VOCAB
+
+        RTS     PC
+
+; ============================================================
+; CVT16 - Convert Q16 weights to Q8 for forward/backward
+; ============================================================
+
+CVT16:  MOV     #TKEH, R2
+        MOV     #TKEL, R3
+        MOV     #TKEQ8, R4
+        MOV     #10.*16., R1
+        JSR     PC, CV.DO
+        MOV     #PSEH, R2
+        MOV     #PSEL, R3
+        MOV     #PSEQ8, R4
+        MOV     #8.*16., R1
+        JSR     PC, CV.DO
+        MOV     #WQH, R2
+        MOV     #WQL, R3
+        MOV     #WQQ8, R4
+        MOV     #16.*16., R1
+        JSR     PC, CV.DO
+        MOV     #WKH, R2
+        MOV     #WKL, R3
+        MOV     #WKQ8, R4
+        MOV     #16.*16., R1
+        JSR     PC, CV.DO
+        MOV     #WVH, R2
+        MOV     #WVL, R3
+        MOV     #WVQ8, R4
+        MOV     #16.*16., R1
+        JSR     PC, CV.DO
+        MOV     #WOTH, R2
+        MOV     #WOTL, R3
+        MOV     #WOTQ8, R4
+        MOV     #16.*10., R1
+        JSR     PC, CV.DO
+        RTS     PC
+
+; CV.DO: Convert R1 Q16 pairs (R2=hi, R3=lo) -> Q8 at R4
+; Uses R5 as counter (saved/restored)
+CV.DO:  MOV     R5, -(SP)
+        MOV     R1, R5              ; R5 = counter
+CV.DL:  MOV     (R2)+, R0          ; high word
+        MOV     (R3)+, R1          ; low word
+        ASHC    #-8., R0            ; Q16 >> 8 = Q8, result in R1
+        MOV     R1, (R4)+          ; store Q8
+        SOB     R5, CV.DL
+        MOV     (SP)+, R5
+        RTS     PC
+
+; end of FORWRD.MAC

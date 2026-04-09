@@ -1,0 +1,135 @@
+// FOR
+*LIST SOURCE PROGRAM
+C
+C === REAL MODULO ===
+C
+      REAL FUNCTION AMOD(A, B)
+      REAL A, B
+      AMOD = A - FLOAT(IFIX(A / B)) * B
+      RETURN
+      END
+// DUP
+*DELETE     WS  UA  AMOD
+*STORE      WS  UA  AMOD
+// FOR
+*LIST SOURCE PROGRAM
+C
+C === MODULO (FROM XORTRAN) ===
+C
+      INTEGER FUNCTION IMOD(I, J)
+      INTEGER I, J, Q
+      IF (J) 10, 20, 10
+ 10   Q = I / J
+      IMOD = I - Q*J
+ 20   RETURN
+      END
+// DUP
+*DELETE     WS  UA  IMOD
+*STORE      WS  UA  IMOD
+// FOR
+*LIST SOURCE PROGRAM
+C
+C === SOFTMAX ON VECTOR ===
+C
+      SUBROUTINE SFTMX(VEC, N, OUT)
+      REAL VEC(10), OUT(10)
+      INTEGER N, I
+      REAL VMAX, ESUM
+C FIND MAX
+      VMAX = VEC(1)
+      DO 10 I = 2, N
+          IF (VEC(I) - VMAX) 10, 10, 11
+ 11       VMAX = VEC(I)
+ 10   CONTINUE
+C EXP AND SUM
+      ESUM = 0.0
+      DO 20 I = 1, N
+          OUT(I) = EXP(VEC(I) - VMAX)
+          ESUM = ESUM + OUT(I)
+ 20   CONTINUE
+C NORMALIZE
+      DO 30 I = 1, N
+          OUT(I) = OUT(I) / ESUM
+ 30   CONTINUE
+      RETURN
+      END
+// DUP
+*DELETE     WS  UA  SFTMX
+*STORE      WS  UA  SFTMX
+// FOR
+*LIST SOURCE PROGRAM
+C
+C === GAUSSIAN RNG (BOX-MULLER) ===
+C
+      SUBROUTINE RNGAU(RSEED, GAUSS)
+      REAL RSEED, GAUSS, U1, U2
+C TWO UNIFORM SAMPLES
+      RSEED = AMOD(RSEED*8191.0+1.0, 32749.0)
+      U1 = RSEED / 32749.0
+      RSEED = AMOD(RSEED*8191.0+1.0, 32749.0)
+      U2 = RSEED / 32749.0
+C BOX-MULLER
+      IF (U1 - 0.0001) 10, 20, 20
+ 10   U1 = 0.0001
+ 20   GAUSS = SQRT(-2.0*ALOG(U1)) * COS(6.2832*U2)
+      RETURN
+      END
+// DUP
+*DELETE     WS  UA  RNGAU
+*STORE      WS  UA  RNGAU
+// FOR
+*LIST SOURCE PROGRAM
+C
+C === GENERATE RANDOM SAMPLE ===
+C
+      SUBROUTINE GENSM(TOKNS, TARGT, RSEED)
+      INTEGER TOKNS(8), TARGT(8)
+      REAL RSEED, TEMP
+      INTEGER I, K
+      DO 10 I = 1, 8
+          RSEED = AMOD(RSEED*8191.0+1.0, 32749.0)
+          TEMP = AMOD(RSEED, 10.0)
+          TOKNS(I) = IFIX(TEMP)
+ 10   CONTINUE
+      DO 20 I = 1, 8
+          K = 9 - I
+          TARGT(I) = TOKNS(K)
+ 20   CONTINUE
+      RETURN
+      END
+// DUP
+*DELETE     WS  UA  GENSM
+*STORE      WS  UA  GENSM
+// FOR
+*LIST SOURCE PROGRAM
+C
+C === CROSS-ENTROPY LOSS ===
+C
+      SUBROUTINE CELSS(LGIT, TARGT, LOSS)
+      REAL LGIT(8,10), LOSS
+      INTEGER TARGT(8)
+      INTEGER I, J, TK
+      REAL VMAX, ESUM, P
+      LOSS = 0.0
+      DO 10 I = 1, 8
+          VMAX = LGIT(I, 1)
+          DO 11 J = 2, 10
+              IF (LGIT(I,J) - VMAX) 11, 11, 12
+ 12           VMAX = LGIT(I, J)
+ 11       CONTINUE
+          ESUM = 0.0
+          DO 13 J = 1, 10
+              ESUM = ESUM + EXP(LGIT(I,J) - VMAX)
+ 13       CONTINUE
+          TK = TARGT(I) + 1
+          P = EXP(LGIT(I,TK) - VMAX) / ESUM
+          IF (P - 0.0001) 14, 15, 15
+ 14       P = 0.0001
+ 15       LOSS = LOSS - ALOG(P)
+ 10   CONTINUE
+      LOSS = LOSS / 8.0
+      RETURN
+      END
+// DUP
+*DELETE     WS  UA  CELSS
+*STORE      WS  UA  CELSS

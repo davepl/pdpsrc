@@ -1,0 +1,72 @@
+;; -*- mode: clojure -*-
+;; gen-lut.shf — Generate exp() lookup table for NN11 softmax
+;;
+;; Produces the same EXPTBL as ACTFN.MAC on the PDP-11:
+;; 256 entries mapping index i to exp(-i/32) in Q8 format.
+;; Covers x in [-7.97, 0]. Beyond that, exp() rounds to zero.
+
+;; Q8 encode: round(exp(-i/32) * 256), clamped to non-negative
+(defn q8-exp [i]
+  (-> (/ (* -1.0 i) 32.0)
+      exp
+      (* 256.0)
+      (+ 0.5)
+      int
+      (maximum 0)))
+
+;; Right-pad a number to 3 chars and append the MACRO-11 decimal dot
+(defn pad-entry [v]
+  (str-call "format" "{:>3}." v))
+
+;; Join a list of strings with a separator
+(defn join [sep items]
+  (reduce (fn [a b] (str a sep b))
+          (first items)
+          (rest items)))
+
+;; Format one row of 8 values as a MACRO-11 .WORD directive
+(defn format-word-line [entries row]
+  (let [idx  (int (* row 8))
+        vals (map (fn [j] (pad-entry (nth entries (+ idx j))))
+                  (range 8))]
+    (str "        .WORD   " (join ", " vals)
+         "  ; [" idx "]-[" (+ idx 7) "]")))
+
+;; Generate and print
+(let [tbl (map q8-exp (range 256))
+
+      ;; Count useful (non-zero) entries
+      nonzero (reduce (fn [n i]
+                        (if (> (nth tbl i) 0)
+                          (+ n 1)
+                          n))
+                      0
+                      (range 256))
+
+      ;; A few key values for the header comment
+      show (fn [i label real]
+             (str ";   [" (str-call "format" "{:<3}" i) "] "
+                  "= exp(" (str-call "format" "{:<5}" label) ")"
+                  " = " (str-call "format" "{:.3f}" real)
+                  " = " (nth tbl i)))]
+  (do
+    (print "; EXPTBL - exp() lookup table for softmax")
+    (print "; Index i -> exp(-i/32) in Q8 format")
+    (print "; 256 entries, covers x in [-7.97, 0]")
+    (print ";")
+    (print "; Key values:")
+    (print (show 0   "0"     1.000))
+    (print (show 16  "-0.5"  0.607))
+    (print (show 32  "-1.0"  0.368))
+    (print (show 64  "-2.0"  0.135))
+    (print (show 128 "-4.0"  0.018))
+    (print (show 255 "-7.97" 0.000))
+    (print ";")
+
+    (map (fn [row] (print (format-word-line tbl row)))
+         (range 32))
+
+    (print ";")
+    (print (str "; Total: 256 entries = 512 bytes"))
+    (print (str "; Non-zero entries: " nonzero
+                " (index 0-" (- nonzero 1) ")"))))

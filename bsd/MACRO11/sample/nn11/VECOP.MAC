@@ -1,0 +1,168 @@
+;
+; VECOP.MAC - Vector operations
+; NN11 Level 1 - Vector operations
+;
+; All values are Q7.8 fixed-point (16-bit signed)
+; Requires: FXMATH.MAC (for FXMUL macro)
+;
+
+; ============================================================
+; VDOT - Dot product with 32-bit accumulation
+;
+; Computes sum(x[i] * y[i]) in Q8
+; Accumulates products in 32-bit Q16 to avoid overflow,
+; then shifts result back to Q8.
+;
+; Input:  R0 = ptr to vector x
+;         R1 = ptr to vector y
+;         R2 = length (number of elements)
+; Output: R0 = dot product (Q8)
+; Clobbers: R0-R4
+; ============================================================
+
+        .GLOBL  VDOT
+
+VDOT:   MOV     R3, -(SP)       ; save R3, R4
+        MOV     R4, -(SP)
+        CLR     DTHI            ; 32-bit accumulator = 0
+        CLR     DTLO
+        MOV     R0, R3          ; R3 = ptr x
+        MOV     R1, R4          ; R4 = ptr y
+        ; R2 = loop counter
+1$:     MOV     (R3)+, R0       ; R0 = x[i] (even reg for MUL)
+        MUL     (R4)+, R0       ; R0:R1 = x[i] * y[i] (Q16, 32-bit)
+        ADD     R1, DTLO        ; accumulate low word
+        ADC     DTHI            ; propagate carry
+        ADD     R0, DTHI        ; accumulate high word
+        SOB     R2, 1$
+        ; Convert 32-bit Q16 result to Q8
+        MOV     DTHI, R0
+        MOV     DTLO, R1
+        ASHC    #-8., R0        ; shift right 8: Q16 -> Q8
+        ; Clamp: if R0 != 0 and R0 != -1, result overflows 16 bits
+        TST     R0
+        BEQ     VD.OK           ; R0=0: positive result fits
+        CMP     R0, #-1
+        BEQ     VD.OK           ; R0=-1: negative result fits
+        BPL     VD.PO
+        MOV     #100000, R1     ; clamp to -32768
+        BR      VD.OK
+VD.PO:  MOV     #077777, R1     ; clamp to +32767
+VD.OK:  MOV     R1, R0          ; result in R0
+        MOV     (SP)+, R4       ; restore
+        MOV     (SP)+, R3
+        RTS     PC
+
+DTHI:   .WORD   0               ; accumulator high word
+DTLO:   .WORD   0               ; accumulator low word
+
+; ============================================================
+; VADD - Vector addition: z[i] = x[i] + y[i]
+;
+; Input:  R0 = ptr x, R1 = ptr y, R2 = ptr z, R3 = length
+; Output: pointers advanced, z[] filled
+; Clobbers: R0-R3
+; ============================================================
+
+        .GLOBL  VADD
+
+VADD:
+1$:     MOV     (R0)+, (R2)     ; z[i] = x[i]
+        ADD     (R1)+, (R2)+    ; z[i] += y[i], advance z
+        SOB     R3, 1$
+        RTS     PC
+
+; ============================================================
+; VSUB - Vector subtraction: z[i] = x[i] - y[i]
+;
+; Input:  R0 = ptr x, R1 = ptr y, R2 = ptr z, R3 = length
+; Output: pointers advanced, z[] filled
+; Clobbers: R0-R3
+; ============================================================
+
+        .GLOBL  VSUB
+
+VSUB:
+1$:     MOV     (R0)+, (R2)     ; z[i] = x[i]
+        SUB     (R1)+, (R2)+    ; z[i] -= y[i], advance z
+        SOB     R3, 1$
+        RTS     PC
+
+; ============================================================
+; VSCL - Scalar-vector multiply: y[i] = alpha * x[i]  (Q8)
+;
+; Input:  R0 = ptr x, R1 = ptr y, R2 = length, R3 = alpha (Q8)
+; Output: y[] filled with scaled values
+; Clobbers: R0-R5
+; ============================================================
+
+        .GLOBL  VSCL
+
+VSCL:   MOV     R4, -(SP)       ; save R4, R5
+        MOV     R5, -(SP)
+        MOV     R0, R4          ; R4 = ptr x
+        MOV     R1, R5          ; R5 = ptr y
+        ; R2 = counter, R3 = alpha
+1$:     MOV     (R4)+, R0       ; R0 = x[i] (even reg)
+        MUL     R3, R0          ; R0:R1 = alpha * x[i] (Q16)
+        ASHC    #-8., R0        ; >> 8 -> Q8 in R1
+        MOV     R1, (R5)+       ; y[i] = result
+        SOB     R2, 1$
+        MOV     (SP)+, R5       ; restore
+        MOV     (SP)+, R4
+        RTS     PC
+
+; ============================================================
+; VMAX - Find maximum element and its index
+;
+; Input:  R0 = ptr to vector, R1 = length
+; Output: R0 = max value (Q8), R1 = index of max (0-based)
+; Clobbers: R0-R4
+; ============================================================
+
+        .GLOBL  VMAX
+
+VMAX:   MOV     (R0)+, R2       ; R2 = current max = vec[0]
+        CLR     R3              ; R3 = index of max = 0
+        MOV     #1, R4          ; R4 = current index
+        DEC     R1              ; remaining elements
+        BEQ     2$              ; single element, done
+1$:     CMP     (R0)+, R2       ; vec[i] vs current max
+        BLE     3$              ; not greater, skip
+        MOV     -2(R0), R2      ; new max (re-read after autoincr)
+        MOV     R4, R3          ; new best index
+3$:     INC     R4
+        SOB     R1, 1$
+2$:     MOV     R2, R0          ; R0 = max value
+        MOV     R3, R1          ; R1 = max index
+        RTS     PC
+
+; ============================================================
+; VCPY - Vector copy: dst[i] = src[i]
+;
+; Input:  R0 = ptr src, R1 = ptr dst, R2 = length
+; Clobbers: R0-R2
+; ============================================================
+
+        .GLOBL  VCPY
+
+VCPY:
+1$:     MOV     (R0)+, (R1)+
+        SOB     R2, 1$
+        RTS     PC
+
+; ============================================================
+; VCLR - Clear vector: vec[i] = 0
+;
+; Input:  R0 = ptr vec, R1 = length
+; Clobbers: R0, R1
+; ============================================================
+
+        .GLOBL  VCLR
+
+VCLR:
+1$:     CLR     (R0)+
+        SOB     R1, 1$
+        RTS     PC
+
+; end of VECOP.MAC

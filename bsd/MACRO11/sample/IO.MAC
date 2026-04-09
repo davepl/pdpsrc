@@ -1,0 +1,153 @@
+; IO.MAC - Console I/O routines
+
+; DL11 registers
+XCSR    = 177564                ; Transmitter CSR
+XBUF    = 177566                ; Transmitter buffer
+RCSR    = 177560                ; Receiver CSR
+RBUF    = 177562                ; Receiver buffer
+
+PUTC:   TSTB    @#XCSR          ; ready?
+        BPL     PUTC            ; no, spin
+        MOVB    R0, @#XBUF      ; send char
+        RTS     PC
+
+
+        .GLOBL  PUTS
+PUTS:   MOV     R0, R1          ; R1 = string ptr
+1$:     MOVB    (R1)+, R0       ; next char
+        BEQ     2$              ; null terminator -> done
+        JSR     PC, PUTC
+        BR      1$
+2$:     RTS     PC
+
+
+        .GLOBL  NEWLN
+NEWLN:  MOV     #15, R0         ; CR
+        JSR     PC, PUTC
+        MOV     #12, R0         ; LF
+        JSR     PC, PUTC
+        RTS     PC
+
+
+; PUTOCT: Print R0 as 6-digit octal
+        .GLOBL  PUTOCT
+PUTOCT: MOV     R0, R2          ; save value
+        MOV     #6., R1         ; 6 octal digits
+        ASH     #-15., R0       ; logical: get bit 15
+        BR      3$
+3$:     MOV     R2, R0          ; restore
+        MOV     #6., R1
+2$:     MOV     R0, -(SP)       ; save current
+        BIC     #177770, (SP)   ; keep low 3 bits
+        ADD     #'0, (SP)       ; to ASCII
+        ASH     #-3., R0        ; next 3 bits
+        SOB     R1, 2$
+        ; pop and print 6 digits
+        MOV     #6., R1
+4$:     MOV     (SP)+, R0
+        JSR     PC, PUTC
+        SOB     R1, 4$
+        RTS     PC
+
+
+; Print R0 as decimal
+        .GLOBL  PUTDEC
+PUTDEC: TST     R0
+        BPL     1$
+        ; negative: print '-' and negate
+        MOV     R0, -(SP)       ; save
+        MOV     #'-, R0
+        JSR     PC, PUTC
+        MOV     (SP)+, R0
+        NEG     R0
+1$:     ; push LSB first
+        CLR     R3              ; digit count
+2$:     CLR     R1              ; clear high word
+        MOV     R0, R1          ; value
+        CLR     R0
+        DIV     #10., R0        ; R0 = quot, R1 = rem
+        ADD     #'0, R1         ; remainder -> ASCII
+        MOV     R1, -(SP)       ; push digit
+        INC     R3
+        TST     R0              ; more digits?
+        BNE     2$
+        ; pop and print
+3$:     MOV     (SP)+, R0
+        JSR     PC, PUTC
+        SOB     R3, 3$
+        RTS     PC
+
+
+; Print Q8 value as int.fraction
+        .GLOBL  PUTQ8
+PUTQ8:  MOV     R0, R2          ; save original
+        TST     R0
+        BPL     1$
+        ; negative
+        MOV     #'-, R0
+        JSR     PC, PUTC
+        MOV     R2, R0
+        NEG     R0
+        MOV     R0, R2
+1$:     ; int part = value >> 8
+        MOV     R2, R0
+        ASH     #-8., R0        ; R0 = int part
+        JSR     PC, PUTDEC
+        ; decimal point
+        MOV     #'., R0
+        JSR     PC, PUTC
+        ; fraction: (low 8 bits * 1000) / 256
+        MOV     R2, R0
+        BIC     #177400, R0     ; low 8 bits (fraction)
+        MUL     #1000., R0      ; R0:R1 = frac * 1000 (32-bit)
+        ASHC    #-8., R0        ; divide by 256
+        MOV     R1, R2          ; frac value (0-996)
+        MOV     R2, R1          ; low word
+        CLR     R0              ; high word
+        DIV     #100., R0
+        MOV     R1, R2          ; save remainder
+        ADD     #'0, R0
+        JSR     PC, PUTC
+        ; digit 2 (tens)
+        MOV     R2, R1
+        CLR     R0
+        DIV     #10., R0        ; R0 = tens, R1 = ones
+        MOV     R1, R2          ; save ones
+        ADD     #'0, R0
+        JSR     PC, PUTC
+        ; digit 3 (ones)
+        MOV     R2, R0
+        ADD     #'0, R0
+        JSR     PC, PUTC
+        RTS     PC
+
+
+        .GLOBL  PUTSPC
+PUTSPC: MOV     #40, R0         ; space
+        JSR     PC, PUTC
+        RTS     PC
+
+
+; Print vector of Q8 values as [v1, v2, ...]
+        .GLOBL  PUTVEC
+
+PUTVEC: MOV     R4, -(SP)       ; save R4, R5
+        MOV     R5, -(SP)
+        MOV     R0, R4          ; R4 = ptr
+        MOV     R1, R5          ; R5 = count
+        MOV     #'[, R0
+        JSR     PC, PUTC
+1$:     MOV     (R4)+, R0
+        JSR     PC, PUTQ8
+        DEC     R5
+        BEQ     2$
+        MOV     #54, R0         ; comma (ASCII 44 = 054)
+        JSR     PC, PUTC
+        MOV     #40, R0         ; space
+        JSR     PC, PUTC
+        BR      1$
+2$:     MOV     #'], R0
+        JSR     PC, PUTC
+        MOV     (SP)+, R5       ; restore
+        MOV     (SP)+, R4
+        RTS     PC

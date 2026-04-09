@@ -1,0 +1,88 @@
+;
+; FXMATH.MAC - Fixed-point arithmetic primitives
+; NN11 Level 0 - Scalar primitives
+;
+; Format Q7.8: 16-bit signed, 8 fractional bits
+;   value = integer_representation / 256
+;   range: [-128.0, +127.996]
+;   resolution: 1/256 ~ 0.004
+;
+; Requires: EIS (KE11-F) for MUL, DIV, ASH, ASHC
+;
+
+; ============================================================
+; FXMUL - Q8 multiply (macro, inline)
+;
+; Multiplies two Q8 values: result = a * b
+; Uses: MUL (32-bit result in Rd:Rd+1), ASHC to shift back
+;
+; Usage: FXMUL Ra, Rb
+;   Ra = first operand (Q8), modified: receives result
+;   Rb = second operand (Q8), preserved
+;   Clobbers: Ra, Ra+1 (register pair)
+;
+; Note: Ra must be even (R0, R2, R4) for MUL/ASHC
+; ============================================================
+
+.MACRO  FXMUL   Ra, Rb
+        MUL     Rb, Ra          ; Ra:Ra+1 <- Ra * Rb (Q16, 32 bits)
+        ASHC    #-8., Ra        ; arithmetic shift right 8 -> Q8
+        MOV     Ra+1, Ra        ; result in low register
+.ENDM
+
+; ============================================================
+; FXMQ15 - Q15 * Q8 -> Q8 (macro, inline)
+;
+; For multiplying softmax weights (Q15) by values (Q8)
+;
+; Usage: FXMQ15 Ra, Rb
+;   Ra = Q15 operand (even register)
+;   Rb = Q8 operand
+;   Result in Ra
+; ============================================================
+
+.MACRO  FXMQ15  Ra, Rb
+        MUL     Rb, Ra          ; Ra:Ra+1 <- Q15 * Q8 = Q23
+        ASHC    #-15., Ra       ; shift right 15 -> Q8
+        MOV     Ra+1, Ra
+.ENDM
+
+; ============================================================
+; FXABS - Absolute value (macro, inline)
+;
+; Usage: FXABS Rn
+; ============================================================
+
+.MACRO  FXABS   Rn
+        TST     Rn
+        BPL     .+4
+        NEG     Rn
+.ENDM
+
+; ============================================================
+; FXDIV - Q8 division: R0 = R0 / R1
+;
+; Input:  R0 = dividend (Q8)
+;         R1 = divisor  (Q8)
+; Output: R0 = quotient (Q8)
+; Clobbers: R0, R1, R2, R3
+;
+; Method: shift dividend left 8 to get Q16, then DIV by
+;         divisor to get Q8 quotient.
+;         R0:R1(Q16) / R1(Q8) -> Q8
+; ============================================================
+
+        .GLOBL  FXDIV
+
+FXDIV:  MOV     R1, R3          ; save divisor in R3
+        MOV     R0, R2          ; R2 = dividend (Q8)
+        ; Build 32-bit Q16 dividend in R0:R1
+        ; = original Q8 value << 8
+        CLR     R0              ; R0 = high word
+        MOV     R2, R1          ; R1 = low word = original Q8
+        ASHC    #8., R0         ; shift left 8: R0:R1 <<= 8
+        ; Now R0:R1 = dividend in Q16
+        DIV     R3, R0          ; R0 = quotient (Q8), R1 = remainder
+        RTS     PC
+
+; end of FXMATH.MAC

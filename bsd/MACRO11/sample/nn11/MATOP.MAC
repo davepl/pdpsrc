@@ -1,0 +1,260 @@
+;
+; MATOP.MAC - Matrix operations
+; NN11 Level 2 - Matrix-vector operations
+;
+; All values Q7.8 fixed-point. Matrices are row-major.
+; All routines use the JSR R5 inline parameter convention.
+;
+; Requires: FXMATH.MAC (for Q8 format definitions)
+;
+
+; ============================================================
+; MVMUL - Matrix-vector multiply: vout = mat * vin
+;
+; vout[i] = sum_j( mat[i][j] * vin[j] )  for i=0..rows-1
+; Uses 32-bit Q16 accumulation per output element.
+;
+; Call:   JSR  R5, MVMUL
+;         .WORD mat, vin, vout, rows, cols
+;
+; vout has 'rows' elements, vin has 'cols' elements.
+; Clobbers: R0-R4
+; ============================================================
+
+        .GLOBL  MVMUL
+
+MVMUL:  MOV     (R5)+, MP.MAT
+        MOV     (R5)+, MP.VIN
+        MOV     (R5)+, MP.OUT
+        MOV     (R5)+, MP.ROW
+        MOV     (R5)+, MP.COL
+        MOV     R3, -(SP)
+        MOV     R4, -(SP)
+        MOV     MP.MAT, R3      ; R3 = matrix ptr (advances row by row)
+        MOV     MP.OUT, R4      ; R4 = output ptr (advances)
+10$:    ; --- one row: dot product with vin ---
+        CLR     MP.AHI
+        CLR     MP.ALO
+        MOV     MP.VIN, R2      ; R2 = vin ptr (reset each row)
+        MOV     MP.COL, -(SP)   ; push column counter
+20$:    MOV     (R3)+, R0       ; R0 = mat[i][j]
+        MUL     (R2)+, R0       ; R0:R1 = mat[i][j] * vin[j] (Q16)
+        ADD     R1, MP.ALO      ; 32-bit accumulate
+        ADC     MP.AHI
+        ADD     R0, MP.AHI
+        DEC     (SP)
+        BNE     20$
+        TST     (SP)+           ; pop counter
+        ; Q16 -> Q8, with clamp
+        MOV     MP.AHI, R0
+        MOV     MP.ALO, R1
+        ASHC    #-8., R0
+        TST     R0
+        BEQ     5$
+        CMP     R0, #-1
+        BEQ     5$
+        BPL     6$
+        MOV     #100000, R1
+        BR      5$
+6$:     MOV     #077777, R1
+5$:     MOV     R1, (R4)+       ; vout[i] = result
+        DEC     MP.ROW
+        BNE     10$
+        MOV     (SP)+, R4
+        MOV     (SP)+, R3
+        RTS     R5
+
+; ============================================================
+; MVADD - Matrix-vector multiply-add: vout += mat * vin
+;
+; Like MVMUL but adds to existing vout values.
+;
+; Call:   JSR  R5, MVADD
+;         .WORD mat, vin, vout, rows, cols
+; Clobbers: R0-R4
+; ============================================================
+
+        .GLOBL  MVADD
+
+MVADD:  MOV     (R5)+, MP.MAT
+        MOV     (R5)+, MP.VIN
+        MOV     (R5)+, MP.OUT
+        MOV     (R5)+, MP.ROW
+        MOV     (R5)+, MP.COL
+        MOV     R3, -(SP)
+        MOV     R4, -(SP)
+        MOV     MP.MAT, R3
+        MOV     MP.OUT, R4
+10$:    CLR     MP.AHI
+        CLR     MP.ALO
+        MOV     MP.VIN, R2
+        MOV     MP.COL, -(SP)
+20$:    MOV     (R3)+, R0
+        MUL     (R2)+, R0
+        ADD     R1, MP.ALO
+        ADC     MP.AHI
+        ADD     R0, MP.AHI
+        DEC     (SP)
+        BNE     20$
+        TST     (SP)+
+        MOV     MP.AHI, R0
+        MOV     MP.ALO, R1
+        ASHC    #-8., R0
+        ; Clamp R1 if overflow
+        TST     R0
+        BEQ     37$
+        CMP     R0, #-1
+        BEQ     37$
+        BPL     38$
+        MOV     #100000, R1
+        BR      37$
+38$:    MOV     #077777, R1
+37$:    ADD     R1, (R4)        ; ADD instead of MOV
+        BVC     35$
+        TST     R1
+        BMI     36$
+        MOV     #077777, (R4)
+        BR      35$
+36$:    MOV     #100000, (R4)
+35$:    ADD     #2, R4
+        DEC     MP.ROW
+        BNE     10$
+        MOV     (SP)+, R4
+        MOV     (SP)+, R3
+        RTS     R5
+
+; ============================================================
+; VTMUL - Transpose-vector multiply: vout = mat^T * vin
+;
+; vout[j] = sum_i( mat[i][j] * vin[i] )  for j=0..cols-1
+; Clears vout first, then accumulates row by row:
+;   for each row i, adds vin[i] * row_i to vout.
+; Per-product Q8 rounding (acceptable for d_model=16).
+;
+; Call:   JSR  R5, VTMUL
+;         .WORD mat, vin, vout, rows, cols
+;
+; vin has 'rows' elements, vout has 'cols' elements.
+; Clobbers: R0-R4
+; ============================================================
+
+        .GLOBL  VTMUL
+
+VTMUL:  MOV     (R5)+, MP.MAT
+        MOV     (R5)+, MP.VIN
+        MOV     (R5)+, MP.OUT
+        MOV     (R5)+, MP.ROW
+        MOV     (R5)+, MP.COL
+        MOV     R3, -(SP)
+        MOV     R4, -(SP)
+        ; Clear output vector
+        MOV     MP.OUT, R0
+        MOV     MP.COL, R1
+5$:     CLR     (R0)+
+        SOB     R1, 5$
+        ; Process rows
+        MOV     MP.MAT, R3      ; R3 = matrix ptr (advances through all)
+        MOV     MP.VIN, R2      ; R2 = vin ptr (advances per row)
+10$:    ; --- one row: vout += vin[i] * row_i ---
+        MOV     (R2)+, MP.SCL   ; scalar = vin[i]
+        MOV     MP.OUT, R4      ; R4 = output ptr (reset each row)
+        MOV     MP.COL, -(SP)   ; column counter
+20$:    MOV     (R3)+, R0       ; R0 = mat[i][j]
+        MUL     MP.SCL, R0      ; R0:R1 = mat[i][j] * vin[i] (Q16)
+        ASHC    #-8., R0        ; >> 8 -> Q8 in R1
+        ; Clamp R1
+        TST     R0
+        BEQ     42$
+        CMP     R0, #-1
+        BEQ     42$
+        BPL     43$
+        MOV     #100000, R1
+        BR      42$
+43$:    MOV     #077777, R1
+42$:    ADD     R1, (R4)        ; vout[j] += result
+        BVC     40$
+        TST     R1
+        BMI     41$
+        MOV     #077777, (R4)
+        BR      40$
+41$:    MOV     #100000, (R4)
+40$:    ADD     #2, R4
+        DEC     (SP)
+        BNE     20$
+        TST     (SP)+
+        DEC     MP.ROW
+        BNE     10$
+        MOV     (SP)+, R4
+        MOV     (SP)+, R3
+        RTS     R5
+
+; ============================================================
+; OUTER - Outer product: mat += vx (x) vy
+;
+; mat[i][j] += vx[i] * vy[j]
+; For backward pass: weight gradient accumulation.
+;
+; Call:   JSR  R5, OUTER
+;         .WORD mat, vx, vy, rows, cols
+;
+; rows = len(vx), cols = len(vy)
+; Clobbers: R0-R4
+; ============================================================
+
+        .GLOBL  OUTER
+
+OUTER:  MOV     (R5)+, MP.MAT
+        MOV     (R5)+, MP.VIN   ; vx
+        MOV     (R5)+, MP.OUT   ; vy
+        MOV     (R5)+, MP.ROW
+        MOV     (R5)+, MP.COL
+        MOV     R3, -(SP)
+        MOV     R4, -(SP)
+        MOV     MP.MAT, R3      ; R3 = matrix ptr (advances)
+        MOV     MP.VIN, R2      ; R2 = vx ptr (advances per row)
+10$:    ; --- one row: mat[i] += vx[i] * vy ---
+        MOV     (R2)+, MP.SCL   ; scalar = vx[i]
+        MOV     MP.OUT, R4      ; R4 = vy ptr (reset each row)
+        MOV     MP.COL, -(SP)
+20$:    MOV     (R4)+, R0       ; R0 = vy[j]
+        MUL     MP.SCL, R0      ; R0:R1 = vx[i] * vy[j] (Q16)
+        ASHC    #-8., R0        ; >> 8 -> Q8 in R1
+        ; Clamp R1 after ASHC
+        TST     R0
+        BEQ     26$
+        CMP     R0, #-1
+        BEQ     26$
+        BPL     27$
+        MOV     #100000, R1
+        BR      26$
+27$:    MOV     #077777, R1
+26$:    ADD     R1, (R3)        ; mat[i][j] += result
+        BVC     30$             ; no overflow, skip clamp
+        TST     R1
+        BMI     25$
+        MOV     #077777, (R3)   ; clamp to +32767
+        BR      30$
+25$:    MOV     #100000, (R3)   ; clamp to -32768
+30$:    ADD     #2, R3          ; advance ptr
+        DEC     (SP)
+        BNE     20$
+        TST     (SP)+
+        DEC     MP.ROW
+        BNE     10$
+        MOV     (SP)+, R4
+        MOV     (SP)+, R3
+        RTS     R5
+
+; ============================================================
+; Shared private storage for all matrix operations
+; ============================================================
+MP.MAT: .WORD   0               ; matrix pointer
+MP.VIN: .WORD   0               ; input vector / vx pointer
+MP.OUT: .WORD   0               ; output vector / vy pointer
+MP.ROW: .WORD   0               ; row count
+MP.COL: .WORD   0               ; column count
+MP.AHI: .WORD   0               ; accumulator high (MVMUL/MVADD)
+MP.ALO: .WORD   0               ; accumulator low
+MP.SCL: .WORD   0               ; scalar temp (VTMUL/OUTER)
+
+; end of MATOP.MAC

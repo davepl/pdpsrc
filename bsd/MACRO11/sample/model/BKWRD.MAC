@@ -1,0 +1,501 @@
+;
+; BKWRD.MAC - Backward pass (Q15 gradients)
+; Follows prototype.py backward() exactly.
+; Q8 forward values x Q15 gradients -> Q15 results.
+; Same MUL+ASHC#-8 as forward (Q8*Q15=Q23, >>8=Q15).
+;
+
+; Workspace pointers into ATTN WORK area (set by BK.SET)
+BK.QP:  .WORD   0               ; -> cached Q (8x16 Q8)
+BK.KP:  .WORD   0               ; -> cached K
+BK.VP:  .WORD   0               ; -> cached V
+BK.AP:  .WORD   0               ; -> cached A (8x8 Q8, post-softmax)
+; Loop vars
+BK.I:   .WORD   0               ; outer loop index
+BK.J:   .WORD   0               ; inner loop index
+BK.IC:  .WORD   0               ; outer loop counter
+BK.JC:  .WORD   0               ; inner loop counter
+BK.DAD: .WORD   0               ; dot(A,dA) temp
+BK.OFF: .WORD   0               ; position byte offset temp
+
+BKWRD:  JSR     PC, BK.SET          ; setup workspace ptrs
+
+; ==========================================
+; Step 1: dLogits, dWout, dY
+; For each position i:
+;   dL = softmax(logits[i]) - one_hot(target[i]), then <<7 -> Q15
+;   dWout += OUTER(Y[i], dL)
+;   dY[i] = MVMUL(Wout, dL)
+; ==========================================
+
+        ; Clear dY
+        MOV     #DY, R0
+        MOV     #SEQ.LN*D.MODL, R1
+        JSR     PC, VCLR
+
+        MOV     #SEQ.LN, BK.IC
+        CLR     BK.I
+BK.L1:  ; -- Compute dL for position i --
+        ; Copy logits[i] to DL
+        MOV     BK.I, R0
+        MUL     #VOCAB*2, R0       ; R1 = i * vocab * 2
+        ADD     #LOGITS, R1
+        MOV     R1, R2              ; R2 = &logits[i]
+        MOV     #DL, R3
+        MOV     #VOCAB, R4
+BK.C1:  MOV     (R2)+, (R3)+
+        SOB     R4, BK.C1
+        ; Softmax(DL) in-place
+        MOV     #DL, R0
+        MOV     #VOCAB, R1
+        JSR     PC, SFTMX
+        ; DL[target[i]] -= 256 (1.0 Q8)
+        MOV     BK.I, R0
+        ASL     R0
+        ADD     #TARGET, R0
+        MOV     (R0), R0            ; target digit
+        ASL     R0                  ; word offset
+        ADD     #DL, R0
+        SUB     #256., (R0)
+        ; Shift DL to Q15: <<7 (use ASH)
+        MOV     #DL, R2
+        MOV     #VOCAB, R3
+BK.S7:  MOV     (R2), R0
+        ASH     #7., R0
+        MOV     R0, (R2)+
+        SOB     R3, BK.S7
+
+        ; -- dWout += OUTER(Y[i], DL, D.MODL, VOCAB) --
+        MOV     BK.I, R0
+        MUL     #DM2, R0            ; R1 = i*d_model*2
+        ADD     #YY, R1
+        MOV     R1, BK.P2           ; Y[i] ptr
+        MOV     #DWOUT, BK.P1
+        MOV     #DL, BK.P3
+        JSR     R5, OUTER
+BK.P1:  .WORD   0                   ; mat = DWOUT
+BK.P2:  .WORD   0                   ; vx = Y[i]
+BK.P3:  .WORD   0                   ; vy = DL
+BK.P4:  .WORD   D.MODL              ; rows
+BK.P5:  .WORD   VOCAB               ; cols
+
+        ; -- dY[i] = MVMUL(Wout, DL, D.MODL, VOCAB) --
+        MOV     BK.I, R0
+        MUL     #DM2, R0
+        ADD     #DY, R1
+        MOV     R1, BK.Q3           ; dY[i] ptr
+        MOV     #WOTQ8, BK.Q1
+        MOV     #DL, BK.Q2
+        JSR     R5, MVMUL
+BK.Q1:  .WORD   0                   ; mat = Wout_q8
+BK.Q2:  .WORD   0                   ; vin = DL
+BK.Q3:  .WORD   0                   ; vout = dY[i]
+BK.Q4:  .WORD   D.MODL              ; rows
+BK.Q5:  .WORD   VOCAB               ; cols
+
+        INC     BK.I
+        DEC     BK.IC
+        BNE     BK.L1
+
+; ==========================================
+; Step 2: Backward O = A.V -> dA, dV
+; dO = dY (residual, no copy needed)
+; For each i,j:
+;   dA[i][j] = VDOT(V[j], dY[i], D)
+;   dV[j] += A[i][j] * dY[i] (VSADD)
+; ==========================================
+
+        ; Clear dV
+        MOV     #DVV, R0
+        MOV     #SEQ.LN*D.MODL, R1
+        JSR     PC, VCLR
+
+        MOV     #SEQ.LN, BK.IC
+        CLR     BK.I
+BK.L2:  MOV     #SEQ.LN, BK.JC
+        CLR     BK.J
+BK.L2J: ; dA[i][j] = VDOT(V[j], dY[i], D)
+        ; V[j] ptr
+        MOV     BK.J, R0
+        MUL     #DM2, R0
+        ADD     BK.VP, R1
+        MOV     R1, R0              ; R0 = &V[j]
+        ; dY[i] ptr
+        MOV     BK.I, R2
+        MUL     #DM2, R2
+        ADD     #DY, R3
+        MOV     R3, R1              ; R1 = &dY[i]
+        MOV     #D.MODL, R2
+        JSR     PC, VDOT            ; R0 = dot product (Q15)
+        ; Store dA[i][j]
+        MOV     BK.I, R1
+        MUL     #SEQ.LN*2, R1       ; R1... MUL puts result in R0:R1 for even reg
+        ; Fix: i*S*2 for byte offset into DA
+        MOV     BK.I, R2
+        MUL     #SS2, R2             ; R3 = i*S*2
+        ADD     BK.J, R3
+        ADD     BK.J, R3            ; +j*2
+        ADD     #DA, R3
+        MOV     R0, (R3)            ; DA[i][j] = dot result
+
+        ; dV[j][k] += A[i][j] * dY[i][k] >> 8  (VSADD)
+        ; scalar = A[i][j]
+        MOV     BK.I, R2
+        MUL     #SS2, R2             ; R3 = i*S*2
+        ADD     BK.J, R3
+        ADD     BK.J, R3
+        ADD     BK.AP, R3
+        MOV     (R3), R0             ; R0 = A[i][j] (Q8 scalar)
+        ; src = dY[i]
+        MOV     BK.I, R2
+        MUL     #DM2, R2
+        ADD     #DY, R3
+        MOV     R3, R1               ; R1 = &dY[i]
+        ; dst = dV[j]
+        MOV     BK.J, R2
+        MUL     #DM2, R2
+        ADD     #DVV, R3
+        MOV     R3, R2               ; R2 = &dV[j]
+        MOV     #D.MODL, R3
+        JSR     PC, VSADD            ; dV[j] += A[i][j] * dY[i]
+
+        INC     BK.J
+        DEC     BK.JC
+        BNE     BK.L2J
+        INC     BK.I
+        DEC     BK.IC
+        BNE     BK.L2
+
+; ==========================================
+; Step 3: Backward softmax -> dSc (stored in DA)
+; dSc[i][j] = A[i][j] * (dA[i][j] - dot(A[i], dA[i])) >> 8
+; Then dSc >>= sqrt_shift
+; ==========================================
+
+        MOV     #SEQ.LN, BK.IC
+        CLR     BK.I
+BK.L3:  ; dot_ad = VDOT(A[i], dA[i], S)
+        MOV     BK.I, R0
+        MUL     #SS2, R0
+        ADD     BK.AP, R1
+        MOV     R1, R0              ; R0 = &A[i]
+        MOV     BK.I, R2
+        MUL     #SS2, R2
+        ADD     #DA, R3
+        MOV     R3, R1              ; R1 = &dA[i]
+        MOV     #SEQ.LN, R2
+        JSR     PC, VDOT            ; R0 = dot_ad (Q15)
+        MOV     R0, BK.DAD          ; save dot_ad
+
+        ; dSc[i][j] = A[i][j] * (dA[i][j] - dot_ad) >> 8
+        ; Then >>= sqrt_shift
+        MOV     BK.I, R0
+        MUL     #SS2, R0
+        ADD     #DA, R1
+        MOV     R1, R3              ; R3 = &DA[i][0] (read/write)
+        MOV     BK.I, R0
+        MUL     #SS2, R0
+        ADD     BK.AP, R1
+        MOV     R1, R4              ; R4 = &A[i][0]
+        MOV     #SEQ.LN, R5
+BK.SM:  MOV     (R3), R0            ; dA[i][j] (Q15)
+        SUB     BK.DAD, R0          ; dA[i][j] - dot_ad (Q15)
+        BVC     BK.NV               ; no overflow
+        BPL     BK.NP               ; result positive -> was negative overflow
+        MOV     #077777, R0         ; clamp +32767
+        BR      BK.NV
+BK.NP:  MOV     #100000, R0         ; clamp -32768
+BK.NV:  MUL     (R4)+, R0           ; A[i][j] * (dA-dot) Q8*Q15=Q23
+        ASHC    #-8., R0            ; >>8 -> Q15
+        ASH     #-SQRTSH, R1        ; >>sqrt_shift (scaling)
+        MOV     R1, (R3)+           ; store dSc[i][j]
+        SOB     R5, BK.SM
+
+        INC     BK.I
+        DEC     BK.IC
+        BNE     BK.L3
+
+; ==========================================
+; Step 4: Backward Q.K^T -> dQ, dK
+; dQ[i] = VTMUL(K, dSc[i], S, D)
+; dK[j] = VTMUL(Q, dSc_col_j, S, D)
+; ==========================================
+
+        ; -- dQ: for each i, dQ[i] = K^T . dSc[i] --
+        MOV     #SEQ.LN, BK.IC
+        CLR     BK.I
+BK.L4Q: MOV     BK.I, R0
+        MUL     #SS2, R0
+        ADD     #DA, R1
+        MOV     R1, BK.R2            ; &dSc[i] (vin)
+        MOV     BK.I, R0
+        MUL     #DM2, R0
+        ADD     #DQQ, R1
+        MOV     R1, BK.R3            ; &dQ[i] (vout)
+        MOV     BK.KP, BK.R1        ; K (mat)
+        JSR     R5, VTMUL
+BK.R1:  .WORD   0                    ; mat = K
+BK.R2:  .WORD   0                    ; vin = dSc[i]
+BK.R3:  .WORD   0                    ; vout = dQ[i]
+BK.R4:  .WORD   SEQ.LN               ; rows = S
+BK.R5:  .WORD   D.MODL               ; cols = D
+
+        INC     BK.I
+        DEC     BK.IC
+        BNE     BK.L4Q
+
+        ; -- dK: for each j, extract column j of dSc, then VTMUL --
+        MOV     #SEQ.LN, BK.IC
+        CLR     BK.J
+BK.L4K: ; Extract column BK.J from DA (S x S) into DTMP
+        MOV     BK.J, R0
+        ASL     R0
+        ADD     #DA, R0             ; R0 = &DA[0][j]
+        MOV     #DTMP, R1
+        MOV     #SEQ.LN, R2
+BK.GC:  MOV     (R0), (R1)+
+        ADD     #SS2, R0            ; stride = S*2 bytes
+        SOB     R2, BK.GC
+
+        ; dK[j] = VTMUL(Q, DTMP, S, D)
+        MOV     BK.J, R0
+        MUL     #DM2, R0
+        ADD     #DKK, R1
+        MOV     R1, BK.S3            ; &dK[j]
+        MOV     BK.QP, BK.S1        ; Q (mat)
+        MOV     #DTMP, BK.S2        ; col (vin)
+        JSR     R5, VTMUL
+BK.S1:  .WORD   0
+BK.S2:  .WORD   0
+BK.S3:  .WORD   0
+BK.S4:  .WORD   SEQ.LN
+BK.S5:  .WORD   D.MODL
+
+        INC     BK.J
+        DEC     BK.IC
+        BNE     BK.L4K
+
+; ==========================================
+; Step 5: Backward projections + dX
+; dX[i] = dY[i]  (residual copy)
+; For each i:
+;   dX[i] += MVADD(Wq, dQ[i])
+;   dWq   += OUTER(X[i], dQ[i])
+;   dX[i] += MVADD(Wk, dK[i])
+;   dWk   += OUTER(X[i], dK[i])
+;   dX[i] += MVADD(Wv, dV[i])
+;   dWv   += OUTER(X[i], dV[i])
+; ==========================================
+
+        ; Copy dY -> dX
+        MOV     #DY, R0
+        MOV     #DXX, R1
+        MOV     #SEQ.LN*D.MODL, R2
+        JSR     PC, VCPY
+
+        MOV     #SEQ.LN, BK.IC
+        CLR     BK.I
+BK.L5:  ; Compute byte offsets for position i
+        MOV     BK.I, R0
+        MUL     #DM2, R0
+        MOV     R1, BK.OFF           ; i * d_model * 2
+
+        ; --- Q path ---
+        ; dX[i] += Wq * dQ[i]
+        MOV     #WQQ8, BK.T1
+        MOV     BK.OFF, R0
+        ADD     #DQQ, R0
+        MOV     R0, BK.T2           ; &dQ[i]
+        MOV     BK.OFF, R0
+        ADD     #DXX, R0
+        MOV     R0, BK.T3           ; &dX[i]
+        JSR     R5, MVADD
+BK.T1:  .WORD   0
+BK.T2:  .WORD   0
+BK.T3:  .WORD   0
+BK.T4:  .WORD   D.MODL
+BK.T5:  .WORD   D.MODL
+        ; dWq += OUTER(X[i], dQ[i])
+        MOV     #DWQ, BK.U1
+        MOV     BK.OFF, R0
+        ADD     #XX, R0
+        MOV     R0, BK.U2           ; &X[i]
+        MOV     BK.OFF, R0
+        ADD     #DQQ, R0
+        MOV     R0, BK.U3           ; &dQ[i]
+        JSR     R5, OUTER
+BK.U1:  .WORD   0
+BK.U2:  .WORD   0
+BK.U3:  .WORD   0
+BK.U4:  .WORD   D.MODL
+BK.U5:  .WORD   D.MODL
+
+        ; --- K path ---
+        MOV     #WKQ8, BK.V1
+        MOV     BK.OFF, R0
+        ADD     #DKK, R0
+        MOV     R0, BK.V2
+        MOV     BK.OFF, R0
+        ADD     #DXX, R0
+        MOV     R0, BK.V3
+        JSR     R5, MVADD
+BK.V1:  .WORD   0
+BK.V2:  .WORD   0
+BK.V3:  .WORD   0
+BK.V4:  .WORD   D.MODL
+BK.V5:  .WORD   D.MODL
+        MOV     #DWK, BK.W1
+        MOV     BK.OFF, R0
+        ADD     #XX, R0
+        MOV     R0, BK.W2
+        MOV     BK.OFF, R0
+        ADD     #DKK, R0
+        MOV     R0, BK.W3
+        JSR     R5, OUTER
+BK.W1:  .WORD   0
+BK.W2:  .WORD   0
+BK.W3:  .WORD   0
+BK.W4:  .WORD   D.MODL
+BK.W5:  .WORD   D.MODL
+
+        ; --- V path ---
+        MOV     #WVQ8, BK.X1
+        MOV     BK.OFF, R0
+        ADD     #DVV, R0
+        MOV     R0, BK.X2
+        MOV     BK.OFF, R0
+        ADD     #DXX, R0
+        MOV     R0, BK.X3
+        JSR     R5, MVADD
+BK.X1:  .WORD   0
+BK.X2:  .WORD   0
+BK.X3:  .WORD   0
+BK.X4:  .WORD   D.MODL
+BK.X5:  .WORD   D.MODL
+        MOV     #DWV, BK.Y1
+        MOV     BK.OFF, R0
+        ADD     #XX, R0
+        MOV     R0, BK.Y2
+        MOV     BK.OFF, R0
+        ADD     #DVV, R0
+        MOV     R0, BK.Y3
+        JSR     R5, OUTER
+BK.Y1:  .WORD   0
+BK.Y2:  .WORD   0
+BK.Y3:  .WORD   0
+BK.Y4:  .WORD   D.MODL
+BK.Y5:  .WORD   D.MODL
+
+        INC     BK.I
+        DEC     BK.IC
+        BEQ     BK.D5
+        JMP     BK.L5              ; too far for BNE
+BK.D5:
+
+; ==========================================
+; Step 6: Backward embedding
+; d_tok[token[i]] += dX[i]
+; d_pos[i] += dX[i]
+; ==========================================
+
+        MOV     #SEQ.LN, BK.IC
+        CLR     BK.I
+BK.L6:  MOV     BK.I, R0
+        MUL     #DM2, R0
+        ADD     #DXX, R1
+        MOV     R1, R3              ; R3 = &dX[i]
+
+        ; d_tok[token[i]] += dX[i]
+        MOV     BK.I, R0
+        ASL     R0
+        ADD     #TOKENS, R0
+        MOV     (R0), R0            ; token id
+        MUL     #DM2, R0
+        ADD     #DTKE, R1           ; R1 = &d_tok[token[i]]
+        MOV     #D.MODL, R4
+        MOV     R3, R2              ; R2 = &dX[i] (src, will advance)
+BK.TE:  MOV     (R2)+, R0
+        ADD     R0, (R1)
+        BVC     71$
+        TST     R0
+        BMI     72$
+        MOV     #077777, (R1)
+        BR      71$
+72$:    MOV     #100000, (R1)
+71$:    ADD     #2, R1
+        SOB     R4, BK.TE
+
+        ; d_pos[i] += dX[i]
+        MOV     BK.I, R0
+        MUL     #DM2, R0
+        ADD     #DPSE, R1           ; R1 = &d_pos[i]
+        SUB     #DM2, R2            ; R2 back to &dX[i]
+        MOV     #D.MODL, R4
+BK.PE:  MOV     (R2)+, R0
+        ADD     R0, (R1)
+        BVC     73$
+        TST     R0
+        BMI     74$
+        MOV     #077777, (R1)
+        BR      73$
+74$:    MOV     #100000, (R1)
+73$:    ADD     #2, R1
+        SOB     R4, BK.PE
+
+        INC     BK.I
+        DEC     BK.IC
+        BNE     BK.L6
+
+        RTS     PC
+
+; BK.SET: compute cached workspace pointers
+; ATTN stores Q|K|V|A contiguously in WORK
+BK.SET: MOV     #WORK, R0
+        MOV     R0, BK.QP
+        ADD     #SEQ.LN*DM2, R0
+        MOV     R0, BK.KP
+        ADD     #SEQ.LN*DM2, R0
+        MOV     R0, BK.VP
+        ADD     #SEQ.LN*DM2, R0
+        MOV     R0, BK.AP
+        RTS     PC
+
+; ============================================================
+; VSADD - Vector scale-add: dst[k] += (scalar * src[k]) >> 8
+; R0 = scalar, R1 = ptr src, R2 = ptr dst, R3 = count
+; Clobbers R0-R5
+; ============================================================
+
+        .GLOBL  VSADD
+
+VSADD:  MOV     R4, -(SP)
+        MOV     R5, -(SP)
+        MOV     R0, R4              ; R4 = scalar
+        MOV     R1, R5              ; R5 = ptr src
+        ; R2 = ptr dst, R3 = count
+VS.LP:  MOV     (R5)+, R0          ; R0 = src[k]
+        MUL     R4, R0              ; R0:R1 = scalar * src[k]
+        ASHC    #-8., R0            ; >> 8, result in R1
+        ; Clamp R1
+        TST     R0
+        BEQ     VS.CK
+        CMP     R0, #-1
+        BEQ     VS.CK
+        BPL     VS.CP
+        MOV     #100000, R1
+        BR      VS.CK
+VS.CP:  MOV     #077777, R1
+VS.CK:  ADD     R1, (R2)           ; dst[k] += result
+        BVC     VS.NC
+        TST     R1
+        BMI     VS.NG
+        MOV     #077777, (R2)
+        BR      VS.NC
+VS.NG:  MOV     #100000, (R2)
+VS.NC:  ADD     #2, R2
+        SOB     R3, VS.LP
+        MOV     (SP)+, R5
+        MOV     (SP)+, R4
+        RTS     PC
+
+; end of BKWRD.MAC

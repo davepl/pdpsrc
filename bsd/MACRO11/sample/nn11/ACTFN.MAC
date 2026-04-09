@@ -1,0 +1,165 @@
+;
+; ACTFN.MAC - Activation functions for NN11
+; Part of NN11: Neural Network library for PDP-11
+;
+; Includes:
+;   RELU   - ReLU macro (single register)
+;   DRELU  - ReLU derivative macro (for backward pass)
+;   VRELU  - ReLU on vector (subroutine)
+;   SFTMX  - Softmax on vector (subroutine, LUT-based)
+;   EXPTBL - exp() lookup table (256 entries, Q8)
+;
+; Requires: FXMATH.MAC (FXDIV), VECOP.MAC (VMAX)
+;
+
+; ============================================================
+; RELU - ReLU activation (macro, inline)
+;
+; Usage: RELU Rn
+;   Sets Rn = max(0, Rn)
+; ============================================================
+
+.MACRO  RELU    Rn
+        TST     Rn
+        BPL     .+4
+        CLR     Rn
+.ENDM
+
+; ============================================================
+; DRELU - ReLU derivative mask (macro, for backward pass)
+;
+; Usage: DRELU Rgrad, Ract
+;   Rgrad = gradient register (zeroed if activation was <= 0)
+;   Ract  = original pre-activation value (tested, not modified)
+; ============================================================
+
+.MACRO  DRELU   Rgrad, Ract
+        TST     Ract
+        BGT     .+4
+        CLR     Rgrad
+.ENDM
+
+; ============================================================
+; VRELU - Apply ReLU to vector in-place
+;
+; Input:  R0 = ptr to vector, R1 = length
+; Output: negative elements zeroed
+; Clobbers: R0, R1
+; ============================================================
+
+        .GLOBL  VRELU
+
+VRELU:
+1$:     TST     (R0)            ; test element
+        BPL     2$              ; positive: keep
+        CLR     (R0)            ; negative: zero
+2$:     ADD     #2, R0          ; next word
+        SOB     R1, 1$
+        RTS     PC
+
+; ============================================================
+; SFTMX - Softmax on vector in-place
+;
+; Computes softmax(x_i) = exp(x_i - max) / sum(exp(x_j - max))
+; Uses EXPTBL lookup for exp(), FXDIV for division.
+;
+; Input:  R0 = ptr to vector (Q8), R1 = length
+; Output: vector replaced with softmax probabilities (Q8)
+;         Values in [0, 1.0], should sum to ~1.0 (256 Q8)
+; Clobbers: R0-R5
+; ============================================================
+
+        .GLOBL  SFTMX
+
+SFTMX:  MOV     R0, SF.VEC      ; save vector ptr
+        MOV     R1, SF.LEN      ; save length
+
+        ; Step 1: Find max value (for numerical stability)
+        JSR     PC, VMAX        ; R0=max, R1=index (clobbers R0-R4)
+        MOV     R0, SF.MAX
+
+        ; Step 2: exp(x_i - max) via LUT, accumulate sum
+        CLR     R5              ; R5 = running sum of exp values
+        MOV     SF.VEC, R3      ; R3 = vector ptr
+        MOV     SF.LEN, R4      ; R4 = counter
+10$:    MOV     (R3), R0        ; R0 = x_i (Q8)
+        SUB     SF.MAX, R0      ; R0 = x_i - max (<= 0)
+        NEG     R0              ; R0 = |x_i - max| (>= 0)
+        ASH     #-3., R0       ; divide by 8 -> table index
+        CMP     R0, #255.       ; clamp to table bounds
+        BLE     15$
+        MOV     #255., R0
+15$:    ASL     R0              ; word offset (index * 2)
+        MOV     EXPTBL(R0), R0  ; lookup exp value (Q8)
+        MOV     R0, (R3)+       ; store in-place
+        ADD     R0, R5          ; sum += exp_i
+        SOB     R4, 10$
+
+        ; Step 3: Normalize - divide each exp value by sum
+        MOV     SF.VEC, R3      ; reset vector ptr
+        MOV     SF.LEN, R4      ; reset counter
+        ; R5 = sum (FXDIV only clobbers R0-R3, R5 is safe)
+30$:    MOV     (R3), R0        ; R0 = exp_i (Q8)
+        MOV     R3, -(SP)       ; save ptr (FXDIV clobbers R3)
+        MOV     R5, R1          ; R1 = sum (divisor)
+        JSR     PC, FXDIV       ; R0 = exp_i / sum (Q8)
+        MOV     (SP)+, R3       ; restore ptr
+        MOV     R0, (R3)+       ; store normalized value
+        SOB     R4, 30$
+
+        RTS     PC
+
+; Private storage
+SF.VEC: .WORD   0
+SF.LEN: .WORD   0
+SF.MAX: .WORD   0
+
+; ============================================================
+; EXPTBL - exp() lookup table for softmax
+; Index i -> exp(-i/32) in Q8 format
+; 256 entries, covers x in [-7.97, 0]
+;
+; Key values:
+;   [0]   = exp(0)    = 1.000 = 256
+;   [16]  = exp(-0.5) = 0.607 = 155
+;   [32]  = exp(-1.0) = 0.368 = 94
+;   [64]  = exp(-2.0) = 0.135 = 35
+;   [128] = exp(-4.0) = 0.018 = 5
+;   [255] = exp(-7.97)= 0.000 = 0
+; ============================================================
+
+EXPTBL:
+        .WORD   256., 248., 240., 233., 226., 219., 212., 206.  ; [0]-[7]
+        .WORD   199., 193., 187., 182., 176., 171., 165., 160.  ; [8]-[15]
+        .WORD   155., 150., 146., 141., 137., 133., 129., 125.  ; [16]-[23]
+        .WORD   121., 117., 114., 110., 107., 103., 100.,  97.  ; [24]-[31]
+        .WORD    94.,  91.,  88.,  86.,  83.,  81.,  78.,  76.  ; [32]-[39]
+        .WORD    73.,  71.,  69.,  67.,  65.,  63.,  61.,  59.  ; [40]-[47]
+        .WORD    57.,  55.,  54.,  52.,  50.,  49.,  47.,  46.  ; [48]-[55]
+        .WORD    44.,  43.,  42.,  41.,  39.,  38.,  37.,  36.  ; [56]-[63]
+        .WORD    35.,  34.,  33.,  32.,  31.,  30.,  29.,  28.  ; [64]-[71]
+        .WORD    27.,  26.,  25.,  25.,  24.,  23.,  22.,  22.  ; [72]-[79]
+        .WORD    21.,  20.,  20.,  19.,  19.,  18.,  17.,  17.  ; [80]-[87]
+        .WORD    16.,  16.,  15.,  15.,  14.,  14.,  14.,  13.  ; [88]-[95]
+        .WORD    13.,  12.,  12.,  12.,  11.,  11.,  11.,  10.  ; [96]-[103]
+        .WORD    10.,  10.,   9.,   9.,   9.,   8.,   8.,   8.  ; [104]-[111]
+        .WORD     8.,   7.,   7.,   7.,   7.,   7.,   6.,   6.  ; [112]-[119]
+        .WORD     6.,   6.,   6.,   5.,   5.,   5.,   5.,   5.  ; [120]-[127]
+        .WORD     5.,   5.,   4.,   4.,   4.,   4.,   4.,   4.  ; [128]-[135]
+        .WORD     4.,   4.,   3.,   3.,   3.,   3.,   3.,   3.  ; [136]-[143]
+        .WORD     3.,   3.,   3.,   3.,   3.,   2.,   2.,   2.  ; [144]-[151]
+        .WORD     2.,   2.,   2.,   2.,   2.,   2.,   2.,   2.  ; [152]-[159]
+        .WORD     2.,   2.,   2.,   2.,   2.,   1.,   1.,   1.  ; [160]-[167]
+        .WORD     1.,   1.,   1.,   1.,   1.,   1.,   1.,   1.  ; [168]-[175]
+        .WORD     1.,   1.,   1.,   1.,   1.,   1.,   1.,   1.  ; [176]-[183]
+        .WORD     1.,   1.,   1.,   1.,   1.,   1.,   1.,   1.  ; [184]-[191]
+        .WORD     1.,   1.,   1.,   1.,   1.,   1.,   1.,   1.  ; [192]-[199]
+        .WORD     0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.  ; [200]-[207]
+        .WORD     0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.  ; [208]-[215]
+        .WORD     0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.  ; [216]-[223]
+        .WORD     0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.  ; [224]-[231]
+        .WORD     0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.  ; [232]-[239]
+        .WORD     0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.  ; [240]-[247]
+        .WORD     0.,   0.,   0.,   0.,   0.,   0.,   0.,   0.  ; [248]-[255]
+
+; end of ACTFN.MAC
