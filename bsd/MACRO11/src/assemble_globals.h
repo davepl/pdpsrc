@@ -11,9 +11,18 @@
 
 
 
+#ifdef SMALL_MEMORY
+#define MAX_MLBS 8                     /* number of macro libraries */
+#define MAX_CONDS 64
+#define MAX_SECT_STACK 16
+#define MAX_SECTIONS 64
+#else
 #define MAX_MLBS 32                    /* number of macro libraries */
-
 #define MAX_CONDS 256
+#define MAX_SECT_STACK 32
+#define MAX_SECTIONS 256
+#endif
+#define FIRST_LOCSYM ((unsigned)(-077777-1))
 typedef struct cond {
     int             ok;         /* What the condition evaluated to */
     char           *file;       /* What file and line it occurred */
@@ -30,7 +39,7 @@ extern int      lsb;            /* The current local symbol section identifier *
 extern int      last_lsb;       /* The last block in which a macro
                                    automatic label was created */
 
-extern int      last_locsym;    /* The last local symbol number generated */
+extern unsigned last_locsym;    /* The last local symbol number generated */
 
 extern int      enabl_debug;    /* Whether assembler debugging is enabled */
 
@@ -51,7 +60,7 @@ extern int      nr_mlbs;        /* Number of macro libraries */
 extern COND     conds[MAX_CONDS];       /* Stack of recent conditions */
 extern int      last_cond;      /* 0 means no stacked cond. */
 
-extern SECTION *sect_stack[32]; /* 32 saved sections */
+extern SECTION *sect_stack[MAX_SECT_STACK];
 extern int      sect_sp;        /* Stack pointer */
 
 extern char    *module_name;    /* The module name (taken from the 'TITLE'); */
@@ -75,7 +84,7 @@ extern SECTION  macro_section;  /* Section for macros */
 /* These are real psects that get written out to the object file */
 extern SECTION  absolute_section;       /* The default  absolute section */
 extern SECTION  blank_section;
-extern SECTION *sections[256];  /* Array of sections in the order they were defined */
+extern SECTION *sections[MAX_SECTIONS]; /* Array of sections in the order they were defined */
 extern int      sector;         /* number of such sections */
 
 #endif

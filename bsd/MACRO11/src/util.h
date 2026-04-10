@@ -5,6 +5,22 @@
 #define const
 #endif
 
+#ifndef offsetof
+#define offsetof(type, member) ((int)&(((type *)0)->member))
+#endif
+
+#ifndef SEEK_SET
+#define SEEK_SET 0
+#endif
+
+#ifndef SEEK_CUR
+#define SEEK_CUR 1
+#endif
+
+#ifndef SEEK_END
+#define SEEK_END 2
+#endif
+
 /*
 
 Copyright (c) 2001, Richard Krehbiel
@@ -55,24 +71,48 @@ void            my_searchenv(
     char *envname,
     char *hitfile,
     int hitlen);
+char           *xgetenv(
+    char *name);
+int             xputenv(
+    char *str);
 char           *xstrdup(
     char *str);
 int             xstrcasecmp(
     char *left,
     char *right);
+void           *xmalloc(
+    unsigned size,
+    char *file,
+    int line);
+void           *xrealloc(
+    void *ptr,
+    unsigned size,
+    char *file,
+    int line);
+void            xfree(
+    void *ptr,
+    char *file,
+    int line);
 
 /* Cover a few platform-dependencies */
 
 #ifdef WIN32
-#define putenv _putenv
 #define PATHSEP ";"
 #else
 #define PATHSEP ":"
 #endif
 
+#define getenv xgetenv
+#define putenv xputenv
 #define strdup xstrdup
 #define strcasecmp xstrcasecmp
 #define stricmp xstrcasecmp
+
+#ifdef MEMTRACE
+#define malloc(sz) xmalloc((unsigned) (sz), __FILE__, __LINE__)
+#define realloc(ptr, sz) xrealloc((ptr), (unsigned) (sz), __FILE__, __LINE__)
+#define free(ptr) xfree((ptr), __FILE__, __LINE__)
+#endif
 
 
 #define FALSE 0                        /* Everybody needs FALSE and TRUE */

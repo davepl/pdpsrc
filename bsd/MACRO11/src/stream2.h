@@ -71,7 +71,13 @@ typedef struct buffer {
     int             use;        /* Number of users of buffer */
 } BUFFER;
 
+#ifdef SMALL_MEMORY
+#define GROWBUF_INCR 128
+#define STREAM_BUFFER_SIZE 128         /* Smallest safe size for the sample tree. */
+#else
 #define GROWBUF_INCR 1024              /* Buffers grow by leaps and bounds */
+#define STREAM_BUFFER_SIZE 1024        /* This limits the max size of an input line. */
+#endif
 
 typedef struct buffer_stream {
     STREAM          stream;     /* Base class */
@@ -83,7 +89,6 @@ typedef struct stack {
     STREAM         *top;        /* Top of stacked stream pieces */
 } STACK;
 
-#define STREAM_BUFFER_SIZE 1024        /* This limits the max size of an input line. */
 BUFFER         *new_buffer(
     void);
 BUFFER         *buffer_clone(

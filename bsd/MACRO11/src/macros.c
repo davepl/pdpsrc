@@ -460,10 +460,10 @@ STREAM         *expandmacro(
     }
 
     /* Now go back and fill in defaults */  {
-        int             locsym;
+        unsigned        locsym;
 
         if (last_lsb != lsb)
-            locsym = last_locsym = 32768;
+            locsym = last_locsym = FIRST_LOCSYM;
         else
             locsym = last_locsym;
         last_lsb = lsb;
@@ -477,7 +477,7 @@ STREAM         *expandmacro(
                     char            temp[32];
 
                     /* Here's where we generate local labels */
-                    sprintf(temp, "%d$", locsym++);
+                    sprintf(temp, "%u$", locsym++);
                     arg->value = memcheck(strdup(temp));
                 } else if (macarg->value) {
                     arg->value = memcheck(strdup(macarg->value));

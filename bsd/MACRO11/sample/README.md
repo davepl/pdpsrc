@@ -209,11 +209,11 @@ The 1,216 parameters are replicated three times, by necessity: Q16 accumulators 
 
 ## Building
 
-The two requirements are the [MACRO11](https://github.com/j-hoppe/MACRO11) assembler and [obj2bin](https://github.com/AK6DN/obj2bin) to convert the object code into a loadable binary.
+The two requirements are the [MACRO11](https://github.com/j-hoppe/MACRO11) assembler and the bundled `obj2bin` tool in [`../src`](/Users/dave/source/repos/MACRO11/src) to convert the RT-11 object code into a loadable binary.
 
 ```
 $ macro11 TRAIN.MAC -o ATTN-11.obj
-$ obj2bin.pl ATTN-11.obj --binary --outfile=ATTN-11.bin
+$ ../src/obj2bin ATTN-11.obj --binary --rt11 --outfile=ATTN-11.bin
 $ ls -l ATTN-11.bin
 -rw-r--r--  1 damien  damien  6179 Mar  4 21:53 ATTN-11.bin
 ```

@@ -46,13 +46,182 @@ DAMAGE.
 
 #include "util.h"                      /* own defintions */
 
+#undef getenv
+#undef putenv
+#ifdef MEMTRACE
+#undef malloc
+#undef realloc
+#undef free
+#endif
+
 #ifdef WIN32
 #include <sys/types.h>
 #include <sys/stat.h>
 #define stat _stat
 #else
 #include <sys/stat.h>
-#include <unistd.h>
+#endif
+
+typedef struct env_override {
+    struct env_override *next;
+    char           *name;
+    char           *value;
+} ENV_OVERRIDE;
+
+static ENV_OVERRIDE *env_overrides = NULL;
+
+extern char    *sbrk();
+
+#ifdef MEMTRACE
+typedef struct memhdr {
+    unsigned        size;
+    unsigned        magic;
+} MEMHDR;
+
+#define MEMHDR_MAGIC 012345
+
+static long      memtrace_current = 0;
+static long      memtrace_peak = 0;
+static long      memtrace_allocs = 0;
+static long      memtrace_frees = 0;
+static int       memtrace_checked = 0;
+static int       memtrace_enabled = 0;
+static int       memtrace_verbose = 0;
+
+static void memtrace_init(
+    void)
+{
+    char           *mode;
+
+    if (memtrace_checked)
+        return;
+
+    memtrace_checked = 1;
+    mode = getenv("MACRO11_MEMLOG");
+    if (mode && *mode) {
+        memtrace_enabled = 1;
+        if (strcmp(mode, "verbose") == 0 || strcmp(mode, "2") == 0)
+            memtrace_verbose = 1;
+    }
+}
+
+static void memtrace_report(
+    char *what,
+    unsigned size,
+    char *file,
+    int line)
+{
+    memtrace_init();
+    fprintf(stderr,
+            "memtrace: %s %u bytes at %s:%d current=%ld peak=%ld allocs=%ld frees=%ld\n",
+            what, size, file, line, memtrace_current, memtrace_peak, memtrace_allocs, memtrace_frees);
+}
+
+static void memtrace_note_alloc(
+    unsigned size,
+    char *file,
+    int line)
+{
+    memtrace_init();
+    memtrace_current += size;
+    memtrace_allocs++;
+    if (memtrace_current > memtrace_peak)
+        memtrace_peak = memtrace_current;
+    if (memtrace_verbose)
+        memtrace_report("alloc", size, file, line);
+}
+
+static void memtrace_note_free(
+    unsigned size,
+    char *file,
+    int line)
+{
+    memtrace_init();
+    memtrace_current -= size;
+    memtrace_frees++;
+    if (memtrace_verbose)
+        memtrace_report("free", size, file, line);
+}
+
+void           *xmalloc(
+    unsigned size,
+    char *file,
+    int line)
+{
+    MEMHDR         *hdr;
+
+    memtrace_init();
+    hdr = malloc(sizeof(MEMHDR) + size);
+    if (hdr == NULL) {
+        memtrace_report("oom malloc", size, file, line);
+        fprintf(stderr, "Out of memory.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    hdr->size = size;
+    hdr->magic = MEMHDR_MAGIC;
+    memtrace_note_alloc(size, file, line);
+    return hdr + 1;
+}
+
+void           *xrealloc(
+    void *ptr,
+    unsigned size,
+    char *file,
+    int line)
+{
+    MEMHDR         *hdr;
+    MEMHDR         *newhdr;
+    unsigned        oldsize;
+
+    if (ptr == NULL)
+        return xmalloc(size, file, line);
+
+    hdr = ((MEMHDR *) ptr) - 1;
+    if (hdr->magic != MEMHDR_MAGIC) {
+        fprintf(stderr, "memtrace: bad realloc at %s:%d\n", file, line);
+        exit(EXIT_FAILURE);
+    }
+
+    oldsize = hdr->size;
+    newhdr = realloc(hdr, sizeof(MEMHDR) + size);
+    if (newhdr == NULL) {
+        memtrace_report("oom realloc", size, file, line);
+        fprintf(stderr, "memtrace: old block %u bytes\n", oldsize);
+        fprintf(stderr, "Out of memory.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    newhdr->size = size;
+    newhdr->magic = MEMHDR_MAGIC;
+    memtrace_current += (long) size - (long) oldsize;
+    if (memtrace_current > memtrace_peak)
+        memtrace_peak = memtrace_current;
+    if (memtrace_verbose)
+        memtrace_report("realloc", size, file, line);
+    return newhdr + 1;
+}
+
+void xfree(
+    void *ptr,
+    char *file,
+    int line)
+{
+    MEMHDR         *hdr;
+
+    if (ptr == NULL)
+        return;
+
+    hdr = ((MEMHDR *) ptr) - 1;
+    if (hdr->magic != MEMHDR_MAGIC) {
+        fprintf(stderr, "memtrace: bad free at %s:%d\n", file, line);
+        exit(EXIT_FAILURE);
+    }
+
+    memtrace_note_free(hdr->size, file, line);
+    hdr->magic = 0;
+    free(hdr);
+}
 #endif
 
 /* Sure, the library typically provides some kind of
@@ -150,7 +319,7 @@ void my_searchenv(
         return;
     }
 
-    env = getenv(envname);
+    env = xgetenv(envname);
     if (env == NULL)
         return;                        /* Variable not defined, no search. */
 
@@ -189,6 +358,49 @@ void my_searchenv(
     free(envcopy);
 }
 
+char           *xgetenv(
+    char *name)
+{
+    ENV_OVERRIDE   *ovr;
+
+    for (ovr = env_overrides; ovr != NULL; ovr = ovr->next)
+        if (strcmp(ovr->name, name) == 0)
+            return ovr->value;
+
+    return getenv(name);
+}
+
+int xputenv(
+    char *str)
+{
+    char           *eq;
+    int             namelen;
+    ENV_OVERRIDE   *ovr;
+
+    eq = strchr(str, '=');
+    if (eq == NULL)
+        return 1;
+
+    namelen = eq - str;
+
+    for (ovr = env_overrides; ovr != NULL; ovr = ovr->next)
+        if (strncmp(ovr->name, str, namelen) == 0 && ovr->name[namelen] == 0) {
+            free(ovr->value);
+            ovr->value = memcheck(strdup(eq + 1));
+            return 0;
+        }
+
+    ovr = memcheck(malloc(sizeof(ENV_OVERRIDE)));
+    ovr->name = memcheck(malloc(namelen + 1));
+    memcpy(ovr->name, str, namelen);
+    ovr->name[namelen] = 0;
+    ovr->value = memcheck(strdup(eq + 1));
+    ovr->next = env_overrides;
+    env_overrides = ovr;
+
+    return 0;
+}
+
 
 
 
@@ -198,6 +410,9 @@ void           *memcheck(
     void *ptr)
 {
     if (ptr == NULL) {
+#ifdef MEMTRACE
+        memtrace_report("oom memcheck", 0, "memcheck", 0);
+#endif
         fprintf(stderr, "Out of memory.\n");
         exit(EXIT_FAILURE);
     }
@@ -213,8 +428,12 @@ char           *xstrdup(
     if (str == NULL)
         return NULL;
 
+#ifdef MEMTRACE
+    copy = xmalloc((unsigned) (strlen(str) + 1), "strdup", 0);
+#else
     copy = malloc(strlen(str) + 1);
     copy = memcheck(copy);
+#endif
     strcpy(copy, str);
 
     return copy;
@@ -241,7 +460,8 @@ void upcase(
     char *str)
 {
     while (*str) {
-        *str = toupper(*str);
+        if (*str >= 'a' && *str <= 'z')
+            *str += 'A' - 'a';
         str++;
     }
 }

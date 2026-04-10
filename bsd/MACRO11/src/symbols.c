@@ -28,6 +28,30 @@ SYMBOL_TABLE    macro_st;       /* Macros */
 
 SYMBOL_TABLE    implicit_st;    /* The symbols which may be implicit globals */
 
+#ifdef SMALL_MEMORY
+#define STATIC_SYM_POOL_SIZE 256
+static SYMBOL    static_system_syms[STATIC_SYM_POOL_SIZE];
+static unsigned  static_system_sym_count = 0;
+
+#define SYMBOL_CHUNK_COUNT 64
+#define LABEL_CHUNK_SIZE 512
+
+typedef struct symbol_chunk {
+    struct symbol_chunk *next;
+    unsigned        used;
+    SYMBOL          symbols[SYMBOL_CHUNK_COUNT];
+} SYMBOL_CHUNK;
+
+typedef struct label_chunk {
+    struct label_chunk *next;
+    unsigned        used;
+    char            data[LABEL_CHUNK_SIZE];
+} LABEL_CHUNK;
+
+static SYMBOL_CHUNK *dynamic_symbol_chunks = NULL;
+static LABEL_CHUNK *dynamic_label_chunks = NULL;
+#endif
+
 
 
 /* hash_name hashes a name into a value from 0-HASH_SIZE */
@@ -82,16 +106,89 @@ static SYMBOL  *new_sym(
     return sym;
 }
 
+#ifdef SMALL_MEMORY
+static char    *alloc_label_copy(
+    char *label)
+{
+    LABEL_CHUNK    *chunk;
+    unsigned        len;
+    char           *copy;
+
+    len = strlen(label) + 1;
+    if (len > LABEL_CHUNK_SIZE)
+        return memcheck(strdup(label));
+
+    chunk = dynamic_label_chunks;
+    if (chunk == NULL || chunk->used + len > LABEL_CHUNK_SIZE) {
+        chunk = memcheck(malloc(sizeof(LABEL_CHUNK)));
+        chunk->next = dynamic_label_chunks;
+        chunk->used = 0;
+        dynamic_label_chunks = chunk;
+    }
+
+    copy = chunk->data + chunk->used;
+    memcpy(copy, label, len);
+    chunk->used += len;
+
+    return copy;
+}
+
+static SYMBOL  *new_static_sym(
+    char *label)
+{
+    SYMBOL         *sym;
+
+    if (static_system_sym_count >= STATIC_SYM_POOL_SIZE)
+        return NULL;
+
+    sym = &static_system_syms[static_system_sym_count++];
+    sym->label = alloc_label_copy(label);
+    sym->section = NULL;
+    sym->value = 0;
+    sym->flags = SYMBOLFLAG_STATIC;
+    sym->stmtno = 0;
+    sym->next = NULL;
+    return sym;
+}
+
+static SYMBOL  *new_pooled_sym(
+    char *label)
+{
+    SYMBOL_CHUNK   *chunk;
+    SYMBOL         *sym;
+
+    chunk = dynamic_symbol_chunks;
+    if (chunk == NULL || chunk->used >= SYMBOL_CHUNK_COUNT) {
+        chunk = memcheck(malloc(sizeof(SYMBOL_CHUNK)));
+        chunk->next = dynamic_symbol_chunks;
+        chunk->used = 0;
+        dynamic_symbol_chunks = chunk;
+    }
+
+    sym = &chunk->symbols[chunk->used++];
+    sym->label = alloc_label_copy(label);
+    sym->section = NULL;
+    sym->value = 0;
+    sym->flags = SYMBOLFLAG_STATIC;
+    sym->stmtno = 0;
+    sym->next = NULL;
+
+    return sym;
+}
+#endif
+
 /* Free a symbol. Does not remove it from any symbol table.  */
 
 void free_sym(
     SYMBOL *sym)
 {
     if (sym->label) {
-        free(sym->label);
+        if (!(sym->flags & SYMBOLFLAG_STATIC))
+            free(sym->label);
         sym->label = NULL;
     }
-    free(sym);
+    if (!(sym->flags & SYMBOLFLAG_STATIC))
+        free(sym);
 }
 
 /* remove_sym removes a symbol from it's symbol table. */
@@ -217,8 +314,22 @@ SYMBOL         *add_sym(
         return NULL;                   /* Bad symbol redefinition */
     }
 
-    sym = new_sym(label);
-    sym->flags = flags;
+    if (table == &system_st) {
+#ifdef SMALL_MEMORY
+        sym = new_static_sym(label);
+        if (sym == NULL)
+            return NULL;
+#else
+        sym = new_sym(label);
+#endif
+    } else {
+#ifdef SMALL_MEMORY
+        sym = new_pooled_sym(label);
+#else
+        sym = new_sym(label);
+#endif
+    }
+    sym->flags |= flags;
     sym->stmtno = stmtno;
     sym->section = section;
     sym->value = value;

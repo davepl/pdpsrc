@@ -51,6 +51,11 @@ EX_TREE        *new_ex_tree(
     void);
 void            free_tree(
     EX_TREE *tp);
+SYMBOL         *new_temp_symbol(
+    char *label,
+    SECTION *section,
+    unsigned value,
+    unsigned flags);
 
 EX_TREE        *new_ex_lit(
     unsigned value);

@@ -2,7 +2,6 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <stddef.h>
 #include <stdarg.h>
 
 #include "listing.h"                   /* my own definitions */
@@ -90,8 +89,8 @@ static void list_fit(
     STREAM *str,
     unsigned addr)
 {
-    size_t          col1 = offsetof(LSTFORMAT, source);
-    size_t          col2 = offsetof(LSTFORMAT, pc);
+    int             col1 = offsetof(LSTFORMAT, source);
+    int             col2 = offsetof(LSTFORMAT, pc);
 
     if (strlen(binline) >= col1) {
         list_flush();

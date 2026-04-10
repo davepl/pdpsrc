@@ -17,7 +17,7 @@ int             lsb = 0;        /* The current local symbol section identifier *
 int             last_lsb = 0;   /* The last block in which a macro
                                    automatic label was created */
 
-int             last_locsym = 32768;    /* The last local symbol number generated */
+unsigned        last_locsym = FIRST_LOCSYM;    /* The last local symbol number generated */
 
 
 int             enabl_debug = 0;        /* Whether assembler debugging is enabled */
@@ -42,7 +42,7 @@ int             nr_mlbs = 0;    /* Number of macro libraries */
 COND            conds[MAX_CONDS];       /* Stack of recent conditions */
 int             last_cond;      /* 0 means no stacked cond. */
 
-SECTION        *sect_stack[32]; /* 32 saved sections */
+SECTION        *sect_stack[MAX_SECT_STACK];
 int             sect_sp;        /* Stack pointer */
 
 char           *module_name = NULL;     /* The module name (taken from the 'TITLE'); */
@@ -87,7 +87,7 @@ SECTION         blank_section = {
     "", SECTION_SYSTEM, PSECT_REL, 0, 0, 1
 };                                     /* The default relocatable section */
 
-SECTION        *sections[256] = {
+SECTION        *sections[MAX_SECTIONS] = {
     /* Array of sections in the order they were
        defined */
     &absolute_section, &blank_section,

@@ -22,6 +22,7 @@
 
 #include "rad50.h"
 
+#define MACFILE_MAX 256
 
 
 
@@ -512,8 +513,8 @@ static int assemble(
                         int             saveline;
                         MACRO          *mac;
                         int             i;
-                        char            macfile[FILENAME_MAX];
-                        char            hitfile[FILENAME_MAX];
+                        char            macfile[MACFILE_MAX];
+                        char            hitfile[MACFILE_MAX];
 
                         for (;;) {
                             cp = skipdelim(cp);
@@ -1097,7 +1098,7 @@ static int assemble(
                         DOT++;         /* ...and fix it... */
                     }
 
-                    switch (op->flags & OC_MASK) {
+                    switch ((unsigned) (op->flags & OC_MASK)) {
                     case OC_NONE:
                         /* No operands. */
                         store_word(stack->top, tr, 2, op->value);

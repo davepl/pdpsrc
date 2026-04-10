@@ -111,6 +111,7 @@ int get_mode(
     ADDR_MODE *mode)
 {
     EX_TREE        *value;
+    char           *tcp;
 
     mode->offset = NULL;
     mode->rel = 0;
@@ -837,13 +838,13 @@ EX_TREE        *parse_unary(
 
         /* The symbol was not found. Create an "undefined symbol"
            reference. */
-        sym = memcheck(malloc(sizeof(SYMBOL)));
-        sym->label = label;
-        sym->flags = SYMBOLFLAG_UNDEFINED | local;
-        sym->stmtno = stmtno;
-        sym->next = NULL;
-        sym->section = &absolute_section;
-        sym->value = 0;
+        sym = new_temp_symbol(label, &absolute_section, 0,
+                              SYMBOLFLAG_UNDEFINED | local
+#ifdef SMALL_MEMORY
+                              | SYMBOLFLAG_POOL
+#endif
+            );
+        free(label);
 
         tp = new_ex_tree();
         tp->cp = cp;

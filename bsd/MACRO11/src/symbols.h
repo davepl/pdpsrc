@@ -38,6 +38,8 @@ typedef struct symbol {
 #define SYMBOLFLAG_DEFINITION 8 /* Symbol is a global definition, not reference */
 #define SYMBOLFLAG_UNDEFINED 16 /* Symbol is a phony, undefined */
 #define SYMBOLFLAG_LOCAL 32     /* Set if this is a local label (i.e. 10$) */
+#define SYMBOLFLAG_STATIC 64    /* Storage is static, not heap */
+#define SYMBOLFLAG_POOL 128     /* Struct storage came from a pool */
 
     SECTION        *section;    /* Section in which this symbol is defined */
     struct symbol  *next;       /* Next symbol with the same hash value */
@@ -101,193 +103,189 @@ enum pseudo_ops { P_ASCII,
     P_IFDF
 };
 
-enum instruction_ops { I_ADC = 0005500,
-    I_ADCB = 0105500,
-    I_ADD = 0060000,
-    I_ASH = 0072000,
-    I_ASHC = 0073000,
-    I_ASL = 0006300,
-    I_ASLB = 0106300,
-    I_ASR = 0006200,
-    I_ASRB = 0106200,
-    I_BCC = 0103000,
-    I_BCS = 0103400,
-    I_BEQ = 0001400,
-    I_BGE = 0002000,
-    I_BGT = 0003000,
-    I_BHI = 0101000,
-    I_BHIS = 0103000,
-    I_BIC = 0040000,
-    I_BICB = 0140000,
-    I_BIS = 0050000,
-    I_BISB = 0150000,
-    I_BIT = 0030000,
-    I_BITB = 0130000,
-    I_BLE = 0003400,
-    I_BLO = 0103400,
-    I_BLOS = 0101400,
-    I_BLT = 0002400,
-    I_BMI = 0100400,
-    I_BNE = 0001000,
-    I_BPL = 0100000,
-    I_BPT = 0000003,
-    I_BR = 0000400,
-    I_BVC = 0102000,
-    I_BVS = 0102400,
-    I_CALL = 0004700,
-    I_CALLR = 0000100,
-    I_CCC = 0000257,
-    I_CLC = 0000241,
-    I_CLN = 0000250,
-    I_CLR = 0005000,
-    I_CLRB = 0105000,
-    I_CLV = 0000242,
-    I_CLZ = 0000244,
-    I_CMP = 0020000,
-    I_CMPB = 0120000,
-    I_COM = 0005100,
-    I_COMB = 0105100,
-    I_DEC = 0005300,
-    I_DECB = 0105300,
-    I_DIV = 0071000,
-    I_EMT = 0104000,
-    I_FADD = 0075000,
-    I_FDIV = 0075030,
-    I_FMUL = 0075020,
-    I_FSUB = 0075010,
-    I_HALT = 0000000,
-    I_INC = 0005200,
-    I_INCB = 0105200,
-    I_IOT = 0000004,
-    I_JMP = 0000100,
-    I_JSR = 0004000,
-    I_MARK = 0006400,
-    I_MED6X = 0076600,
-    I_MED74C = 0076601,
-    I_MFPD = 0106500,
-    I_MFPI = 0006500,
-    I_MFPS = 0106700,
-    I_MOV = 0010000,
-    I_MOVB = 0110000,
-    I_MTPD = 0106600,
-    I_MTPI = 0006600,
-    I_MTPS = 0106400,
-    I_MUL = 0070000,
-    I_NEG = 0005400,
-    I_NEGB = 0105400,
-    I_NOP = 0000240,
-    I_RESET = 0000005,
-    I_RETURN = 0000207,
-    I_ROL = 0006100,
-    I_ROLB = 0106100,
-    I_ROR = 0006000,
-    I_RORB = 0106000,
-    I_RTI = 0000002,
-    I_RTS = 0000200,
-    I_RTT = 0000006,
-    I_SBC = 0005600,
-    I_SBCB = 0105600,
-    I_SCC = 0000277,
-    I_SEC = 0000261,
-    I_SEN = 0000270,
-    I_SEV = 0000262,
-    I_SEZ = 0000264,
-    I_SOB = 0077000,
-    I_SPL = 0000230,
-    I_SUB = 0160000,
-    I_SWAB = 0000300,
-    I_SXT = 0006700,
-    I_TRAP = 0104400,
-    I_TST = 0005700,
-    I_TSTB = 0105700,
-    I_WAIT = 0000001,
-    I_XFC = 0076700,
-    I_XOR = 0074000,
-    I_MFPT = 0000007,
-    /* CIS not implemented - maybe later */
-    /* FPU */
-    I_ABSD = 0170600,
-    I_ABSF = 0170600,
-    I_ADDD = 0172000,
-    I_ADDF = 0172000,
-    I_CFCC = 0170000,
-    I_CLRD = 0170400,
-    I_CLRF = 0170400,
-    I_CMPD = 0173400,
-    I_CMPF = 0173400,
-    I_DIVD = 0174400,
-    I_DIVF = 0174400,
-    I_LDCDF = 0177400,
-    I_LDCFD = 0177400,
-    I_LDCID = 0177000,
-    I_LDCIF = 0177000,
-    I_LDCLD = 0177000,
-    I_LDCLF = 0177000,
-    I_LDD = 0172400,
-    I_LDEXP = 0176400,
-    I_LDF = 0172400,
-    I_LDFPS = 0170100,
-    I_MODD = 0171400,
-    I_MODF = 0171400,
-    I_MULD = 0171000,
-    I_MULF = 0171000,
-    I_NEGD = 0170700,
-    I_NEGF = 0170700,
-    I_SETD = 0170011,
-    I_SETF = 0170001,
-    I_SETI = 0170002,
-    I_SETL = 0170012,
-    I_STA0 = 0170005,
-    I_STB0 = 0170006,
-    I_STCDF = 0176000,
-    I_STCDI = 0175400,
-    I_STCDL = 0175400,
-    I_STCFD = 0176000,
-    I_STCFI = 0175400,
-    I_STCFL = 0175400,
-    I_STD = 0174000,
-    I_STEXP = 0175000,
-    I_STF = 0174000,
-    I_STFPS = 0170200,
-    I_STST = 0170300,
-    I_SUBD = 0173000,
-    I_SUBF = 0173000,
-    I_TSTD = 0170500,
-    I_TSTF = 0170500
-};
+/*
+ * Instruction opcodes are macros rather than enum members because
+ * old 16-bit PDP-11 compilers store enums in signed int, which
+ * overflows for values above 077777.
+ */
+#define I_ADC 0005500
+#define I_ADCB (-072300)
+#define I_ADD 0060000
+#define I_ASH 0072000
+#define I_ASHC 0073000
+#define I_ASL 0006300
+#define I_ASLB (-071500)
+#define I_ASR 0006200
+#define I_ASRB (-071600)
+#define I_BCC (-075000)
+#define I_BCS (-074400)
+#define I_BEQ 0001400
+#define I_BGE 0002000
+#define I_BGT 0003000
+#define I_BHI (-077000)
+#define I_BHIS (-075000)
+#define I_BIC 0040000
+#define I_BICB (-040000)
+#define I_BIS 0050000
+#define I_BISB (-030000)
+#define I_BIT 0030000
+#define I_BITB (-050000)
+#define I_BLE 0003400
+#define I_BLO (-074400)
+#define I_BLOS (-076400)
+#define I_BLT 0002400
+#define I_BMI (-077400)
+#define I_BNE 0001000
+#define I_BPL (-077777-1)
+#define I_BPT 0000003
+#define I_BR 0000400
+#define I_BVC (-076000)
+#define I_BVS (-075400)
+#define I_CALL 0004700
+#define I_CALLR 0000100
+#define I_CCC 0000257
+#define I_CLC 0000241
+#define I_CLN 0000250
+#define I_CLR 0005000
+#define I_CLRB (-073000)
+#define I_CLV 0000242
+#define I_CLZ 0000244
+#define I_CMP 0020000
+#define I_CMPB (-060000)
+#define I_COM 0005100
+#define I_COMB (-072700)
+#define I_DEC 0005300
+#define I_DECB (-072500)
+#define I_DIV 0071000
+#define I_EMT (-074000)
+#define I_FADD 0075000
+#define I_FDIV 0075030
+#define I_FMUL 0075020
+#define I_FSUB 0075010
+#define I_HALT 0000000
+#define I_INC 0005200
+#define I_INCB (-072600)
+#define I_IOT 0000004
+#define I_JMP 0000100
+#define I_JSR 0004000
+#define I_MARK 0006400
+#define I_MED6X 0076600
+#define I_MED74C 0076601
+#define I_MFPD (-071300)
+#define I_MFPI 0006500
+#define I_MFPS (-071100)
+#define I_MOV 0010000
+#define I_MOVB (-070000)
+#define I_MTPD (-071200)
+#define I_MTPI 0006600
+#define I_MTPS (-071400)
+#define I_MUL 0070000
+#define I_NEG 0005400
+#define I_NEGB (-072400)
+#define I_NOP 0000240
+#define I_RESET 0000005
+#define I_RETURN 0000207
+#define I_ROL 0006100
+#define I_ROLB (-071700)
+#define I_ROR 0006000
+#define I_RORB (-072000)
+#define I_RTI 0000002
+#define I_RTS 0000200
+#define I_RTT 0000006
+#define I_SBC 0005600
+#define I_SBCB (-072200)
+#define I_SCC 0000277
+#define I_SEC 0000261
+#define I_SEN 0000270
+#define I_SEV 0000262
+#define I_SEZ 0000264
+#define I_SOB 0077000
+#define I_SPL 0000230
+#define I_SUB (-020000)
+#define I_SWAB 0000300
+#define I_SXT 0006700
+#define I_TRAP (-073400)
+#define I_TST 0005700
+#define I_TSTB (-072100)
+#define I_WAIT 0000001
+#define I_XFC 0076700
+#define I_XOR 0074000
+#define I_MFPT 0000007
+/* CIS not implemented - maybe later */
+/* FPU */
+#define I_ABSD (-07200)
+#define I_ABSF (-07200)
+#define I_ADDD (-06000)
+#define I_ADDF (-06000)
+#define I_CFCC (-010000)
+#define I_CLRD (-07400)
+#define I_CLRF (-07400)
+#define I_CMPD (-04400)
+#define I_CMPF (-04400)
+#define I_DIVD (-03400)
+#define I_DIVF (-03400)
+#define I_LDCDF (-0400)
+#define I_LDCFD (-0400)
+#define I_LDCID (-01000)
+#define I_LDCIF (-01000)
+#define I_LDCLD (-01000)
+#define I_LDCLF (-01000)
+#define I_LDD (-05400)
+#define I_LDEXP (-01400)
+#define I_LDF (-05400)
+#define I_LDFPS (-07700)
+#define I_MODD (-06400)
+#define I_MODF (-06400)
+#define I_MULD (-07000)
+#define I_MULF (-07000)
+#define I_NEGD (-07100)
+#define I_NEGF (-07100)
+#define I_SETD (-07767)
+#define I_SETF (-07777)
+#define I_SETI (-07776)
+#define I_SETL (-07766)
+#define I_STA0 (-07773)
+#define I_STB0 (-07772)
+#define I_STCDF (-02000)
+#define I_STCDI (-02400)
+#define I_STCDL (-02400)
+#define I_STCFD (-02000)
+#define I_STCFI (-02400)
+#define I_STCFL (-02400)
+#define I_STD (-04000)
+#define I_STEXP (-03000)
+#define I_STF (-04000)
+#define I_STFPS (-07600)
+#define I_STST (-07500)
+#define I_SUBD (-05000)
+#define I_SUBF (-05000)
+#define I_TSTD (-07300)
+#define I_TSTF (-07300)
 
-enum operand_codes { OC_MASK = 0xff00,
-    /* mask over flags for operand types */
-    OC_NONE = 0x0000,
-    /* No operands */
-    OC_1GEN = 0x0100,
-    /* One general operand (CLR, TST, etc.) */
-    OC_2GEN = 0x0200,
-    /* Two general operand (MOV, CMP, etc.) */
-    OC_BR = 0x0300,
-    /* Branch */
-    OC_ASH = 0x0400,
-    /* ASH and ASHC (one gen, one reg) */
-    OC_MARK = 0x0500,
-    /* MARK instruction operand */
-    OC_JSR = 0x0600,
-    /* JSR, XOR (one reg, one gen) */
-    OC_1REG = 0x0700,
-    /* FADD, FSUB, FMUL, FDIV, RTS */
-    OC_SOB = 0x0800,
-    /* SOB */
-    OC_1FIS = 0x0900,
-    /* FIS (reg, gen) */
-    OC_2FIS = 0x0a00,
-    /* FIS (gen, reg) */
-    OC__LAST = 0xff00
-};
+/* mask over flags for operand types */
+#define OC_MASK (-0400)
+#define OC_NONE 0x0000      /* No operands */
+#define OC_1GEN 0x0100      /* One general operand (CLR, TST, etc.) */
+#define OC_2GEN 0x0200      /* Two general operand (MOV, CMP, etc.) */
+#define OC_BR 0x0300        /* Branch */
+#define OC_ASH 0x0400       /* ASH and ASHC (one gen, one reg) */
+#define OC_MARK 0x0500      /* MARK instruction operand */
+#define OC_JSR 0x0600       /* JSR, XOR (one reg, one gen) */
+#define OC_1REG 0x0700      /* FADD, FSUB, FMUL, FDIV, RTS */
+#define OC_SOB 0x0800       /* SOB */
+#define OC_1FIS 0x0900      /* FIS (reg, gen) */
+#define OC_2FIS 0x0a00      /* FIS (gen, reg) */
+#define OC__LAST (-0400)
 
 
 
 /* symbol tables */
 
+#ifdef SMALL_MEMORY
+#define HASH_SIZE 127
+#else
 #define HASH_SIZE 1023
+#endif
 
 typedef struct symbol_table {
     SYMBOL         *hash[HASH_SIZE];

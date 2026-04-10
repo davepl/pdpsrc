@@ -10,6 +10,90 @@
 #include "assemble_globals.h"
 #include "object.h"
 
+#ifdef SMALL_MEMORY
+#define EXTREE_CHUNK_COUNT 64
+#define TEMP_SYMBOL_CHUNK_COUNT 64
+
+typedef struct ex_tree_chunk {
+    struct ex_tree_chunk *next;
+    unsigned        used;
+    EX_TREE         trees[EXTREE_CHUNK_COUNT];
+} EX_TREE_CHUNK;
+
+typedef struct temp_symbol_chunk {
+    struct temp_symbol_chunk *next;
+    unsigned        used;
+    SYMBOL          symbols[TEMP_SYMBOL_CHUNK_COUNT];
+} TEMP_SYMBOL_CHUNK;
+
+static EX_TREE        *free_tree_list = NULL;
+static SYMBOL         *free_temp_symbol_list = NULL;
+static EX_TREE_CHUNK  *ex_tree_chunks = NULL;
+static TEMP_SYMBOL_CHUNK *temp_symbol_chunks = NULL;
+
+static EX_TREE *alloc_ex_tree(
+    void)
+{
+    EX_TREE         *tr;
+    EX_TREE_CHUNK   *chunk;
+
+    if (free_tree_list != NULL) {
+        tr = free_tree_list;
+        free_tree_list = free_tree_list->data.child.left;
+        return tr;
+    }
+
+    chunk = ex_tree_chunks;
+    if (chunk == NULL || chunk->used >= EXTREE_CHUNK_COUNT) {
+        chunk = memcheck(malloc(sizeof(EX_TREE_CHUNK)));
+        chunk->next = ex_tree_chunks;
+        chunk->used = 0;
+        ex_tree_chunks = chunk;
+    }
+
+    tr = &chunk->trees[chunk->used++];
+    return tr;
+}
+
+static void free_ex_tree_node(
+    EX_TREE *tp)
+{
+    tp->data.child.left = free_tree_list;
+    free_tree_list = tp;
+}
+
+static SYMBOL *alloc_temp_symbol(
+    void)
+{
+    SYMBOL            *sym;
+    TEMP_SYMBOL_CHUNK *chunk;
+
+    if (free_temp_symbol_list != NULL) {
+        sym = free_temp_symbol_list;
+        free_temp_symbol_list = free_temp_symbol_list->next;
+        return sym;
+    }
+
+    chunk = temp_symbol_chunks;
+    if (chunk == NULL || chunk->used >= TEMP_SYMBOL_CHUNK_COUNT) {
+        chunk = memcheck(malloc(sizeof(TEMP_SYMBOL_CHUNK)));
+        chunk->next = temp_symbol_chunks;
+        chunk->used = 0;
+        temp_symbol_chunks = chunk;
+    }
+
+    sym = &chunk->symbols[chunk->used++];
+    return sym;
+}
+
+static void free_temp_symbol(
+    SYMBOL *sym)
+{
+    sym->next = free_temp_symbol_list;
+    free_temp_symbol_list = sym;
+}
+#endif
+
 
 /* Diagnostic: print an expression tree.  I used this in various
    places to help me diagnose parse problems, by putting in calls to
@@ -124,22 +208,43 @@ void free_tree(
     case EX_UNDEFINED_SYM:
     case EX_TEMP_SYM:
         free(tp->data.symbol->label);
-        free(tp->data.symbol);
+        if (tp->data.symbol->flags & SYMBOLFLAG_POOL)
+            free_temp_symbol(tp->data.symbol);
+        else
+            free(tp->data.symbol);
     case EX_LIT:
     case EX_SYM:
-        free(tp);
+        {
+#ifdef SMALL_MEMORY
+            free_ex_tree_node(tp);
+#else
+            free(tp);
+#endif
+        }
         break;
 
     case EX_COM:
     case EX_NEG:
         free_tree(tp->data.child.left);
-        free(tp);
+        {
+#ifdef SMALL_MEMORY
+            free_ex_tree_node(tp);
+#else
+            free(tp);
+#endif
+        }
         break;
 
     case EX_ERR:
         if (tp->data.child.left)
             free_tree(tp->data.child.left);
-        free(tp);
+        {
+#ifdef SMALL_MEMORY
+            free_ex_tree_node(tp);
+#else
+            free(tp);
+#endif
+        }
         break;
 
     case EX_ADD:
@@ -150,13 +255,42 @@ void free_tree(
     case EX_OR:
         free_tree(tp->data.child.left);
         free_tree(tp->data.child.right);
-        free(tp);
+        {
+#ifdef SMALL_MEMORY
+            free_ex_tree_node(tp);
+#else
+            free(tp);
+#endif
+        }
         break;
     }
 }
 
 /* new_temp_sym allocates a new EX_TREE entry of type "TEMPORARY
    SYMBOL" (slight semantic difference from "UNDEFINED"). */
+
+SYMBOL         *new_temp_symbol(
+    char *label,
+    SECTION *section,
+    unsigned value,
+    unsigned flags)
+{
+    SYMBOL         *sym;
+
+#ifdef SMALL_MEMORY
+    sym = alloc_temp_symbol();
+#else
+    sym = memcheck(malloc(sizeof(SYMBOL)));
+#endif
+    sym->label = memcheck(strdup(label));
+    sym->flags = flags;
+    sym->stmtno = stmtno;
+    sym->next = NULL;
+    sym->section = section;
+    sym->value = value;
+
+    return sym;
+}
 
 static EX_TREE *new_temp_sym(
     char *label,
@@ -166,14 +300,13 @@ static EX_TREE *new_temp_sym(
     SYMBOL         *sym;
     EX_TREE        *tp;
 
-    sym = memcheck(malloc(sizeof(SYMBOL)));
-    sym->label = memcheck(strdup(label));
-    sym->flags = 0;
-    sym->stmtno = stmtno;
-    sym->next = NULL;
-    sym->section = section;
-    sym->value = value;
-
+    sym = new_temp_symbol(label, section, value,
+#ifdef SMALL_MEMORY
+                          SYMBOLFLAG_POOL
+#else
+                          0
+#endif
+        );
     tp = new_ex_tree();
     tp->type = EX_TEMP_SYM;
     tp->data.symbol = sym;
@@ -664,8 +797,13 @@ EX_TREE        *evaluate(
 EX_TREE        *new_ex_tree(
     void)
 {
-    EX_TREE        *tr = memcheck(malloc(sizeof(EX_TREE)));
+    EX_TREE        *tr;
 
+#ifdef SMALL_MEMORY
+    tr = alloc_ex_tree();
+#else
+    tr = memcheck(malloc(sizeof(EX_TREE)));
+#endif
     return tr;
 }
 

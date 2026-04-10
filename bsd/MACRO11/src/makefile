@@ -4,6 +4,7 @@ CFLAGS=-O
 LDFLAGS=
 LIBM=-lm
 PORTCHECK_CFLAGS=-std=c89 -pedantic -Wdeclaration-after-statement
+SMALLCPP=-DSMALL_MEMORY
 
 MACRO11_OBJS= \
 	macro11.o \
@@ -27,13 +28,33 @@ DUMPOBJ_OBJS= \
 	rad50.o \
 	util.o
 
-all: macro11 dumpobj
+OBJ2BIN_OBJS= \
+	obj2bin.o
+
+all: macro11 dumpobj obj2bin
+
+memtrace:
+	make clean
+	make CPPFLAGS="${CPPFLAGS} -DMEMTRACE" all
 
 macro11: ${MACRO11_OBJS}
-	${CC} ${LDFLAGS} -o macro11 ${MACRO11_OBJS} ${LIBM}
+	case "`uname -s 2>/dev/null`" in \
+	Darwin) ${CC} ${LDFLAGS} -o macro11 ${MACRO11_OBJS} ${LIBM} ;; \
+	*) ${CC} -i ${LDFLAGS} -o macro11 ${MACRO11_OBJS} ${LIBM} ;; \
+	esac
+
+macro11.ovl: ${MACRO11_OBJS}
+	${CC} -i ${LDFLAGS} -o macro11 \
+		macro11.o assemble_globals.o listing.o stream2.o util.o rad50.o \
+		-Z assemble.o assemble_aux.o object.o \
+		-Z parse.o symbols.o extree.o macros.o rept_irpc.o mlb.o \
+		-Y ${LIBM} -lovc
 
 dumpobj: ${DUMPOBJ_OBJS}
 	${CC} ${LDFLAGS} -o dumpobj ${DUMPOBJ_OBJS}
+
+obj2bin: ${OBJ2BIN_OBJS}
+	${CC} ${LDFLAGS} -o obj2bin ${OBJ2BIN_OBJS}
 
 smoke: macro11
 	./macro11 test.mac
@@ -43,13 +64,14 @@ portcheck:
 	${MAKE} CC="${CC}" CPPFLAGS="${CPPFLAGS}" CFLAGS="${CFLAGS} ${PORTCHECK_CFLAGS}" LDFLAGS="${LDFLAGS}" all
 
 clean:
-	rm -f ${MACRO11_OBJS} ${DUMPOBJ_OBJS} macro11 dumpobj
+	rm -f ${MACRO11_OBJS} ${DUMPOBJ_OBJS} ${OBJ2BIN_OBJS} macro11 dumpobj obj2bin
 
 .c.o:
-	${CC} ${CPPFLAGS} ${CFLAGS} -c $<
+	${CC} ${SMALLCPP} ${CPPFLAGS} ${CFLAGS} -c $<
 
 macro11.o: macro11.c macro11.h rad50.h object.h stream2.h mlb.h util.h
 assemble.o: assemble.c assemble.h assemble_globals.h assemble_aux.h util.h mlb.h object.h listing.h parse.h symbols.h extree.h macros.h rept_irpc.h rad50.h
+	${CC} ${SMALLCPP} ${CPPFLAGS} -c assemble.c
 assemble_globals.o: assemble_globals.c assemble_globals.h object.h
 assemble_aux.o: assemble_aux.c util.h assemble_aux.h assemble_globals.h macros.h assemble.h listing.h symbols.h parse.h
 extree.o: extree.c extree.h util.h assemble_globals.h object.h
@@ -64,3 +86,4 @@ stream2.o: stream2.c util.h stream2.h
 util.o: util.c util.h
 rad50.o: rad50.c rad50.h
 dumpobj.o: dumpobj.c rad50.h util.h
+obj2bin.o: obj2bin.c object.h

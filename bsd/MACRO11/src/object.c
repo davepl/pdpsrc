@@ -40,7 +40,6 @@ DAMAGE.
 */
 
 #include <stdio.h>
-#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -982,8 +981,9 @@ int text_complex_commit_displaced(
 int write_endmod(
     FILE *fp)
 {
-    char            endmod[2] = {
-        OBJ_ENDMOD, 0
-    };
+    char            endmod[2];
+
+    endmod[0] = OBJ_ENDMOD;
+    endmod[1] = 0;
     return writerec(fp, endmod, 2);
 }

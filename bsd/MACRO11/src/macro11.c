@@ -76,6 +76,26 @@ static void enable_tf(
         list_hexout = tf;
 }
 
+static int same_icase(
+    char *left,
+    char *right)
+{
+    int             lch;
+    int             rch;
+
+    do {
+        lch = *left++;
+        rch = *right++;
+
+        if (lch >= 'a' && lch <= 'z')
+            lch += 'A' - 'a';
+        if (rch >= 'a' && rch <= 'z')
+            rch += 'A' - 'a';
+    } while (lch != 0 && lch == rch);
+
+    return lch == rch;
+}
+
 /* JH: */
 static void print_version(
     FILE *strm)
@@ -171,11 +191,11 @@ int main(
             char           *cp;
 
             cp = argv[arg] + 1;
-            if (!stricmp(cp, "h")) {
+            if (same_icase(cp, "h")) {
                 print_help();
-            } else if (!stricmp(cp, "v")) {
+            } else if (same_icase(cp, "v")) {
                 print_version(stderr);
-            } else if (!stricmp(cp, "e")) {
+            } else if (same_icase(cp, "e")) {
                 /* Followed by options to enable */
                 /* Since /SHOW and /ENABL option names don't overlap,
                    I consolidate. */
@@ -184,14 +204,14 @@ int main(
                 }
                 upcase(argv[++arg]);
                 enable_tf(argv[arg], 1);
-            } else if (!stricmp(cp, "d")) {
+            } else if (same_icase(cp, "d")) {
                 /* Followed by an option to disable */
                 if(arg >= argc-1 || !isalpha(*argv[arg+1])) {
                     usage("-d must be followed by an option to disable\n");
                 }
                 upcase(argv[++arg]);
                 enable_tf(argv[arg], 0);
-            } else if (!stricmp(cp, "m")) {
+            } else if (same_icase(cp, "m")) {
                 /* Macro library */
                 /* This option gives the name of an RT-11 compatible
                    macro library from which .MCALLed macros can be
@@ -206,7 +226,7 @@ int main(
                     exit(EXIT_FAILURE);
                 }
                 nr_mlbs++;
-            } else if (!stricmp(cp, "p")) {
+            } else if (same_icase(cp, "p")) {
                 /* P for search path */
                 /* The -p option gives the name of a directory in
                    which .MCALLed macros may be found.  */  {
@@ -228,14 +248,14 @@ int main(
                     putenv(temp);
                     arg++;
                 }
-            } else if (!stricmp(cp, "o")) {
+            } else if (same_icase(cp, "o")) {
                 /* The -o option gives the object file name (.OBJ) */
                 if(arg >= argc-1 || *argv[arg+1] == '-') {
                     usage("-o must be followed by the object file name\n");
                 }
                 ++arg;
                 objname = argv[arg];
-            } else if (!stricmp(cp, "l")) {
+            } else if (same_icase(cp, "l")) {
                 /* The option -l gives the listing file name (.LST) */
                 /* -l - enables listing to stdout. */
                 if(arg >= argc-1) {
@@ -246,7 +266,7 @@ int main(
                     lstfile = stdout;
                 else
                     lstfile = fopen(lstname, "w");
-            } else if (!stricmp(cp, "x")) {
+            } else if (same_icase(cp, "x")) {
                 /* The -x option invokes macro11 to expand the
                    contents of the registered macro libraries (see -m)
                    into individual .MAC files in the current
@@ -261,7 +281,7 @@ int main(
                 for (i = 0; i < nr_mlbs; i++)
                     mlb_extract(mlbs[i]);
                 return EXIT_SUCCESS;
-            } else if (!stricmp(cp, "ysl")) {
+            } else if (same_icase(cp, "ysl")) {
                 /* set symbol_len */
                 if (arg >= argc-1) {
                     usage("-s must be followed by a number\n");
@@ -275,7 +295,7 @@ int main(
                 }
                 symbol_len = sl;
                 }
-            } else if (!stricmp(cp, "yus")) {
+            } else if (same_icase(cp, "yus")) {
                 /* allow underscores */
                 symbol_allow_underscores = 1;
             } else {

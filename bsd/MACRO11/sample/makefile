@@ -1,6 +1,5 @@
 MACRO11=../src/macro11
-OBJ2BIN=./obj2bin.pl
-PERL=perl
+OBJ2BIN=../src/obj2bin
 
 OBJ=ATTN-11.obj
 BIN=ATTN-11.bin
@@ -20,13 +19,13 @@ SOURCES= \
 all: ${BIN}
 
 ${BIN}: ${OBJ} ${OBJ2BIN}
-	${PERL} ${OBJ2BIN} ${OBJ} --binary --rt11 --outfile=${BIN}
+	${OBJ2BIN} ${OBJ} --binary --rt11 --outfile=${BIN}
 
 ${OBJ}: ${SOURCES} ${MACRO11}
 	${MACRO11} TRAIN.MAC -o ${OBJ}
 
-${MACRO11}:
-	cd ../src && ${MAKE} macro11
+${MACRO11} ${OBJ2BIN}:
+	cd ../src && ${MAKE} macro11 obj2bin
 
 clean:
 	rm -f ${OBJ} ${BIN}
