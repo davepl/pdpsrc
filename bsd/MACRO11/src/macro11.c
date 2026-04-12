@@ -42,6 +42,10 @@ DAMAGE.
 #include <ctype.h>
 #include <assert.h>
 
+#ifndef L_tmpnam
+#define L_tmpnam 64
+#endif
+
 #include "macro11.h"
 
 #include "util.h"
@@ -52,6 +56,8 @@ DAMAGE.
 #include "listing.h"
 #include "object.h"
 #include "symbols.h"
+
+extern int      unlink();
 
 
 
@@ -133,7 +139,8 @@ static void print_help(
     printf("-m  load RT-11 compatible macro library from which\n");
     printf("    .MCALLed macros can be found.\n");
     printf("    Multiple allowed.\n");
-    printf("-o  gives the object file name (.OBJ)\n");
+    printf("-o  gives the object file name (.OBJ or .o)\n");
+    printf("-b  convert the RT-11 object stream into a 2.11BSD linkable .o\n");
     printf("-p  gives the name of a directory in which .MCALLed macros may be found.\n");
     printf("    Sets environment variable \"MCALL\".\n");
 
@@ -176,10 +183,19 @@ int main(
     TEXT_RLD        tr;
     char           *objname = NULL;
     char           *lstname = NULL;
+    char            tmpobj[L_tmpnam];
+    int             bsd_obj = 0;
+    int             convert_ok = 1;
+    char           *toolname;
+    char           *slash;
+    char            obj2bsd_path[128];
+    char            cmd[256];
     int             arg;
     int             i;
     STACK           stack;
     int             errcount;
+
+    tmpobj[0] = 0;
 
     if (argc <= 1) {
         print_help();
@@ -248,6 +264,8 @@ int main(
                     putenv(temp);
                     arg++;
                 }
+            } else if (same_icase(cp, "b") || same_icase(cp, "bsd")) {
+                bsd_obj = 1;
             } else if (same_icase(cp, "o")) {
                 /* The -o option gives the object file name (.OBJ) */
                 if(arg >= argc-1 || *argv[arg+1] == '-') {
@@ -308,7 +326,13 @@ int main(
         }
 
     if (objname) {
-        obj = fopen(objname, "wb");
+        if (bsd_obj) {
+            if (tmpnam(tmpobj) == NULL)
+                return EXIT_FAILURE;
+            obj = fopen(tmpobj, "wb");
+        } else {
+            obj = fopen(objname, "wb");
+        }
         if (obj == NULL)
             return EXIT_FAILURE;
     }
@@ -406,6 +430,27 @@ int main(
 
     if (obj != NULL)
         fclose(obj);
+
+    if (bsd_obj && objname != NULL) {
+        obj2bsd_path[0] = 0;
+        toolname = argv[0];
+        slash = strrchr(toolname, '/');
+        if (slash != NULL) {
+            memcpy(obj2bsd_path, toolname, slash - toolname + 1);
+            obj2bsd_path[slash - toolname + 1] = 0;
+            strcat(obj2bsd_path, "obj2bsd");
+        } else {
+            strcpy(obj2bsd_path, "obj2bsd");
+        }
+
+        if (errcount == 0) {
+            sprintf(cmd, "%s %s -o %s", obj2bsd_path, tmpobj, objname);
+            convert_ok = system(cmd) == 0;
+        }
+        unlink(tmpobj);
+        if (!convert_ok)
+            return EXIT_FAILURE;
+    }
 
     if (errcount > 0)
         fprintf(stderr, "%d Errors\n", errcount);

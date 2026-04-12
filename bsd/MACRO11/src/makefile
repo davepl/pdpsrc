@@ -31,7 +31,11 @@ DUMPOBJ_OBJS= \
 OBJ2BIN_OBJS= \
 	obj2bin.o
 
-all: macro11 dumpobj obj2bin
+OBJ2BSD_OBJS= \
+	obj2bsd.o \
+	obj2bsd_main.o
+
+all: macro11 dumpobj obj2bin obj2bsd
 
 memtrace:
 	make clean
@@ -50,6 +54,12 @@ macro11.ovl: ${MACRO11_OBJS}
 		-Z parse.o symbols.o extree.o macros.o rept_irpc.o mlb.o \
 		-Y ${LIBM} -lovc
 
+obj2bsd: ${OBJ2BSD_OBJS} obj2bsd.o
+	case "`uname -s 2>/dev/null`" in \
+	Darwin) ${CC} ${LDFLAGS} -o obj2bsd obj2bsd.o obj2bsd_main.o ;; \
+	*) ${CC} -i ${LDFLAGS} -o obj2bsd obj2bsd.o obj2bsd_main.o ;; \
+	esac
+
 dumpobj: ${DUMPOBJ_OBJS}
 	${CC} ${LDFLAGS} -o dumpobj ${DUMPOBJ_OBJS}
 
@@ -64,7 +74,7 @@ portcheck:
 	${MAKE} CC="${CC}" CPPFLAGS="${CPPFLAGS}" CFLAGS="${CFLAGS} ${PORTCHECK_CFLAGS}" LDFLAGS="${LDFLAGS}" all
 
 clean:
-	rm -f ${MACRO11_OBJS} ${DUMPOBJ_OBJS} ${OBJ2BIN_OBJS} macro11 dumpobj obj2bin
+	rm -f ${MACRO11_OBJS} ${DUMPOBJ_OBJS} ${OBJ2BIN_OBJS} ${OBJ2BSD_OBJS} macro11 dumpobj obj2bin obj2bsd
 
 .c.o:
 	${CC} ${SMALLCPP} ${CPPFLAGS} ${CFLAGS} -c $<
@@ -82,6 +92,8 @@ rept_irpc.o: rept_irpc.c rept_irpc.h util.h assemble_aux.h parse.h listing.h mac
 symbols.o: symbols.c symbols.h util.h assemble_globals.h listing.h
 mlb.o: mlb.c rad50.h stream2.h mlb.h macro11.h util.h
 object.o: object.c rad50.h object.h macro11.h
+obj2bsd.o: obj2bsd.c object.h obj2bsd.h
+obj2bsd_main.o: obj2bsd_main.c obj2bsd.h
 stream2.o: stream2.c util.h stream2.h
 util.o: util.c util.h
 rad50.o: rad50.c rad50.h

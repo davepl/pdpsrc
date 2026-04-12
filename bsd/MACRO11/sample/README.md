@@ -233,3 +233,8 @@ Or for a quick demo, use the WebAssembly version available here: https://dbrll.g
 
 SIMH also works, but it simulates the high level behavior (not the circuit) of a PDP-11 and runs at host CPU speed.
 It can be slowed down artificially, however the timing is not cycle-accurate, making it less suitable for performance tuning or for an authentic experience.
+
+BSD object sample:
+
+- Build a linkable 2.11BSD object with `make HELLO.o` or `../src/macro11 -b -yus HELLO.MAC -o HELLO.o`.
+- On 2.11BSD, link it with the native toolchain, for example `cc -o hello HELLO.o` if libc startup is desired.
