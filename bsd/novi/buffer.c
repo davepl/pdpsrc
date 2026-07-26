@@ -19,7 +19,7 @@ scratch(void)
 	char path[32];
 	int fd;
 
-	(void)strcpy(path, "/tmp/pico11XXXXXX");
+	(void)strcpy(path, "/tmp/noviXXXXXX");
 	fd = mkstemp(path);
 	if (fd >= 0)
 		(void)unlink(path);

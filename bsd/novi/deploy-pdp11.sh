@@ -4,7 +4,7 @@ set -euo pipefail
 
 PDP11_HOST=${PDP11_HOST:-192.168.1.26}
 PDP11_USER=${PDP11_USER:-dave}
-PDP11_REMOTE_DIR=${PDP11_REMOTE_DIR:-source/repos/pdpsrc/bsd/pico11}
+PDP11_REMOTE_DIR=${PDP11_REMOTE_DIR:-source/repos/pdpsrc/bsd/novi}
 PDP11_RUN_TESTS=${PDP11_RUN_TESTS:-0}
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 
@@ -25,7 +25,7 @@ if [[ -z ${PDP11_PASSWORD:-} ]]; then
 fi
 export PDP11_HOST PDP11_USER PDP11_PASSWORD PDP11_REMOTE_DIR PDP11_RUN_TESTS
 
-netrc_file=$(mktemp "${TMPDIR:-/tmp}/pico11-netrc.XXXXXX")
+netrc_file=$(mktemp "${TMPDIR:-/tmp}/novi-netrc.XXXXXX")
 cleanup() {
 	rm -f "$netrc_file"
 }
@@ -81,9 +81,9 @@ proc wait_for_prompt {} {
 
 proc run_remote {label command} {
 	global timeout expect_out
-	set result_pattern [format {__PICO11_%s_RC__:([0-9]+)} $label]
+	set result_pattern [format {__NOVI_%s_RC__:([0-9]+)} $label]
 	send -- "$command\r"
-	send -- "echo __PICO11_${label}_RC__:\$status\r"
+	send -- "echo __NOVI_${label}_RC__:\$status\r"
 	set old_timeout $timeout
 	set timeout 600
 	expect {

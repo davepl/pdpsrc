@@ -1,6 +1,6 @@
-# pico11
+# novi
 
-`pico11` is a small nano-like full-screen editor intended for a split-I/D
+`novi` is a small nano-like full-screen editor intended for a split-I/D
 PDP-11 running 2.11BSD.  It also builds on macOS and Linux.
 
 The document is not loaded into memory.  Two unlinked scratch files form a
@@ -32,12 +32,15 @@ make and Version 7 shell syntax.
 
 Run with:
 
-    ./pico11 [file]
+    ./novi [file]
 
-Supported commands include arrow keys, Home/End, Page Up/Page Down, `^A`,
-`^E`, `^B`, `^F`, `^P`, `^N`, `^D`, `^G` (help), `^O` (write), `^R`
-(insert file), `^W` (search), `^K` (cut), `^U` (uncut), `^C` (position),
-and `^X` (exit).
+Supported commands include arrow keys, Home/End (start/end of line), Page
+Up/Page Down (one screenful), Insert (toggle insert/overwrite mode), `^A`,
+`^E`, `^B`, `^F`, `^P`, `^N`, `^Y` (page up), `^V` (page down), `^D`,
+`^G` (help), `^O` (write), `^R` (insert file), `^W` (search), `^K` (cut),
+`^U` (uncut), `^C` (position), and `^X` (exit).  Insert mode is the default;
+overwrite mode replaces characters without consuming the newline at the end
+of a line.
 
 The display expects an ANSI/VT100-compatible terminal.  Window size is read
 with `TIOCGWINSZ`, with an 80x24 fallback.

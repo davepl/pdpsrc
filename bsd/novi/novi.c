@@ -24,6 +24,7 @@ struct editor {
 	int wanted;
 	int cutfd;
 	int cutappend;
+	int overwrite;
 	char message[MAXCOLS + 1];
 };
 
@@ -257,11 +258,13 @@ refresh(void)
 	ensure_visible();
 	term_put("\033[?25l");
 	term_move(0, 0);
-	(void)strcpy(title, "  pico11       ");
+	(void)strcpy(title, "  novi         ");
 	(void)strncat(title, E.name[0] ? E.name : "New Buffer",
 	    MAXCOLS - strlen(title));
 	if (E.text.changed)
 		(void)strncat(title, "  (modified)", MAXCOLS - strlen(title));
+	(void)strncat(title, E.overwrite ? "  [OVR]" : "  [INS]",
+	    MAXCOLS - strlen(title));
 	put_padded(title, 1);
 	body = body_rows();
 	p = E.top;
@@ -285,7 +288,7 @@ refresh(void)
 		term_move(body + 2, 0);
 		put_padded("^G Help  ^O Write Out  ^W Where Is  ^K Cut  ^U Uncut", 0);
 		term_move(body + 3, 0);
-		put_padded("^X Exit  ^R Read File  ^C Position  ^A Home  ^E End", 0);
+		put_padded("^X Exit  ^R Read  ^Y PgUp  ^V PgDn  ^A Home  ^E End  Ins Mode", 0);
 	}
 	ccol = visual_col(&E.text, cur) - E.hscroll;
 	if (ccol < 0)
@@ -354,13 +357,41 @@ move_vertical(int down)
 static void
 page_move(int down)
 {
+	off_t p;
+	off_t q;
 	int i;
 	int count;
 
 	count = body_rows() - 1;
 	for (i = 0; i < count; ++i)
 		move_vertical(down);
-	E.top = line_start(&E.text, buf_pos(&E.text));
+	p = E.top;
+	for (i = 0; i < count; ++i) {
+		if (down) {
+			q = next_line(&E.text, p);
+			if (q == p)
+				break;
+			p = q;
+		} else {
+			if (p == 0)
+				break;
+			p = line_start(&E.text, p - 1);
+		}
+	}
+	E.top = p;
+}
+
+static void
+type_character(int ch)
+{
+	off_t p;
+	int replace;
+
+	p = buf_pos(&E.text);
+	replace = E.overwrite && p < buf_size(&E.text) &&
+	    buf_get(&E.text, p) != '\n';
+	if (buf_insert(&E.text, ch) == 0 && replace)
+		(void)buf_delete(&E.text);
 }
 
 static void
@@ -516,13 +547,13 @@ help(void)
 	int row;
 	char *lines[12];
 
-	lines[0] = "pico11 help";
-	lines[1] = "Arrow keys move; Home/End and Page Up/Down work.";
-	lines[2] = "^A/^E home/end     ^P/^N up/down     ^B/^F left/right";
-	lines[3] = "^O write file      ^R insert file   ^W search";
-	lines[4] = "^K cut line        ^U uncut         ^D delete";
-	lines[5] = "^C position        ^X exit";
-	lines[6] = "";
+	lines[0] = "novi help";
+	lines[1] = "Arrows move; Home/End select line bounds; PgUp/PgDn page.";
+	lines[2] = "^Y/^V page up/down ^P/^N up/down     ^B/^F left/right";
+	lines[3] = "Ins toggles insert/overwrite mode    ^D/Del delete";
+	lines[4] = "^A/^E home/end     ^R insert file   ^W search";
+	lines[5] = "^O write file      ^K cut line      ^U uncut";
+	lines[6] = "^C position        ^X exit";
 	lines[7] = "Files are edited through disk scratch space, not held in RAM.";
 	lines[8] = "Press any key to return.";
 	lines[9] = "";
@@ -603,10 +634,13 @@ edit_loop(void)
 		} else if (key == KEY_END || key == CTRL('E')) {
 			(void)buf_seek(&E.text, line_end(&E.text, buf_pos(&E.text)));
 			E.wanted = -1;
-		} else if (key == KEY_PGUP) {
+		} else if (key == KEY_PGUP || key == CTRL('Y')) {
 			page_move(0);
-		} else if (key == KEY_PGDN) {
+		} else if (key == KEY_PGDN || key == CTRL('V')) {
 			page_move(1);
+		} else if (key == KEY_INSERT) {
+			E.overwrite = !E.overwrite;
+			message(E.overwrite ? "Overwrite mode" : "Insert mode");
 		} else if (key == KEY_DELETE || key == CTRL('D')) {
 			(void)buf_delete(&E.text);
 			E.wanted = -1;
@@ -617,7 +651,7 @@ edit_loop(void)
 			(void)buf_insert(&E.text, '\n');
 			E.wanted = -1;
 		} else if (key == '\t' || (key >= 32 && key < 256)) {
-			(void)buf_insert(&E.text, key);
+			type_character(key);
 			E.wanted = -1;
 		}
 	}
@@ -629,7 +663,7 @@ make_cutfile(void)
 	char path[32];
 	int fd;
 
-	(void)strcpy(path, "/tmp/pico11cutXXXXXX");
+	(void)strcpy(path, "/tmp/novicutXXXXXX");
 	fd = mkstemp(path);
 	if (fd >= 0)
 		(void)unlink(path);
@@ -647,19 +681,19 @@ main(int argc, char **argv)
 	E.cutfd = -1;
 	E.wanted = -1;
 	if (strlen(name) > MAXNAME) {
-		(void)fprintf(stderr, "pico11: file name too long\n");
+		(void)fprintf(stderr, "novi: file name too long\n");
 		return 1;
 	}
 	(void)strcpy(E.name, name);
 	if (buf_open(&E.text, name) < 0) {
-		(void)fprintf(stderr, "pico11: cannot open %s: %s\n", name,
+		(void)fprintf(stderr, "novi: cannot open %s: %s\n", name,
 		    strerror(errno));
 		buf_close(&E.text);
 		return 1;
 	}
 	E.cutfd = make_cutfile();
 	if (E.cutfd < 0 || term_open() < 0) {
-		(void)fprintf(stderr, "pico11: cannot initialize terminal or scratch file\n");
+		(void)fprintf(stderr, "novi: cannot initialize terminal or scratch file\n");
 		die(0);
 		return 1;
 	}

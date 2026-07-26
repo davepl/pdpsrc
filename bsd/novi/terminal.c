@@ -6,10 +6,10 @@
 #include "terminal.h"
 
 #if defined(pdp11) || defined(__pdp11__)
-#define PICO_SGTTY 1
+#define NOVI_SGTTY 1
 #endif
 
-#ifdef PICO_SGTTY
+#ifdef NOVI_SGTTY
 #include <sgtty.h>
 static struct sgttyb saved_tty;
 #else
@@ -22,7 +22,7 @@ static int opened;
 int
 term_open(void)
 {
-#ifdef PICO_SGTTY
+#ifdef NOVI_SGTTY
 	struct sgttyb t;
 
 	if (gtty(0, &saved_tty) < 0)
@@ -48,7 +48,7 @@ term_open(void)
 		return -1;
 #endif
 	opened = 1;
-	term_put("\033[?25l");
+	term_put("\033[?1049h\033[?25l");
 	return 0;
 }
 
@@ -57,8 +57,8 @@ term_close(void)
 {
 	if (!opened)
 		return;
-	term_put("\033[?25h\033[0m\033[H\033[J");
-#ifdef PICO_SGTTY
+	term_put("\033[?25h\033[0m\033[H\033[J\033[?1049l");
+#ifdef NOVI_SGTTY
 	(void)stty(0, &saved_tty);
 #else
 	(void)tcsetattr(0, TCSAFLUSH, &saved_tty);
@@ -134,13 +134,18 @@ term_key(void)
 	int a;
 	int b;
 	int c;
+	int final;
 
 	a = readone();
-	if (a != 27)
+	if (a == 27) {
+		b = readone();
+		if (b != '[' && b != 'O')
+			return 27;
+	} else if (a == 0233) {
+		b = '[';
+	} else {
 		return a;
-	b = readone();
-	if (b != '[' && b != 'O')
-		return 27;
+	}
 	c = readone();
 	if (c == 'A') return KEY_UP;
 	if (c == 'B') return KEY_DOWN;
@@ -148,15 +153,27 @@ term_key(void)
 	if (c == 'D') return KEY_LEFT;
 	if (c == 'H') return KEY_HOME;
 	if (c == 'F') return KEY_END;
+	if (b == '[' && c == 'I') return KEY_PGUP;
+	if (b == '[' && c == 'G') return KEY_PGDN;
 	if (c >= '0' && c <= '9') {
 		a = c - '0';
 		c = readone();
-		if (c >= '0' && c <= '9') {
+		while (c >= '0' && c <= '9') {
 			a = a * 10 + c - '0';
 			c = readone();
 		}
-		if (c == '~') {
+		final = c;
+		while (final >= 0 && final < 0100)
+			final = readone();
+		if (final == 'A') return KEY_UP;
+		if (final == 'B') return KEY_DOWN;
+		if (final == 'C') return KEY_RIGHT;
+		if (final == 'D') return KEY_LEFT;
+		if (final == 'H') return KEY_HOME;
+		if (final == 'F') return KEY_END;
+		if (final == '~' || final == '^' || final == '$' || final == '@') {
 			if (a == 1 || a == 7) return KEY_HOME;
+			if (a == 2) return KEY_INSERT;
 			if (a == 3) return KEY_DELETE;
 			if (a == 4 || a == 8) return KEY_END;
 			if (a == 5) return KEY_PGUP;

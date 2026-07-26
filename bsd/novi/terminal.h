@@ -10,6 +10,7 @@
 #define KEY_PGUP     262
 #define KEY_PGDN     263
 #define KEY_DELETE   264
+#define KEY_INSERT   265
 
 int term_open(void);
 void term_close(void);
