@@ -56,7 +56,7 @@ that saved final HTML and verifies publication again.
   No public load/concurrency test was repeated. Existing unrelated local
   repository edits were excluded from the source-control change.
 
-## Compact homepage follow-up (prepared September 20)
+## Compact homepage follow-up (deployed September 20)
 
 The photograph and unused image styles have been removed from the main page.
 The history section now places its heading and prose in the two columns.
@@ -79,5 +79,14 @@ confirmed the counter, terminal rendering, restored heading typography, and
 image-free layout. The full restore bundle contains the build source and
 the minified output; `deploy-page.py` provides a static-page-only update.
 
-The physical PDP was unreachable while this follow-up was prepared. Live
-deployment and HTTP byte-for-byte readback are pending its return.
+The PDP returned during preparation and the static-page-only publisher
+completed successfully. FTP and HTTP readback both exactly matched the
+13003-byte page, SHA-256
+`639e1350394a105f3d3c87dd60256481a7b91b068b2646e5d8a85fd0efd45eed`.
+The previous page was saved outside the document root, and the on-machine
+source/build files were updated. The existing FTP server supports SITE
+CHMOD and atomic replacement, so no native rebuild or shell change was
+needed. TOP returned HTTP 200 with a complete 1846-byte frame; the static
+visitor count remained 8 before and after deployment. Verified at
+2026-09-20 17:54 UTC. The temporary deployment-retry heartbeat was disabled
+after success.
