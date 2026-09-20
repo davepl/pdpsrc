@@ -3,15 +3,19 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const html = fs.readFileSync(path.join(__dirname, '../site/index.html'), 'utf8');
-const source = html.match(/\(function\(\)\{[\s\S]*?loadCount\(\);\n\}\)\(\);/)[0];
+let source;
 
 async function visit({reload = false, cookies = true, storage = true,
                       jar = {}, session = {}, fail = false} = {}) {
     const display = {textContent: ''};
     const calls = [];
     const document = {
-        getElementById: () => display,
+        getElementById: id => id === 'visitors' ? display : {
+            textContent: '', addEventListener() {}, setAttribute() {},
+        },
+        // Suppress TOP polling so these checks isolate counter requests.
+        hidden: true,
+        addEventListener() {},
         get cookie() { return cookies ? (jar.cookie || '') : ''; },
         set cookie(value) { if (cookies) jar.cookie = value.split(';')[0]; },
     };
@@ -22,7 +26,7 @@ async function visit({reload = false, cookies = true, storage = true,
             getItem(key) { if (!storage) throw Error('blocked'); return session[key]; },
             setItem(key, value) { if (!storage) throw Error('blocked'); session[key] = value; },
         },
-        setTimeout: () => 1, clearTimeout: () => {},
+        setTimeout: () => 1, clearTimeout: () => {}, setInterval: () => 1,
         async fetch(url) {
             calls.push(url);
             if (url === '/cgi-bin/visit') {
@@ -42,6 +46,14 @@ async function visit({reload = false, cookies = true, storage = true,
 }
 
 (async () => {
+  for (const filename of ['index.source.html', 'index.html']) {
+    const html = fs.readFileSync(path.join(__dirname, '../site', filename), 'utf8');
+    assert.ok(!/<img\b/i.test(html), 'Main page must not load an image');
+    assert.ok(!html.includes('pdp11.jpg'), 'Main page must not reference the photograph');
+    assert.match(html, /font:[^;{}]*clamp\(/, 'Keep the responsive heading font when minifying CSS');
+    const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
+    assert.equal(scripts.length, 1);
+    source = scripts[0][1];
     const increment = '/cgi-bin/visit', read = '/visits.txt';
     const jar = {}, session = {};
     assert.equal(await visit({jar, session}), increment);
@@ -56,5 +68,6 @@ async function visit({reload = false, cookies = true, storage = true,
     const failedJar = {};
     assert.equal(await visit({jar: failedJar, fail: true}), increment);
     assert.equal(await visit({jar: failedJar}), read, 'Interrupted response must not cause a second increment');
-    console.log('PASS: new sessions, reloads, new tabs, blocked storage, formatting, interrupted responses');
+    console.log(`PASS ${filename}: no image, new sessions, reloads, new tabs, blocked storage, formatting, interrupted responses`);
+  }
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -1,11 +1,35 @@
 # PDP-11 cached webtop website
 
-This is the recovered September 19, 2026 website for the physical Mentec
-PDP-11/83 running 2.11BSD. The sampler, CGI launcher, counter, and final
-homepage were recovered byte-for-byte from the previous deployment's saved
-files. The page includes the amber TOP display and **VISITORS: n** masthead;
-there is no public telnet/guest invitation. The original photograph and
-previous homepage are included, so no chat attachment is needed to restore it.
+This is the website for the physical Mentec PDP-11/83 running 2.11BSD,
+recovered from the September 19, 2026 deployment. The page includes the amber
+TOP display and **VISITORS: n** masthead; there is no public telnet/guest
+invitation. The main page omits the photograph and is minified to reduce
+transfer size. The original photograph remains available to the archived
+previous homepage. All source and assets needed for restoration are here.
+
+## Edit and minify the homepage
+
+Edit `site/index.source.html` on a modern Mac/Linux development machine,
+then build the committed `site/index.html`:
+
+```
+npm ci --ignore-scripts
+npm run build
+npm test
+```
+
+The pinned minifier compresses HTML, inline CSS, and inline JavaScript;
+the counter checks run against both source and generated output. Commit
+both HTML files. The existing native installer and uploader use the
+prebuilt `site/index.html`; no Node.js or minifier runs on the PDP.
+
+For a homepage-only update on an already installed system, run
+`python3 deploy-page.py 192.168.1.29`. It prompts for the existing FTP
+password, saves the previous page outside the document root, updates the
+on-machine source, and atomically publishes the prepared page with mode 644.
+It checks the result over FTP and HTTP. It does not rebuild programs or
+touch the visitor total, sampler, or HTTP server. `--password-stdin` is
+available for a credential supplied securely by an existing automation.
 
 ## Restore from this repository
 

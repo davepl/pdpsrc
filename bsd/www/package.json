@@ -1,0 +1,13 @@
+{
+  "name": "pdp11-webtop-site",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Modern-host build tools for the static PDP-11 homepage",
+  "scripts": {
+    "build": "node minify.mjs",
+    "test": "node minify.mjs --check && node tests/visitors.js"
+  },
+  "devDependencies": {
+    "html-minifier-terser": "7.2.0"
+  }
+}

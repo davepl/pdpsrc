@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="A live look inside Dave's PDP-11/83. Real 2.11BSD UNIX, a Mentec M11 processor, and a little amber phosphor. Served by the machine itself.">
+<title>PDP-11/83 — Still in the loop</title>
+<style>
+:root{color-scheme:dark;--bg:#10120f;--panel:#181c17;--ink:#e7e7d6;--muted:#a0a894;--line:#343b30;--amber:#ffb94f;--mono:ui-monospace,SFMono-Regular,Consolas,'Liberation Mono',monospace}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}a{color:inherit;text-underline-offset:5px}button{font:inherit}a:focus-visible,button:focus-visible,summary:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--amber);outline-offset:5px}.wrap{max-width:1240px;margin:auto;padding:0 40px}.mast{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);padding:24px 0;gap:20px}.brand{display:flex;align-items:center;gap:14px;text-decoration:none}.badge{font:700 28px/1 var(--mono);color:var(--bg);background:var(--ink);padding:8px 10px;letter-spacing:-3px}.wordmark{font:11px/1.5 var(--mono);text-transform:uppercase;letter-spacing:1.4px}.intro{display:flex;justify-content:space-between;align-items:flex-end;gap:45px;padding:43px 0 31px}.eyebrow{font:10px/1.6 var(--mono);letter-spacing:2px;text-transform:uppercase;color:var(--amber)}h1{font-size:clamp(40px,5vw,66px);letter-spacing:-3px;line-height:1.05;font-weight:650;margin:12px 0 10px}.hardware{font:12px/1.6 var(--mono);color:var(--muted)}.intro-copy{max-width:355px;color:var(--muted);font-size:15px;margin:0 0 2px}.intro-copy strong{color:var(--ink);font-weight:500}.bezel{background:linear-gradient(145deg,#44483a,#282d25 48%,#22271f);border:1px solid #505743;border-radius:16px;padding:16px 20px 13px;box-shadow:0 22px 65px #0005,inset 0 1px #71796066}.console-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;font:10px var(--mono);letter-spacing:1.5px;color:#c0c7ad;text-transform:uppercase;padding:2px 2px 14px}.console-label{display:flex;gap:12px;align-items:center}.console-label b{font-size:14px;font-weight:500;color:#edf0da}.led{width:6px;height:6px;background:var(--amber);border-radius:50%;box-shadow:0 0 8px #ffb94f77;display:inline-block}.screen{position:relative;background:#1a1208;border:1px solid #0a0b08;border-radius:7px;box-shadow:inset 0 0 45px #050402,inset 0 0 5px #000;overflow:hidden}.screen:after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,#00000010 2px,#00000010 4px);pointer-events:none}.screen-scroll{overflow-x:auto;padding:24px 27px 22px;position:relative;z-index:1}pre{margin:0;font:13px/1.48 var(--mono);color:var(--amber);text-shadow:0 0 6px #ffae302b;min-height:31em;white-space:pre;tab-size:8}.console-bottom{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 3px 0;font:9px/1.5 var(--mono);letter-spacing:1.7px;text-transform:uppercase;color:#aeb59c}.vents{width:102px;height:10px;background:repeating-linear-gradient(90deg,#151b13 0,#151b13 3px,transparent 3px,transparent 7px)}.status-row{display:flex;justify-content:space-between;gap:20px;align-items:center;padding:14px 3px 0;font:10px/1.6 var(--mono);color:var(--muted)}.status-row button{border:1px solid var(--line);background:transparent;border-radius:3px;color:var(--ink);padding:6px 11px;font:10px var(--mono);cursor:pointer;white-space:nowrap}.status-row button:hover{border-color:var(--muted)}.section{padding:65px 0;border-bottom:1px solid var(--line)}.story{display:grid;grid-template-columns:1fr 1fr;gap:65px;align-items:start}h2{font:normal clamp(30px,3vw,43px)/1.16 Georgia,serif;letter-spacing:-1px;margin:15px 0 21px}p{margin:0 0 16px}.body-copy{color:var(--muted);font-size:15px;max-width:490px}.cards{display:grid;grid-template-columns:repeat(3,1fr);margin-top:30px;gap:30px}.card{border-top:1px solid var(--line);padding-top:22px}.number{color:var(--amber);font:11px var(--mono)}h3{font-size:21px;letter-spacing:-.4px;margin:15px 0 5px}.type{font:9px/1.6 var(--mono);color:#bec5ad;text-transform:uppercase;letter-spacing:1px}.card p{color:var(--muted);font-size:14px;line-height:1.7;margin-top:15px}details{border-top:1px solid var(--line);padding:23px 0;margin-top:28px}summary{font-size:14px;cursor:pointer}details p{font-size:14px;color:var(--muted);margin:16px 0 0;max-width:850px}.foot{display:flex;justify-content:space-between;gap:35px;padding:33px 0 40px}.foot strong{font:normal 23px Georgia,serif}.foot p,.foot a{font:10px/1.8 var(--mono);color:var(--muted)}.foot p{margin:10px 0 0}.refs{text-align:right}.refs a{display:inline-block;margin-left:16px}.skip{position:absolute;left:20px;top:-100px}.skip:focus{top:10px;background:var(--panel);padding:10px;z-index:5}noscript p{padding:10px 0;color:var(--amber);font-size:13px}@media(min-width:1100px){pre{font-size:14px}}@media(max-width:760px){.wrap{padding:0 20px}.mast{padding:20px 0}.wordmark{font-size:9px;letter-spacing:1px}.intro{display:block;padding:32px 0 25px}h1{font-size:49px}.intro-copy{margin-top:20px;max-width:440px}.bezel{padding:12px 10px 10px;border-radius:10px}.console-bar{font-size:8px;letter-spacing:1px;padding:2px 4px 11px}.screen-scroll{padding:18px 16px}pre{font-size:11px;min-height:31em}.console-bottom{font-size:8px;letter-spacing:1px}.vents{width:63px}.status-row{font-size:9px;gap:10px}.story{grid-template-columns:1fr;gap:28px}.section{padding:44px 0}.cards{grid-template-columns:1fr;gap:14px}.card p{margin-bottom:8px}.foot{display:block}.refs{text-align:left;margin-top:22px}.refs a{margin-left:0;margin-right:16px}}@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+.visitor-count{color:var(--amber);font:11px/1.5 var(--mono);letter-spacing:1px;text-align:right;font-variant-numeric:tabular-nums}@media(max-width:760px){.visitor-count{font-size:10px;letter-spacing:.5px}}
+</style>
+</head>
+<body id="home">
+<a class="skip" href="#main">Skip to content</a>
+<div class="wrap">
+<header class="mast"><a class="brand" href="#home"><span class="badge">11</span><span class="wordmark">Dave's collection<br>Digital Equipment Corporation</span></a><div class="visitor-count" title="One visit per browser session. Refreshes do not increase the count."><span id="visitors" role="status">VISITORS: …</span></div></header>
+<main id="main">
+<section aria-labelledby="title">
+<div class="intro"><div><span class="eyebrow">Real hardware. Real UNIX. Still online.</span><h1>PDP-11/83</h1><div class="hardware">Mentec M11 &nbsp;·&nbsp; 2.11BSD &nbsp;·&nbsp; 16 bits, still in the loop</div></div><p class="intro-copy"><strong>This page was served by the machine in the listing.</strong> A small window into a working minicomputer. Your browser draws the phosphor. The PDP-11 does the work.</p></div>
+<div class="bezel"><div class="console-bar"><span class="console-label"><b>top</b><span>/ system activity</span></span><span><i class="led" aria-hidden="true"></i> &nbsp; MENTEC · 2.11BSD</span></div><div class="screen"><div class="screen-scroll" tabindex="0" role="region" aria-label="Live process snapshot; scroll horizontally on small screens"><pre id="topout">Connecting to the PDP-11…
+
+Waiting for a system snapshot.</pre></div></div><div class="console-bottom"><span>Digital Equipment Corporation</span><span class="vents" aria-hidden="true"></span><span>16-bit / UNIX</span></div></div>
+<div class="status-row"><span id="status" role="status">Awaiting snapshot · cached 5s · Mentec M11 / NOFPP</span><button id="pause" type="button" aria-pressed="false">Pause updates</button></div>
+<noscript><p>Live updates need JavaScript. <a href="/cgi-bin/webtop">Read the current plain-text snapshot.</a></p></noscript>
+</section>
+<section class="section story" id="machine"><div><span class="eyebrow">01 / A machine with presence</span><h2>Computing you can see,<br>hear, and touch.</h2></div><div class="body-copy"><p>Sixteen bits. Spinning disks. A room full of character. This PDP-11/83 is part of Dave's collection of machines built when computers came in cabinets and storage had handles.</p><p>Inside, a Mentec M11 processor brings roughly four times the speed of a stock J11. Outside, the removable disks, magnetic tape, and terminal tell the story of a different pace of computing.</p><p>The operating system is 2.11BSD UNIX. Files, processes, a shell, networking, and sendmail: familiar ideas, running on wonderfully unfamiliar hardware.</p></div></section>
+<section class="section" id="hardware"><span class="eyebrow">02 / When storage had presence</span><h2>A disk was something you could hold.</h2><div class="cards"><article class="card"><span class="number">[ 01 ]</span><h3>Two RL02 drives</h3><span class="type">Removable cartridge disks</span><p>About 10 MB per cartridge, with a physical disk pack you can lift out and put on a shelf. Swapping storage was an actual hands-on operation.</p></article><article class="card"><span class="number">[ 02 ]</span><h3>RA82</h3><span class="type">Fixed-disk storage</span><p>Around 622 MB in a serious piece of machinery. Adding disk capacity meant making room in a cabinet, not slipping a card into a slot.</p></article><article class="card"><span class="number">[ 03 ]</span><h3>TS11</h3><span class="type">Nine-track magnetic tape</span><p>Reel-to-reel storage for moving and preserving data. Tape is sequential: finding a file means physically winding your way to it. Patience was part of the interface.</p></article></div><details><summary>How does a 16-bit computer address megabytes of memory?</summary><p>A CPU's word size and the size of physical memory are different things. Memory management maps a program's smaller address space into a larger physical address space. UNIX keeps different programs in different regions of RAM; a single program does not see all that memory as one flat expanse. Working within those boundaries is part of the art of PDP-11 software.</p></details></section>
+</main>
+<footer class="foot"><div><strong>Built to compute. Kept to inspire.</strong><p>Dave's PDP-11/83 · Served by 2.11BSD<br>No external fonts, frameworks, or trackers.</p></div><div class="refs"><a href="https://www.youtube.com/@DavesGarage">Dave's Garage ↗</a><a href="https://www.bitsavers.org/pdf/dec/pdp11/handbooks/EB-29317_PDP-11_Systems_Handbook_1987.pdf">DEC handbook ↗</a><a href="https://github.com/RetroBSD/2.11BSD">2.11BSD source ↗</a><p><a href="/index.previous.html">Previous homepage</a> <a href="/cgi-bin/webtop">Plain-text snapshot</a></p></div></footer>
+</div>
+<script>
+(function(){
+'use strict';
+var display=document.getElementById('visitors');
+var marker='pdp11_visit_v1',countVisit=false;
+var navigation=window.performance&&performance.getEntriesByType?performance.getEntriesByType('navigation')[0]:null;
+var reload=navigation?navigation.type==='reload':!!(window.performance&&performance.navigation&&performance.navigation.type===1);
+var seen=false,remembered=false;
+try{seen=('; '+document.cookie).indexOf('; '+marker+'=1')>=0;}catch(error){}
+try{seen=seen||sessionStorage.getItem(marker)==='1';}catch(error){}
+if(!seen){
+    /* Reserve this session before the request: an interrupted response or
+       a subsequent reload must not cause another increment. No expiry
+       makes this a browser-session cookie, not a permanent identifier. */
+    try{
+        document.cookie=marker+'=1; Path=/; SameSite=Lax';
+        remembered=('; '+document.cookie).indexOf('; '+marker+'=1')>=0;
+    }catch(error){}
+    try{sessionStorage.setItem(marker,'1');remembered=remembered||sessionStorage.getItem(marker)==='1';}catch(error){}
+    /* If storage is disabled, only read the total to avoid counting reloads. */
+    countVisit=remembered&&!reload;
+}
+async function loadCount(){
+    var controller=new AbortController();
+    var timeout=setTimeout(function(){controller.abort();},12000);
+    try{
+        var response=await fetch(countVisit?'/cgi-bin/visit':'/visits.txt',{cache:'no-store',credentials:'omit',signal:controller.signal});
+        if(!response.ok)throw new Error('Count unavailable');
+        var text=await response.text();
+        if(text.length>32||!/^\d+\s*$/.test(text))throw new Error('Invalid count');
+        display.textContent='VISITORS: '+Number(text).toLocaleString('en-US');
+    }catch(error){display.textContent='VISITORS: unavailable';}
+    finally{clearTimeout(timeout);}
+}
+loadCount();
+})();
+
+(function(){
+'use strict';
+var output=document.getElementById('topout'),status=document.getElementById('status'),button=document.getElementById('pause');
+var paused=false,busy=false,hasFrame=false,received=0,age=0,failed=false,lastAttempt=0;
+function drawStatus(){
+var state=paused?'Updates paused':failed?'Connection interrupted':document.hidden?'Updates paused while hidden':'';
+var elapsed=hasFrame?'snapshot age '+Math.max(0,Math.floor(age+(Date.now()-received)/1000))+'s':'Awaiting snapshot';
+status.textContent=(state?state+' · ':'')+elapsed+' · cached 5s · Mentec M11 / NOFPP';
+}
+async function refresh(){
+if(paused||busy||document.hidden||Date.now()-lastAttempt<5000)return;
+busy=true;lastAttempt=Date.now();var controller=new AbortController();var timeout=setTimeout(function(){controller.abort();},12000);
+try{
+var response=await fetch('/cgi-bin/webtop',{cache:'no-store',credentials:'omit',signal:controller.signal});
+if(!response.ok)throw new Error('Snapshot unavailable');
+var text=await response.text();
+if(text.indexOf('Tasks:')<0||text.length>8192)throw new Error('Invalid snapshot');
+output.textContent=text;age=Number(response.headers.get('X-Snapshot-Age'))||0;received=Date.now();hasFrame=true;failed=false;
+}catch(error){failed=true;if(!hasFrame)output.textContent='The PDP-11 is not answering right now.\n\nWe will try again in a few seconds.\nThe rest of the collection is below.';}
+finally{clearTimeout(timeout);busy=false;drawStatus();}
+}
+button.addEventListener('click',function(){paused=!paused;button.textContent=paused?'Resume updates':'Pause updates';button.setAttribute('aria-pressed',String(paused));drawStatus();if(!paused)refresh();});
+document.addEventListener('visibilitychange',function(){drawStatus();if(!document.hidden)refresh();});
+refresh();setInterval(refresh,5000);setInterval(drawStatus,1000);
+})();
+</script>
+</body>
+</html>

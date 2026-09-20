@@ -14,7 +14,8 @@ FILES = (
     "webtop-cgi.c", "visit-counter.c", "site/index.html",
     "site/index.previous.html", "site/pdp11.jpg", "server/httpd.c",
     "server/Makefile", "server/LICENSE", "config/inetd.http",
-    "config/services.http", "tests/visitors.js",
+    "config/services.http", "tests/visitors.js", "site/index.source.html",
+    "minify.mjs", "package.json", "package-lock.json", "deploy-page.py",
 )
 
 

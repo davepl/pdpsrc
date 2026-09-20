@@ -55,3 +55,29 @@ that saved final HTML and verifies publication again.
 - No kernel, network, httpd binary, inetd configuration, or account change.
   No public load/concurrency test was repeated. Existing unrelated local
   repository edits were excluded from the source-control change.
+
+## Compact homepage follow-up (prepared September 20)
+
+The photograph and unused image styles have been removed from the main page.
+The history section now places its heading and prose in the two columns.
+The image is retained only for the archived previous homepage.
+
+`site/index.source.html` is the editable source; `npm run build` generates
+the committed `site/index.html` using the pinned minifier and lockfile.
+HTML, CSS, and JavaScript are minified on the development machine, with no
+extra work on the PDP. CSS level 1 preserves the responsive `clamp()` font;
+the more aggressive level 2 was found to discard that declaration.
+
+The final HTML is 13003 bytes, versus 15300 bytes before this change (15.0%
+smaller). Removing the 82029-byte photograph reduces combined HTML/image
+transfer from 97329 to 13003 bytes (86.6%), excluding TOP/counter responses.
+The main page contains no image element or reference to the photograph.
+
+The reproducible build check and visitor-counter tests passed for both
+readable and minified pages. A local browser preview with recorded TOP data
+confirmed the counter, terminal rendering, restored heading typography, and
+image-free layout. The full restore bundle contains the build source and
+the minified output; `deploy-page.py` provides a static-page-only update.
+
+The physical PDP was unreachable while this follow-up was prepared. Live
+deployment and HTTP byte-for-byte readback are pending its return.
