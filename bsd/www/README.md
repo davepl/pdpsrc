@@ -92,6 +92,38 @@ install target as root. Preserve the existing `www` account and writable
 `/usr/adm/httpd.log`; merge the two HTTP configuration entries if needed.
 Reload inetd only if its configuration was changed.
 
+### First installation on a different 2.11BSD host
+
+The September 20 deployment to `192.168.1.26` needed these additional steps:
+that patch-481 host had no `www` account, and its existing server used
+`/var/www` with inetd running it as `nobody`. Back up the existing runtime
+with `sh backup.sh` first, and separately archive `/var/www` if present;
+the regular backup script covers `/home/www`, not another server's root.
+
+Check that the `www` name and uid 80 are unused, group `staff` has gid 10,
+and `/bin/false` exists before creating the locked service account. On the
+tested native system the account tool is `/bin/chpass`:
+
+```
+/bin/chpass -a 'www:*:80:10::0:0:Web server:/home/www:/bin/false'
+id www
+```
+
+Wait for the password database rebuild to finish if `id` does not yet find
+the account. Preserve an existing `www` account instead of recreating it.
+Build and install the website normally, then build `server/`. Publish its
+binary by installing to `/usr/libexec/httpd.webtop` with `install -s -m 755`
+and renaming it to `/usr/libexec/httpd`; this avoids overwriting an executable
+that an existing request is still using. Ensure `/usr/adm/httpd.log` exists,
+is owned by `www:staff`, and has mode 644, as in the server Makefile.
+
+Merge `config/inetd.http` into the existing HTTP entry, preserving other
+services, and confirm `http 80/tcp` exists in `/etc/services`. Reload the
+actual running inetd with SIGHUP. Verify the homepage, both CGI programs,
+static counter reads, and browser reload behavior before taking and copying
+off a new runtime backup. No kernel or operating-system upgrade is required
+for this installation.
+
 ## Preserve runtime state off the PDP
 
 ```

@@ -90,3 +90,32 @@ needed. TOP returned HTTP 200 with a complete 1846-byte frame; the static
 visitor count remained 8 before and after deployment. Verified at
 2026-09-20 17:54 UTC. The temporary deployment-retry heartbeat was disabled
 after success.
+
+## Complete deployment to 192.168.1.26 (September 20)
+
+- Target identifies as `simh`, 2.11BSD patch 481, kernel `MINERVA #15`,
+  with 4088 KiB physical RAM. This is a different target from the earlier
+  physical machine at `.29`; the saved website content was deployed intact.
+- Uploaded the complete source bundle to `/usr/src/local/webtop` and built
+  all three programs plus the preserved HTTP server with the native compiler.
+- Backed up the original server/configuration and `/var/www` before replacing
+  the server. Created locked `www` uid 80, gid 10 after checking for conflicts;
+  changed only the HTTP inetd entry from `nobody` to `www` and reloaded inetd.
+  The preserved server uses `/home/www`. No OS or kernel update was made.
+- Installation and cache warm-up succeeded. Verified helper root/4711,
+  CGI executables root/755, counter directory www/700, and counter files
+  www/600. No previous visitor directory existed on this target.
+- Homepage HTTP 200 readback exactly matched the saved 13003-byte minified
+  page, SHA-256
+  `639e1350394a105f3d3c87dd60256481a7b91b068b2646e5d8a85fd0efd45eed`.
+- TOP returned HTTP 200, a complete 1841-byte live frame, `Cache-Control:
+  no-store`, and `X-Snapshot-Age`. Two immediate native helper calls returned
+  identical frames (`cmp` exit 0).
+- Static counter read initially returned zero. A real browser displayed
+  **VISITORS: 1** and live TOP data; refreshing retained **VISITORS: 1**.
+  Pause stopped the updates. Source and minified visitor tests passed.
+- Predeployment backup directory:
+  `/usr/src/local/webtop/backups/Sun_Sep_20_15_00_06_PDT_2026-201`.
+  Installed runtime backup directory:
+  `/usr/src/local/webtop/backups/Sun_Sep_20_15_03_18_PDT_2026-399`.
+  The predeployment backup also contains `previous-webroot.tar` for `/var/www`.
