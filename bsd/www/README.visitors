@@ -1,0 +1,39 @@
+PDP-11 visitor counter — installed 2026-09-19
+
+Display: VISITORS: n replaces THE MACHINE in the top masthead.
+Count: approximate browser sessions since installation, not unique people.
+One increment per browser-session cookie, with sessionStorage as fallback.
+Reload navigation never increments. TOP refreshes never call the counter.
+Cookies/session storage blocked: read only. No identity or IP list is stored.
+Different browsers and hostnames can count separately. JavaScript is needed.
+The session marker is reserved before the request to avoid double counting an
+interrupted response. Failed first visits can therefore be missed. Simultaneous
+first loads in different tabs may race. This is a lightweight visit estimate.
+
+Paths:
+  /usr/src/local/webtop/visit-counter.c  K&R, integer-only source
+  /home/www/cgi-bin/visit               non-setuid, root-owned executable 755
+  /home/www-visits/                     www-owned private directory, 700
+  /home/www-visits/total                www-owned persistent count, 600
+  /home/www-visits/lock                 www-owned stable flock file, 600
+  /home/www-visits/total.new            temporary atomic replacement
+  /home/www/visits.txt                  symlink to private total; httpd is www
+  /usr/src/local/webtop/index.before-visitors.html  homepage backup
+
+Build on 2.11BSD:
+  cd /usr/src/local/webtop
+  cc -O -o visit-counter visit-counter.c
+
+Updates use flock, fsync, and rename. An eight-second alarm bounds the complete
+CGI lifetime including lock waits and writes. Missing/corrupt/overflowed totals
+return 503; they are never silently reset. The static total is fixed-width
+(10 decimal digits + newline) to keep Content-Length stable during increments.
+The display removes leading zeroes and uses thousands separators.
+
+Back up /home/www-visits/total with the system. Do not reset it on redeployment.
+Use a graceful shutdown for normal filesystem durability. This does not claim
+a guarantee against arbitrary power loss or disk/filesystem damage.
+
+The existing httpd, inetd, network settings, and TOP refresh rate are unchanged.
+A caller can increment by requesting the CGI directly; this is not a fraud-
+resistant analytics system. No ongoing counter polling or separate daemon.

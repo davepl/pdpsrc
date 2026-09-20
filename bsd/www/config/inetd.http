@@ -1,0 +1,2 @@
+# Existing service on mentec. Merge this one entry if restoring inetd.
+http    stream  tcp     nowait  www     /usr/libexec/httpd      httpd

@@ -1,0 +1,10 @@
+/webtop
+/webtop-cgi
+/visit-counter
+/server/httpd
+/backups/
+/dist/
+*.o
+core
+.DS_Store
+__pycache__/
