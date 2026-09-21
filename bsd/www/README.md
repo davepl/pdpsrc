@@ -159,6 +159,12 @@ per request or fix the network driver. Use a few serial checks, not a load
 test against the physical machine. The historical concurrency test is
 recorded in `VERIFICATION.md`.
 
+The public site now uses Varnish on `caddy` (`192.168.1.45`). Its preserved
+configuration and cache-preserving deployment instructions are in
+[`config/README.varnish.md`](config/README.varnish.md). Homepage tracking
+queries such as Facebook's `fbclid` share the ordinary homepage cache entry.
+This proxy configuration is separate from the native PDP installation.
+
 For the browser's refresh/session-count logic, run on a modern host:
 
 ```

@@ -16,6 +16,7 @@ FILES = (
     "server/Makefile", "server/LICENSE", "config/inetd.http",
     "config/services.http", "tests/visitors.js", "site/index.source.html",
     "minify.mjs", "package.json", "package-lock.json", "deploy-page.py",
+    "config/varnish.vcl", "config/README.varnish.md", "tests/varnish.py",
 )
 
 
