@@ -1,5 +1,6 @@
 # Merge this block into caddy's existing Caddyfile; preserve its other sites.
 # The router's public TCP port 80 forwards to caddy (192.168.1.45), not the PDP.
+# Choose the Varnish origin on caddy with: pdp-backend auto / 26 / 29 / status.
 http://pdp1173.com, http://www.pdp1173.com, http://davepl.dyndns.org {
     reverse_proxy 127.0.0.1:6081
 }

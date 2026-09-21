@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """Exercise the actual VCL with a fake origin; never contacts the PDP."""
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 
 
 vcl = (Path(__file__).resolve().parents[1] / "config/varnish.vcl").read_text()
-assert vcl.count('"192.168.1.26"') == 1
-assert vcl.count('.port = "80";') == 1
-vcl = vcl.replace('"192.168.1.26"', '"${s1_addr}"')
-vcl = vcl.replace('.port = "80";', '.port = "${s1_port}";')
+vcl = re.sub(r'probe pdp_health\s*\{[^}]*\}', '', vcl)
+# Keep the regression's deterministic single fake server, without probes.
+# Actual independent probes and failover are exercised in failover.py.
+for name in ('pdp29', 'pdp26', 'visitors'):
+    vcl, count = re.subn(r'backend ' + name + r'\s*\{[^}]*\}',
+        'backend ' + name + ' { .host = "${s1_addr}"; .port = "${s1_port}"; }', vcl)
+    assert count == 1
 
 scenario = r'''
 varnishtest "Homepage and public TOP share cache; visitor increments and auth pass"
@@ -36,6 +40,14 @@ server s1 {
     rxreq
     expect req.url == "/cgi-bin/visit"
     txresp -hdr "Cache-Control: no-store" -body "next counter"
+    accept
+    rxreq
+    expect req.url == "/visits.txt"
+    txresp -body "0000005529\n"
+    accept
+    rxreq
+    expect req.url == "/visits.txt"
+    txresp -body "0000005530\n"
     accept
     rxreq
     expect req.url == "/cgi-bin/webtop"
@@ -122,6 +134,18 @@ client c1 {
     expect resp.body == "next counter"
     expect resp.http.X-Cache == "PASS"
 
+    txreq -url "/visits.txt" -hdr "Host: pdp1173.com"
+    rxresp
+    expect resp.body == "0000005529\n"
+    expect resp.http.X-Cache == "PASS"
+    expect resp.http.Cache-Control == "no-store"
+
+    txreq -url "/visits.txt" -hdr "Host: pdp1173.com"
+    rxresp
+    expect resp.body == "0000005530\n"
+    expect resp.http.X-Cache == "PASS"
+    expect resp.http.Cache-Control == "no-store"
+
     txreq -url "/cgi-bin/webtop" -hdr "Host: pdp1173.com" -hdr "Authorization: Bearer test-only"
     rxresp
     expect resp.body == "authenticated snapshot"
@@ -205,4 +229,4 @@ with tempfile.TemporaryDirectory(prefix="webtop-vcl-test-") as directory:
         if result.returncode:
             print(result.stdout + result.stderr)
         result.check_returncode()
-print("PASS: homepage normalization, shared TOP and host aliases, refresh/failure handling, snapshot age, uncached increments, CGI queries, authorization, host/method guards")
+print("PASS: homepage normalization, shared TOP and host aliases, refresh/failure handling, snapshot age, uncached increments and counter reads, CGI queries, authorization, host/method guards")

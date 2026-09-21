@@ -1,0 +1,26 @@
+[Unit]
+Description=Shared PDP website visitor counter
+After=network.target
+
+[Service]
+User=pdp-visitors
+Group=pdp-visitors
+StateDirectory=pdp-visitors
+StateDirectoryMode=0700
+UMask=0077
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /usr/local/libexec/pdp-visitors.py serve
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_UNIX
+MemoryMax=96M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target
