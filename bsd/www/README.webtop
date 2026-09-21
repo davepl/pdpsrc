@@ -1,6 +1,6 @@
-WEBTOP ON MENTEC -- installed 2026-09-19
+TMOG-11 ON THE PDP -- updated 2026-09-21
 
-The homepage and the live top frame are served by the real PDP-11/83.
+The homepage and the live TMOG-11 frame are served by the real PDP-11/83.
 No kernel, inetd configuration, httpd binary, or login accounts were changed.
 
 FILES
@@ -8,7 +8,7 @@ FILES
   /usr/src/local/webtop/webtop-cgi.c   fixed unprivileged CGI launcher
   /usr/local/libexec/webtop           root-owned sampler, mode 4711
   /home/www/cgi-bin/webtop            root-owned CGI launcher, mode 755
-  /home/www/index.html                homepage (about 14 KB)
+  /home/www/index.html                homepage (15,484 bytes)
   /home/www/index.html.bak            exact original homepage backup
   /home/www/index.previous.html       viewable copy of the old homepage
   /home/www/pdp11.jpg.bak             original photograph backup
@@ -108,3 +108,8 @@ page uses measured RAM in the live listing rather than repeating 4 MB.
 VISITOR COUNTER (2026-09-19)
 The masthead now displays VISITORS: n in place of THE MACHINE.
 See README.visitors for counter paths, session semantics and persistence.
+
+AUTOMATIC FAILOVER
+The proxy prefers .29, falls back to .26, and identifies the serving PDP in
+the panel. The public visitor total is on caddy and shared by both machines.
+See config/README.varnish.md and README.visitors for restoration instructions.

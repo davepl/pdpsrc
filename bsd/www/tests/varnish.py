@@ -7,11 +7,13 @@ import tempfile
 
 
 vcl = (Path(__file__).resolve().parents[1] / "config/varnish.vcl").read_text()
-backend = re.compile(r'(backend pdp\s*\{\s*\.host\s*=\s*)"192\.168\.1\.(?:26|29)"')
-assert len(backend.findall(vcl)) == 1
-assert vcl.count('.port = "80";') == 1
-vcl = backend.sub(lambda m: m.group(1) + '"${s1_addr}"', vcl)
-vcl = vcl.replace('.port = "80";', '.port = "${s1_port}";')
+vcl = re.sub(r'probe pdp_health\s*\{[^}]*\}', '', vcl)
+# Keep the regression's deterministic single fake server, without probes.
+# Actual independent probes and failover are exercised in failover.py.
+for name in ('pdp29', 'pdp26', 'visitors'):
+    vcl, count = re.subn(r'backend ' + name + r'\s*\{[^}]*\}',
+        'backend ' + name + ' { .host = "${s1_addr}"; .port = "${s1_port}"; }', vcl)
+    assert count == 1
 
 scenario = r'''
 varnishtest "Homepage and public TOP share cache; visitor increments and auth pass"

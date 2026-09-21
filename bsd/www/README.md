@@ -1,17 +1,18 @@
-# PDP-11 cached webtop website
+# PDP-11 TMOG-11 website
 
 This is the website for Dave's Mentec PDP-11/83 collection, served by 2.11BSD.
-The original red-and-gold layout has been restored, with the amber TOP display
+The original red-and-gold layout has been restored, with the amber TMOG-11 display
 above the main content and **VISITORS: n** in the masthead. A responsive TMOG
-banner immediately below TOP links to `https://tmog.org/`. Its 1440×480 JPEG
+banner immediately below TMOG-11 links to `https://tmog.org/`. Its 1440×480 JPEG
 is 167,696 bytes; the original PNG is preserved in `archive/`.
-There is no public telnet/guest invitation. The HTML is minified to 15,234 bytes. The restored
+There is no public telnet/guest invitation. The HTML is minified to 15,484 bytes. The restored
 640×360 photograph is 101,511 bytes, below the requested 105,000-byte limit,
 and loads lazily. Lossless JPEG optimization preserved its decoded pixels.
 Both previous designs and the untouched original photograph are retained in
 [`archive/`](archive/README.md). All source and assets needed for restoration
 are here. The complete application is deployed at both `192.168.1.26` and
-`192.168.1.29`. Each host maintains its own visitor total. The September 21
+`192.168.1.29`. Both hosts use one persistent visitor total on the proxy at `.45`. Automatic
+failover prefers `.29`, uses `.26` when needed, and returns to `.29` on recovery. The September 21
 installation on `.29` is recorded in
 [`deployments/2026-09-21-192.168.1.29.md`](deployments/2026-09-21-192.168.1.29.md).
 
@@ -56,15 +57,16 @@ to run at the PDP's root console (or an authenticated LAN telnet session):
 ```
 test -d /usr/src/local/webtop || mkdir -p /usr/src/local/webtop
 cd /usr/src/local/webtop
-tar xf /tmp/webtop-source.tar
-make clean && make && make install
-rm /tmp/webtop-source.tar
+tar xf /usr/src/local/webtop-source.tar
+make clean && make && sh install.sh
+rm /usr/src/local/webtop-source.tar
 ```
 
 Compile on the PDP with its native headers and `/unix` symbols. `webtop`
 requires `cc -O -i` for separate instruction/data space. The programs have
 no curses or floating-point dependency. Do not substitute a Mac executable.
-`make install` first makes a dated runtime backup, installs the two CGI
+Start the shared counter on caddy first (see `config/README.varnish.md`).
+`sh install.sh` first makes a dated runtime backup, installs the three CGI
 programs and the privileged sampler, warms the cache, then atomically
 publishes the homepage. It preserves any existing visitor total. The scripts
 use the native shell and utilities: no `set -e`, `set --`, formatted `date`,
@@ -86,11 +88,11 @@ the counter's approximate session semantics and limitations.
 | Sources and build/install steps | `/usr/src/local/webtop` | This directory |
 | Homepage, photograph, TMOG banner, previous page | `/home/www` | `site/` |
 | Privileged sampler, root mode 4711 | `/usr/local/libexec/webtop` | Rebuild `webtop.c` |
-| Ordinary CGI executables, root mode 755 | `/home/www/cgi-bin/webtop`, `/home/www/cgi-bin/visit` | Rebuild the other two C files |
-| **Persistent visitor total** | `/home/www-visits/total` | Runtime backup, not Git |
-| Visitor lock, www mode 600 | `/home/www-visits/lock` | Created once by installer |
-| Static count URL | `/home/www/visits.txt` | Installer creates symlink to total |
-| Regenerable TOP cache and lock | `/tmp/webtop.*` | No backup needed |
+| Ordinary CGI executables, root mode 755 | `/home/www/cgi-bin/webtop`, `visit`, `visit-total` | Rebuild native helper sources |
+| **Persistent visitor total (caddy)** | `/var/lib/pdp-visitors/visitors.sqlite` | Online SQLite backup, not Git |
+| Historical local total (PDP) | `/home/www-visits/total` | Preserved for rollback |
+| Health probe target (PDP) | `/home/www/health.txt` | `site/health.txt` |
+| Regenerable TMOG-11 cache and lock | `/tmp/webtop.*` | No backup needed |
 | Original HTTP server | `/usr/libexec/httpd` | Exact deployed source in `server/` |
 | HTTP service wiring | `/etc/inetd.conf`, `/etc/services` | Relevant entries in `config/` |
 | inetd startup rate | `/etc/rc` | Merge `config/rc.inetd`; see `config/README.inetd.md` |
@@ -106,7 +108,7 @@ Reload inetd only if its configuration was changed.
 
 The `.26` host also requires the explicit inetd startup rate preserved in
 [`config/README.inetd.md`](config/README.inetd.md). Its implicit default was
-disabling HTTP under ordinary TOP polling. The website installer does not
+disabling HTTP under ordinary TMOG-11 polling. The website installer does not
 change `/etc/rc`; merge that documented startup command when restoring.
 
 ### First installation on a different 2.11BSD host
@@ -137,7 +139,7 @@ is owned by `www:staff`, and has mode 644, as in the server Makefile.
 Merge `config/inetd.http` into the existing HTTP entry, preserving other
 services, and confirm `http 80/tcp` exists in `/etc/services`. Reload the
 actual running inetd with SIGHUP. Verify the homepage, both CGI programs,
-static counter reads, and browser reload behavior before taking and copying
+shared counter reads, and browser reload behavior before taking and copying
 off a new runtime backup. No kernel or operating-system upgrade is required
 for this installation.
 
@@ -151,12 +153,12 @@ make backup
 This prints a private dated directory under `backups/`, containing
 `runtime.tar` and the kernel identification. Copy that directory to another
 machine before replacing a disk image. The archive includes the website,
-HTTP/helper binaries, inetd/services files, and the private visitor count.
+HTTP/helper binaries, inetd/services files, and the historical local visitor count. Back up the live SQLite count on caddy separately.
 Backup paths are relative to `/`, so inspect the archive before restoring
 selected files as root. Restore the total with owner `www`, mode 600, in a
 `www`-owned mode-700 `/home/www-visits` directory, before running the installer.
-The installer starts at zero only when that directory is entirely absent;
-it refuses to silently recreate a missing total in an existing directory.
+The installer never initializes or changes the shared count. It requires the
+central read route to work before publishing native forwarding helpers.
 
 Git preserves source and assets, not future counter updates or the complete
 2.11BSD operating system/kernel/disk image. Keep normal system/disk backups
@@ -164,7 +166,7 @@ as well. Never commit passwords, private runtime archives, or a mutable total.
 
 ## Check after restoration
 
-On the PDP, `/usr/local/libexec/webtop` should print one TOP frame. On the LAN,
+On the PDP, `/usr/local/libexec/webtop` should print one TMOG-11 frame. On the LAN,
 open `http://192.168.1.26/`; verify the amber frame and top-right visitor count,
 then refresh and confirm the count does not increment. `/cgi-bin/webtop`
 returns plain text and an `X-Snapshot-Age` header. Requests inside five seconds

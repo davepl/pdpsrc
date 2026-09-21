@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Dave's PDP-11/83 collection, with a live 2.11BSD webtop panel, DEC and Emulex hardware, and classic disk and tape storage.">
+    <meta name="description" content="Dave's PDP-11/83 collection, with a live 2.11BSD TMOG-11 panel, DEC and Emulex hardware, and classic disk and tape storage.">
     <title>PDP-11/83 — Live System Overview</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -335,7 +335,7 @@
 
     <main id="main">
         <section class="webtop-panel" aria-labelledby="webtop-title">
-            <div class="webtop-heading"><h2 id="webtop-title">TOP / System activity</h2><span>LIVE · 2.11BSD</span></div>
+            <div class="webtop-heading"><h2 id="webtop-title">TMOG-11 / System activity</h2><span id="serving">LIVE · 2.11BSD</span></div>
             <div class="webtop-screen"><div class="webtop-scroll" tabindex="0" role="region" aria-label="Live process snapshot; scroll horizontally on small screens"><pre id="topout">Connecting to the PDP-11…
 
 Waiting for a system snapshot.</pre></div></div>
@@ -378,7 +378,7 @@ Waiting for a system snapshot.</pre></div></div>
             <div class="card">
                 <h3>Memory</h3>
                 <div class="stat">Onboard RAM</div>
-                <p class="muted">The M11 combines CPU and memory on one board. Webtop reports the serving system's physical RAM, usage, and swap.</p>
+                <p class="muted">The M11 combines CPU and memory on one board. TMOG-11 reports the serving system's physical RAM, usage, and swap.</p>
             </div>
             <div class="card">
                 <h3>Bus + Timing</h3>
@@ -424,7 +424,7 @@ Waiting for a system snapshot.</pre></div></div>
                     <li>DEQNA Ethernet with the BSD if_qe driver</li>
                     <li>Serial terminals connected through the M3104</li>
                     <li>TCP/IP networking on a 16-bit UNIX system</li>
-                    <li>Small HTTP server with a cached webtop sampler</li>
+                    <li>Small HTTP server with a cached TMOG-11 sampler</li>
                 </ul>
             </div>
             <div class="card">
@@ -521,7 +521,7 @@ Waiting for a system snapshot.</pre></div></div>
             <div class="card">
                 <h3 class="section-title">Reliability & Tuning</h3>
                 <ul class="list">
-                    <li>One shared webtop snapshot, cached for five seconds</li>
+                    <li>One shared TMOG-11 snapshot, cached for five seconds</li>
                     <li>Browser updates pause when the page is hidden</li>
                     <li>A front-end cache reduces repeated homepage requests</li>
                     <li>Source, site assets, and restore instructions preserved in Git</li>
@@ -569,7 +569,7 @@ async function loadCount(){
     var controller=new AbortController();
     var timeout=setTimeout(function(){controller.abort();},12000);
     try{
-        var response=await fetch(countVisit?'/cgi-bin/visit':'/visits.txt',{cache:'no-store',credentials:'omit',signal:controller.signal});
+        var response=await fetch(countVisit?'/cgi-bin/visit':'/cgi-bin/visit-total',{cache:'no-store',credentials:'omit',signal:controller.signal});
         if(!response.ok)throw new Error('Count unavailable');
         var text=await response.text();
         if(text.length>32||!/^\d+\s*$/.test(text))throw new Error('Invalid count');
@@ -582,7 +582,7 @@ loadCount();
 
 (function(){
 'use strict';
-var output=document.getElementById('topout'),status=document.getElementById('status'),button=document.getElementById('pause');
+var output=document.getElementById('topout'),status=document.getElementById('status'),button=document.getElementById('pause'),serving=document.getElementById('serving');
 var paused=false,busy=false,hasFrame=false,received=0,age=0,failed=false,lastAttempt=0;
 function drawStatus(){
 var state=paused?'Updates paused':failed?'Connection interrupted':document.hidden?'Updates paused while hidden':'';
@@ -591,13 +591,16 @@ status.textContent=(state?state+' · ':'')+elapsed+' · cached 5s · 2.11BSD';
 }
 async function refresh(){
 if(paused||busy||document.hidden||Date.now()-lastAttempt<5000)return;
-busy=true;lastAttempt=Date.now();var controller=new AbortController();var timeout=setTimeout(function(){controller.abort();},12000);
+busy=true;lastAttempt=Date.now();var controller=new AbortController();var timeout=setTimeout(function(){controller.abort();},20000);
 try{
 var response=await fetch('/cgi-bin/webtop',{cache:'no-store',credentials:'omit',signal:controller.signal});
 if(!response.ok)throw new Error('Snapshot unavailable');
 var text=await response.text();
 if(text.indexOf('Tasks:')<0||text.length>8192)throw new Error('Invalid snapshot');
 output.textContent=text;age=Number(response.headers.get('X-Snapshot-Age'))||0;received=Date.now();hasFrame=true;failed=false;
+var node=response.headers.get('X-PDP-Node');
+if(!node&&/^192[.]168[.]1[.](26|29)$/.test(location.hostname))node='PDP .'+location.hostname.split('.').pop();
+serving.textContent=(node?node+' · ':'')+'LIVE · 2.11BSD';
 }catch(error){failed=true;if(!hasFrame)output.textContent='The PDP-11 is not answering right now.\n\nWe will try again in a few seconds.\nThe rest of the collection is below.';}
 finally{clearTimeout(timeout);busy=false;drawStatus();}
 }

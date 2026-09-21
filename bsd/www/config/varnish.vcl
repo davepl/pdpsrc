@@ -2,13 +2,44 @@ vcl 4.1;
 
 import std;
 
-backend pdp {
+probe pdp_health {
+    .request = "GET /health.txt HTTP/1.0"
+        "Host: pdp1173.com"
+        "Connection: close";
+    .timeout = 3s;
+    .interval = 10s;
+    .window = 3;
+    .threshold = 2;
+    .initial = 0;
+}
+
+backend pdp29 {
     .host = "192.168.1.29";
     .port = "80";
-    .connect_timeout = 5s;
-    .first_byte_timeout = 30s;
-    .between_bytes_timeout = 30s;
+    .connect_timeout = 2s;
+    .first_byte_timeout = 8s;
+    .between_bytes_timeout = 8s;
     .max_connections = 2;
+    .probe = pdp_health;
+}
+
+backend pdp26 {
+    .host = "192.168.1.26";
+    .port = "80";
+    .connect_timeout = 2s;
+    .first_byte_timeout = 8s;
+    .between_bytes_timeout = 8s;
+    .max_connections = 2;
+    .probe = pdp_health;
+}
+
+backend visitors {
+    .host = "127.0.0.1";
+    .port = "6083";
+    .connect_timeout = 1s;
+    .first_byte_timeout = 6s;
+    .between_bytes_timeout = 3s;
+    .max_connections = 32;
 }
 
 sub vcl_recv {
@@ -21,9 +52,23 @@ sub vcl_recv {
     if (req.method != "GET" && req.method != "HEAD") {
         return (synth(405, "Only GET and HEAD are supported"));
     }
-    # Both counter operations must reach the selected PDP, including reloads.
-    if (req.url == "/visits.txt" || req.url == "/cgi-bin/visit") {
+    # This one line is the persistent setting managed by pdp-backend.
+    set req.http.X-PDP-Mode = "auto";
+    unset req.http.X-PDP-Node;
+    # The counter is independent of both PDPs. Never retry an increment.
+    if (req.url == "/visits.txt" || req.url == "/cgi-bin/visit" ||
+        req.url == "/cgi-bin/visit-total") {
+        set req.backend_hint = visitors;
         return (pass);
+    }
+    # Choose once per request, so the TOP cache key describes its origin.
+    if (req.http.X-PDP-Mode == "26" ||
+        (req.http.X-PDP-Mode == "auto" && !std.healthy(pdp29) && std.healthy(pdp26))) {
+        set req.backend_hint = pdp26;
+        set req.http.X-PDP-Node = "PDP .26";
+    } else {
+        set req.backend_hint = pdp29;
+        set req.http.X-PDP-Node = "PDP .29";
     }
     # The homepage is static: tracking parameters and browser cookies do not
     # change its contents. Normalize before hashing so Facebook links and
@@ -41,18 +86,36 @@ sub vcl_recv {
     # Fall through to the built-in cookie and authorization exclusions.
 }
 
+sub vcl_hash {
+    if (req.url == "/cgi-bin/webtop") {
+        hash_data(req.http.X-PDP-Node);
+    }
+    # Built-in hashing still includes the URL and canonical hostname.
+}
+
 sub vcl_backend_fetch {
     # Avoid holding a connection open on the small legacy web server.
     set bereq.http.Connection = "close";
 }
 
 sub vcl_backend_response {
-    if (bereq.url == "/visits.txt") {
+    if (bereq.backend == visitors) {
         set beresp.http.Cache-Control = "no-store";
+        set beresp.uncacheable = true;
+        set beresp.ttl = 0s;
+        return (deliver);
+    }
+    if (bereq.backend == pdp29) {
+        set beresp.http.X-PDP-Node = "PDP .29";
+    } elsif (bereq.backend == pdp26) {
+        set beresp.http.X-PDP-Node = "PDP .26";
     }
     # A failed refresh must not replace the last working copy.
     if (bereq.is_bgfetch && beresp.status >= 500) {
         return (abandon);
+    }
+    if (beresp.status >= 500) {
+        call retry_other_pdp;
     }
     if (bereq.uncacheable) {
         return (deliver);
@@ -62,6 +125,12 @@ sub vcl_backend_response {
         # Cache only in this proxy. Retain no-store for browsers/downstream
         # caches, but skip the built-in rule that would prevent our own cache.
         set beresp.http.Cache-Control = "no-store";
+        # A one-request retry must not put .26's frame in .29's cache key.
+        if (bereq.http.X-PDP-Node != beresp.http.X-PDP-Node) {
+            set beresp.uncacheable = true;
+            set beresp.ttl = 0s;
+            return (deliver);
+        }
         set beresp.ttl = 5s;
         set beresp.grace = 15s;
         set beresp.keep = 0s;
@@ -90,10 +159,25 @@ sub vcl_backend_response {
     # Built-in VCL still checks explicit zero TTL and other cache restrictions.
 }
 
+sub retry_other_pdp {
+    if (bereq.http.X-PDP-Mode == "auto" && bereq.retries == 0 &&
+        (bereq.method == "GET" || bereq.method == "HEAD") &&
+        (bereq.url !~ "^/cgi-bin/" || bereq.url == "/cgi-bin/webtop")) {
+        if (bereq.backend == pdp29 && std.healthy(pdp26)) {
+            set bereq.backend = pdp26;
+            return (retry);
+        } elsif (bereq.backend == pdp26 && std.healthy(pdp29)) {
+            set bereq.backend = pdp29;
+            return (retry);
+        }
+    }
+}
+
 sub vcl_backend_error {
     if (bereq.is_bgfetch) {
         return (abandon);
     }
+    call retry_other_pdp;
     set beresp.ttl = 0s;
     set beresp.uncacheable = true;
 }
