@@ -204,3 +204,30 @@ after success.
   The active proxy and `/etc/rc` changes were applied and verified earlier;
   the new documentation, tests, and backup-script update remain preserved
   off-machine in Git and the local source bundle until upload is possible.
+
+### Recovery after forwarding correction and operator restart
+
+The operator subsequently reported that the console had hung and restarted
+the PDP. The forwarding correction therefore should not be described as
+having recovered the old kernel instance by itself. After the restart:
+
+- Direct HTTP returned the exact restored 14,886-byte homepage, and the
+  persistent visitor total was 60. No counter reset or native rebuild.
+- Eight public TOP checks, alternating `pdp1173.com` and `davepl.dyndns.org`
+  over about 70 seconds, all returned 200 with cache HIT and advancing live
+  timestamps. Snapshot ages were 0–4 seconds.
+- Authenticated inspection confirmed both `/etc/rc` and running inetd use
+  `-R 1000`; the setting survived the reboot. Observed HTTP peers were now
+  only caddy and the administration Mac, with no direct Internet peers.
+- Initial post-restart network statistics were 138/170 mbufs, no mapped
+  pages in use, and one cumulative memory-allocation denial. This is an
+  observation after restart, not proof the old kernel cannot fail again.
+- The complete updated source bundle was successfully uploaded and extracted
+  into `/usr/src/local/webtop`, including the proxy/startup restore guidance,
+  tests, and updated backup script. Existing native binaries were retained.
+- At 01:28:48 UTC the cumulative allocation-denial count remained at one,
+  mbuf use had fallen to 130/170, and no mapped pages were in use. No new
+  HTTP-disable event appeared in the daemon log during these checks.
+- Created a fresh runtime backup including the restored website, binaries,
+  visitor state, and `/etc/rc` at
+  `/usr/src/local/webtop/backups/Sun_Sep_20_18_28_12_PDT_2026-253`.

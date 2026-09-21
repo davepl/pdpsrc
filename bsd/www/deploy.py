@@ -26,6 +26,14 @@ FILES = (
 )
 
 
+def source_metadata(member):
+    """Use native root ownership, not the development machine's uid/gid."""
+    member.uid = member.gid = 0
+    member.uname, member.gname = "root", "wheel"
+    member.mode = 0o755 if member.mode & 0o111 else 0o644
+    return member
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("host", help="PDP's LAN address")
@@ -37,7 +45,7 @@ def main():
     with tempfile.TemporaryFile() as bundle:
         with tarfile.open(fileobj=bundle, mode="w", format=tarfile.USTAR_FORMAT) as archive:
             for name in FILES:
-                archive.add(ROOT / name, arcname=name)
+                archive.add(ROOT / name, arcname=name, filter=source_metadata)
         bundle.seek(0)
         if args.output:
             args.output.parent.mkdir(parents=True, exist_ok=True)

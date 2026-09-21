@@ -65,6 +65,8 @@ programs and the privileged sampler, warms the cache, then atomically
 publishes the homepage. It preserves any existing visitor total. The scripts
 use the native shell and utilities: no `set -e`, `set --`, formatted `date`,
 or assumption that `mkdir -p` succeeds for an existing directory.
+Source archives normalize ownership to root:wheel and readable file modes,
+instead of importing the development Mac's numeric user and group IDs.
 
 The restore assumes the original `/usr/libexec/httpd` is working with
 `/home/www` as document root and inetd running HTTP as `www` (uid 80).
