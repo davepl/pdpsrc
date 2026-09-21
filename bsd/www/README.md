@@ -10,8 +10,10 @@ There is no public telnet/guest invitation. The HTML is minified to 15,234 bytes
 and loads lazily. Lossless JPEG optimization preserved its decoded pixels.
 Both previous designs and the untouched original photograph are retained in
 [`archive/`](archive/README.md). All source and assets needed for restoration
-are here. The current deployment is at `192.168.1.26`; earlier records refer
-to the physical machine at `192.168.1.29`.
+are here. The complete application is deployed at both `192.168.1.26` and
+`192.168.1.29`. Each host maintains its own visitor total. The September 21
+installation on `.29` is recorded in
+[`deployments/2026-09-21-192.168.1.29.md`](deployments/2026-09-21-192.168.1.29.md).
 
 ## Edit and minify the homepage
 
