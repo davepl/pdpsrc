@@ -295,6 +295,8 @@
         .webtop-status button { color: var(--text); font: inherit; background: #ffffff06; border: 1px solid #ffffff30; border-radius: 6px; padding: 7px 12px; cursor: pointer; white-space: nowrap; }
         .webtop-status button:hover { border-color: var(--accent-2); }
         .webtop-panel noscript p { color: var(--accent-2); margin-bottom: 0; }
+        .tmog-banner { display: block; min-width: 0; overflow: hidden; border-radius: var(--radius); }
+        .tmog-banner img { display: block; width: 100%; height: auto; }
         :focus-visible { outline: 2px solid var(--accent-2); outline-offset: 4px; }
         .skip { position: absolute; left: 20px; top: -100px; }
         .skip:focus { top: 10px; z-index: 20; background: var(--panel); padding: 10px; }
@@ -340,6 +342,10 @@ Waiting for a system snapshot.</pre></div></div>
             <div class="webtop-status"><span id="status" role="status">Awaiting snapshot · cached 5s · 2.11BSD</span><button id="pause" type="button" aria-pressed="false">Pause updates</button></div>
             <noscript><p>Live updates need JavaScript. <a href="/cgi-bin/webtop">Read the current plain-text snapshot.</a></p></noscript>
         </section>
+
+        <a class="tmog-banner" href="https://tmog.org/">
+            <img src="tmog-banner-v2.jpg" width="1440" height="480" loading="lazy" decoding="async" alt="TMOG: Professional instrumentation for Windows, Mac, and Linux. Download free.">
+        </a>
 
         <section class="hero">
             <div class="hero-text">

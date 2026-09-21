@@ -2,8 +2,10 @@
 
 This is the website for Dave's Mentec PDP-11/83 collection, served by 2.11BSD.
 The original red-and-gold layout has been restored, with the amber TOP display
-above the main content and **VISITORS: n** in the masthead. There is no public
-telnet/guest invitation. The HTML is minified to 14,886 bytes. The restored
+above the main content and **VISITORS: n** in the masthead. A responsive TMOG
+banner immediately below TOP links to `https://tmog.org/`. Its 1440×480 JPEG
+is 167,696 bytes; the original PNG is preserved in `archive/`.
+There is no public telnet/guest invitation. The HTML is minified to 15,234 bytes. The restored
 640×360 photograph is 101,511 bytes, below the requested 105,000-byte limit,
 and loads lazily. Lossless JPEG optimization preserved its decoded pixels.
 Both previous designs and the untouched original photograph are retained in
@@ -24,15 +26,15 @@ npm test
 
 The pinned minifier compresses HTML, inline CSS, and inline JavaScript;
 the counter checks run against both source and generated output. Commit
-both HTML files and preserve `site/pdp1183-web.jpg`. The native installer and uploader use the
+both HTML files and preserve the images in `site/`. The native installer and uploader use the
 prebuilt `site/index.html`; no Node.js or minifier runs on the PDP.
 
-For a homepage/photo update on an already installed system, run
+For a homepage/image update on an already installed system, run
 `python3 deploy-page.py 192.168.1.26`. It prompts for the existing FTP
-password, saves the previous page (and any replaced photo) outside the document
+password, saves the previous page (and any replaced images) outside the document
 root, and updates the on-machine source and design archives. It publishes the
-photo before atomically publishing the prepared page, both with mode 644.
-It checks both files over FTP and HTTP. It does not rebuild programs or
+images before atomically publishing the prepared page, all with mode 644.
+It checks the page and images over FTP and HTTP. It does not rebuild programs or
 touch the visitor total, sampler, or HTTP server. `--password-stdin` is
 available for a credential supplied securely by an existing automation.
 
@@ -80,7 +82,7 @@ the counter's approximate session semantics and limitations.
 | Purpose | Location on the PDP | Preserved here |
 | --- | --- | --- |
 | Sources and build/install steps | `/usr/src/local/webtop` | This directory |
-| Homepage, photograph, previous page | `/home/www` | `site/` |
+| Homepage, photograph, TMOG banner, previous page | `/home/www` | `site/` |
 | Privileged sampler, root mode 4711 | `/usr/local/libexec/webtop` | Rebuild `webtop.c` |
 | Ordinary CGI executables, root mode 755 | `/home/www/cgi-bin/webtop`, `/home/www/cgi-bin/visit` | Rebuild the other two C files |
 | **Persistent visitor total** | `/home/www-visits/total` | Runtime backup, not Git |

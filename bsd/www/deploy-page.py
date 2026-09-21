@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish the static homepage and photo over the PDP's LAN FTP service."""
+"""Publish the static homepage and images over the PDP's LAN FTP service."""
 import argparse
 import ftplib
 import getpass
@@ -19,7 +19,10 @@ SOURCE_FILES = (
     'archive/README.md', 'archive/pre-webtop-192.168.1.26/index.html',
     'archive/pre-webtop-192.168.1.26/pdp1183.jpg',
     'archive/amber-webtop/index.html', 'archive/amber-webtop/index.source.html',
+    'site/tmog-banner-v2.jpg', 'archive/tmog-banner.original.png',
+    'archive/tmog-banner.first.png',
 )
+PUBLIC_IMAGES = ('pdp1183-web.jpg', 'tmog-banner-v2.jpg')
 
 
 def read_ftp(ftp, path):
@@ -67,26 +70,27 @@ def main():
             target = SOURCE + '/' + name
             ftp.storbinary('STOR ' + target + '.upload', io.BytesIO(content))
             ftp.rename(target + '.upload', target)
-        # Publish the photograph before the page that references it. Keep any
+        # Publish images before the page that references them. Keep any
         # older public copy in the private source directory before replacement.
-        photo = files['site/pdp1183-web.jpg']
-        photo_target = DOCROOT + '/pdp1183-web.jpg'
-        try:
-            old_photo = read_ftp(ftp, photo_target)
-        except ftplib.error_perm as error:
-            if not str(error).startswith('550'):
-                raise
-            old_photo = None
-        if old_photo != photo:
-            if old_photo is not None:
-                stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-                backup = SOURCE + '/pdp1183-web.before-page.' + stamp + '.jpg'
-                ftp.storbinary('STOR ' + backup, io.BytesIO(old_photo))
-            ftp.storbinary('STOR ' + photo_target + '.new', io.BytesIO(photo))
-            ftp.sendcmd('SITE CHMOD 644 ' + photo_target + '.new')
-            ftp.rename(photo_target + '.new', photo_target)
-        if read_ftp(ftp, photo_target) != photo:
-            raise RuntimeError('FTP photo readback does not match the prepared photo')
+        for name in PUBLIC_IMAGES:
+            content = files['site/' + name]
+            target = DOCROOT + '/' + name
+            try:
+                previous_image = read_ftp(ftp, target)
+            except ftplib.error_perm as error:
+                if not str(error).startswith('550'):
+                    raise
+                previous_image = None
+            if previous_image != content:
+                if previous_image is not None:
+                    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+                    backup = SOURCE + '/' + Path(name).stem + '.before-page.' + stamp + Path(name).suffix
+                    ftp.storbinary('STOR ' + backup, io.BytesIO(previous_image))
+                ftp.storbinary('STOR ' + target + '.new', io.BytesIO(content))
+                ftp.sendcmd('SITE CHMOD 644 ' + target + '.new')
+                ftp.rename(target + '.new', target)
+            if read_ftp(ftp, target) != content:
+                raise RuntimeError('FTP image readback does not match: ' + name)
         if previous != page:
             temporary = DOCROOT + '/index.page.new'
             ftp.storbinary('STOR ' + temporary, io.BytesIO(page))
@@ -100,11 +104,11 @@ def main():
     with urllib.request.urlopen(request, timeout=20) as response:
         if response.status != 200 or response.read() != page:
             raise RuntimeError('HTTP readback does not match the prepared page')
-    with urllib.request.urlopen('http://' + args.host + '/pdp1183-web.jpg', timeout=20) as response:
-        if response.status != 200 or response.read() != photo:
-            raise RuntimeError('HTTP photo readback does not match the prepared photo')
-    print('Verified homepage and photo over FTP and HTTP: ' + str(len(page)) +
-          ' bytes HTML, ' + str(len(photo)) + ' bytes JPEG.')
+    for name in PUBLIC_IMAGES:
+        with urllib.request.urlopen('http://' + args.host + '/' + name, timeout=20) as response:
+            if response.status != 200 or response.read() != files['site/' + name]:
+                raise RuntimeError('HTTP image readback does not match: ' + name)
+    print('Verified homepage and images over FTP and HTTP: ' + str(len(page)) + ' bytes HTML.')
 
 
 if __name__ == '__main__':

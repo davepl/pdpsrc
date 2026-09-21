@@ -23,6 +23,8 @@ FILES = (
     "archive/amber-webtop/index.html", "archive/amber-webtop/index.source.html",
     "config/rc.inetd", "config/README.inetd.md",
     "config/Caddyfile.pdp",
+    "site/tmog-banner-v2.jpg", "archive/tmog-banner.original.png",
+    "archive/tmog-banner.first.png",
 )
 
 

@@ -32,5 +32,14 @@ has TOP and the visitor counter, with no main-page photograph.
 The older `site/index.previous.html` and `site/pdp11.jpg` belong to the earlier
 physical-machine deployment at `.29` and are retained separately.
 
+## TMOG banner
+
+`tmog-banner.original.png` is the unchanged 2172×724 CPU benchmark banner
+supplied on September 20. The served `site/tmog-banner-v2.jpg` is resized to
+1440×480 and encoded with macOS `sips` at JPEG quality 80 (167,696 bytes).
+It appears immediately below TOP and links to `https://tmog.org/`. The new
+filename avoids cached copies of the first banner, whose original image is
+retained as `tmog-banner.first.png`.
+
 These design archives do not contain the mutable visitor total. Keep runtime
 backups separately, as described in the main README.

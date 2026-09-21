@@ -231,3 +231,29 @@ having recovered the old kernel instance by itself. After the restart:
 - Created a fresh runtime backup including the restored website, binaries,
   visitor state, and `/etc/rc` at
   `/usr/src/local/webtop/backups/Sun_Sep_20_18_28_12_PDT_2026-253`.
+
+### TMOG banner (September 20, 20:05 PDT)
+
+- Added the supplied CPU benchmark banner directly after the TOP panel and
+  before the original hero/cards, linking to `https://tmog.org/`.
+- Preserved the supplied 2172×724 PNG and the first, superseded banner in
+  `archive/`. The public `tmog-banner-v2.jpg` is 1440×480 and 167,696 bytes;
+  the new filename avoids stale cached copies. The responsive image reserves
+  its aspect ratio and loads lazily.
+- Minification and the existing visitor-session checks passed for source and
+  generated pages. The new homepage is 15,234 bytes; deployment scripts parse
+  successfully and the native installer passes shell syntax validation.
+- Updated both uploaders and the native installer to preserve/publish the new
+  asset. The source-only restoration bundle includes both original PNGs and
+  the served JPEG, verified byte-for-byte.
+- Deployed to `.26` without rebuilding native programs or changing visitor
+  state. The uploader verified the homepage and both current public images
+  over FTP and direct HTTP, and backed up the previous homepage at
+  `/usr/src/local/webtop/index.before-page.20260921T030426Z.html`.
+- Invalidated only the canonical homepage cache entry, without restarting
+  Varnish. Public HTTPS `pdp1173.com`, its new JPEG, and the legacy HTTP
+  `davepl.dyndns.org` homepage returned 200 and matched local bytes.
+- Browser inspection confirmed TOP → banner → hero ordering, the complete
+  banner at page width, and its HTTPS TMOG destination. The banner link was
+  clicked successfully during initial publication; the replacement retains
+  that destination. TOP continued returning a live snapshot afterward.
