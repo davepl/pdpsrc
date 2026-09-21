@@ -23,6 +23,9 @@ FILES = (
     "archive/amber-webtop/index.html", "archive/amber-webtop/index.source.html",
     "config/rc.inetd", "config/README.inetd.md",
     "config/Caddyfile.pdp",
+    "config/pdp-backend.py",
+    "deployments/2026-09-21-192.168.1.29.md",
+    "deployments/2026-09-21-public-cutover.md",
     "site/tmog-banner-v2.jpg", "archive/tmog-banner.original.png",
     "archive/tmog-banner.first.png",
 )

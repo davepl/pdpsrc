@@ -3,7 +3,7 @@ vcl 4.1;
 import std;
 
 backend pdp {
-    .host = "192.168.1.26";
+    .host = "192.168.1.29";
     .port = "80";
     .connect_timeout = 5s;
     .first_byte_timeout = 30s;
@@ -20,6 +20,10 @@ sub vcl_recv {
     set req.http.host = "pdp1173.com";
     if (req.method != "GET" && req.method != "HEAD") {
         return (synth(405, "Only GET and HEAD are supported"));
+    }
+    # Both counter operations must reach the selected PDP, including reloads.
+    if (req.url == "/visits.txt" || req.url == "/cgi-bin/visit") {
+        return (pass);
     }
     # The homepage is static: tracking parameters and browser cookies do not
     # change its contents. Normalize before hashing so Facebook links and
@@ -43,6 +47,9 @@ sub vcl_backend_fetch {
 }
 
 sub vcl_backend_response {
+    if (bereq.url == "/visits.txt") {
+        set beresp.http.Cache-Control = "no-store";
+    }
     # A failed refresh must not replace the last working copy.
     if (bereq.is_bgfetch && beresp.status >= 500) {
         return (abandon);

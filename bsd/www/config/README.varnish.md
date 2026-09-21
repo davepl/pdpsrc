@@ -2,8 +2,44 @@
 
 `varnish.vcl` is the complete Varnish configuration deployed on `caddy`
 (`192.168.1.45`). Varnish 7.1 listens on `127.0.0.1:6081`; Caddy forwards
-the public `pdp1173.com` site to it. Its origin is `192.168.1.26:80`.
+the public `pdp1173.com` site to it. The selected origin is `192.168.1.29:80`
+as of September 21; the switch command below can select `.26` again.
 This configuration belongs on the Linux proxy, not on the PDP.
+
+## Select the serving PDP
+
+`pdp-backend.py` is installed on caddy as `/usr/local/sbin/pdp-backend`.
+From the Mac, these commands use the existing SSH access:
+
+```
+ssh root@192.168.1.45 pdp-backend status
+ssh root@192.168.1.45 pdp-backend 29
+ssh root@192.168.1.45 pdp-backend 26
+```
+
+The last command switches back to `.26`. Add `--check` after `26` or `29`
+to verify that target without changing traffic. The helper checks the target
+homepage, webtop, and readable visitor total; backs up the saved VCL; validates
+and activates a new VCL; and atomically updates `/etc/varnish/default.vcl`.
+It then verifies requests through Varnish. A failed activation or verification
+restores the preceding active VCL and saved configuration. Operations are
+serialized with a lock. It does not restart Caddy or Varnish.
+
+Homepage and image cache entries survive a switch. Only webtop and visitor-read
+entries are invalidated, so the previous PDP's snapshot is not reused after
+cutover. Both `/visits.txt` and `/cgi-bin/visit` bypass Varnish; visitor reads
+also receive `Cache-Control: no-store` to avoid displaying an old total.
+
+The helper does not copy counters between hosts. Each PDP keeps its own state.
+Before this cutover, `.29` was explicitly seeded to 5,529 while holding the
+same lock used by its visitor CGI. Its former total is retained at
+`/home/www-visits/total.before-5529`. New visits increase the seeded total.
+
+To restore the helper on caddy, copy `pdp-backend.py` to
+`/usr/local/sbin/pdp-backend`, owned by root with mode 755. It requires Python 3
+and the existing `varnishadm` access. Keep this VCL's counter bypass rules when
+restoring `/etc/varnish/default.vcl`. The router continues forwarding to `.45`;
+no router or Caddy site-block change is needed to choose a PDP.
 
 The router's public TCP port 80 must forward to **192.168.1.45:80**, so
 visitors cannot bypass the proxy by reaching `.26` directly. The operator
@@ -48,6 +84,7 @@ last working frame. Varnish adds its object age to `X-Snapshot-Age`, allowing
 the existing browser display to show the actual age of a cached frame.
 
 `/cgi-bin/visit` is never included in this rule: increments remain uncached.
+The static `/visits.txt` counter read also bypasses the cache.
 This shared cache bounds normal TOP fetches to roughly one per five seconds
 per host/cache key, instead of one per viewer. It complements the explicit
 inetd startup rate documented in [`README.inetd.md`](README.inetd.md).
@@ -104,7 +141,7 @@ Only the exact TOP cache entry was invalidated to remove the earlier
 uncacheable response marker. Both fake-origin test scenarios passed on the
 deployed Varnish 7.1.1 runtime, including expiry and failed background refresh.
 
-The subsequent `pdp_alias_20260921` VCL is the active version, adding the
+The subsequent `pdp_alias_20260921` VCL was activated next, adding the
 DynDNS alias and a shared hostname cache key. Caddy's PDP site block includes
 that alias too. Rollback files on caddy are
 `/root/pdp-varnish-backups/default.before-alias-20260921.vcl` and
