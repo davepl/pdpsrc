@@ -119,3 +119,40 @@ after success.
   Installed runtime backup directory:
   `/usr/src/local/webtop/backups/Sun_Sep_20_15_03_18_PDT_2026-399`.
   The predeployment backup also contains `previous-webroot.tar` for `/var/www`.
+
+## Original layout and photograph restored (September 20, Pacific time)
+
+- Recovered the original red-and-gold HTML and photograph byte-for-byte from
+  `previous-webroot.tar`. Preserved them in `archive/pre-webtop-192.168.1.26/`
+  and the previous amber webtop design in `archive/amber-webtop/`.
+- Restored the original layout with TOP as the first main-content section,
+  the existing site-wide session counter in the masthead, and M11 hardware
+  references. The old per-refresh browser-only counter and public telnet
+  invitation were not restored.
+- Losslessly optimized the original 106,717-byte JPEG to 101,511 bytes,
+  retaining 640×360 pixels. Decoded PPM files compared identically. The
+  published name is `pdp1183-web.jpg` to avoid the larger photograph already
+  cached by Cloudflare. The image is lazy-loaded and reserves its aspect ratio.
+- Minified HTML is 14,886 bytes (readable source 24,688 bytes). Reproducible
+  build and counter tests passed for both versions, including new sessions,
+  reloads, same-session tabs, blocked storage, and interrupted responses.
+- Browser previews at desktop and 390×844 mobile sizes confirmed the restored
+  layout, loaded photograph, visitor count, and Pause/Resume controls. The
+  document did not overflow horizontally; wide TOP content scrolls inside
+  its own panel on narrow screens.
+- Published the static page and photo to `.26`, keeping timestamped previous
+  pages outside the document root. Updated on-machine source and both design
+  archives. No native programs were rebuilt and no visitor state was reset;
+  the total was 32 before publication and later 36 with real visitors.
+- At 2026-09-21 01:10 UTC, direct origin HTTP and public HTTPS returned 200
+  with exact local-file matches for the page and optimized photo. SHA-256:
+  - HTML: `503c052f0dcb80949762988ce21fa686d5b42196937d00e47df3c483b039627c`
+  - JPEG: `8c932f29f61823b8e029bebd2c602319587f3da10aef8bcbb2a27999adc6cc02`
+- Refreshed only relevant Varnish objects. A public `/?fbclid=...` request
+  returned the same page with `X-Cache: HIT`. Public TOP returned a complete
+  live frame; a browser showed TOP, the photo, and **VISITORS: 36**.
+- The pre-existing HTTP availability issue recurred during this deployment:
+  inetd logged `http/tcp server failing (looping), service terminated`, while
+  FTP and the console remained available. Restarting inetd restored HTTP for
+  verification. This static layout change does not resolve that issue; no
+  rate-limit, kernel, HTTP-server, or Varnish configuration change was made.

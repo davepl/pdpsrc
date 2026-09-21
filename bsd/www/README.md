@@ -1,11 +1,15 @@
 # PDP-11 cached webtop website
 
-This is the website for the physical Mentec PDP-11/83 running 2.11BSD,
-recovered from the September 19, 2026 deployment. The page includes the amber
-TOP display and **VISITORS: n** masthead; there is no public telnet/guest
-invitation. The main page omits the photograph and is minified to reduce
-transfer size. The original photograph remains available to the archived
-previous homepage. All source and assets needed for restoration are here.
+This is the website for Dave's Mentec PDP-11/83 collection, served by 2.11BSD.
+The original red-and-gold layout has been restored, with the amber TOP display
+above the main content and **VISITORS: n** in the masthead. There is no public
+telnet/guest invitation. The HTML is minified to 14,886 bytes. The restored
+640×360 photograph is 101,511 bytes, below the requested 105,000-byte limit,
+and loads lazily. Lossless JPEG optimization preserved its decoded pixels.
+Both previous designs and the untouched original photograph are retained in
+[`archive/`](archive/README.md). All source and assets needed for restoration
+are here. The current deployment is at `192.168.1.26`; earlier records refer
+to the physical machine at `192.168.1.29`.
 
 ## Edit and minify the homepage
 
@@ -20,14 +24,15 @@ npm test
 
 The pinned minifier compresses HTML, inline CSS, and inline JavaScript;
 the counter checks run against both source and generated output. Commit
-both HTML files. The existing native installer and uploader use the
+both HTML files and preserve `site/pdp1183-web.jpg`. The native installer and uploader use the
 prebuilt `site/index.html`; no Node.js or minifier runs on the PDP.
 
-For a homepage-only update on an already installed system, run
-`python3 deploy-page.py 192.168.1.29`. It prompts for the existing FTP
-password, saves the previous page outside the document root, updates the
-on-machine source, and atomically publishes the prepared page with mode 644.
-It checks the result over FTP and HTTP. It does not rebuild programs or
+For a homepage/photo update on an already installed system, run
+`python3 deploy-page.py 192.168.1.26`. It prompts for the existing FTP
+password, saves the previous page (and any replaced photo) outside the document
+root, and updates the on-machine source and design archives. It publishes the
+photo before atomically publishing the prepared page, both with mode 644.
+It checks both files over FTP and HTTP. It does not rebuild programs or
 touch the visitor total, sampler, or HTTP server. `--password-stdin` is
 available for a credential supplied securely by an existing automation.
 
@@ -36,7 +41,7 @@ available for a credential supplied securely by an existing automation.
 From a modern Mac/Linux machine with Python 3, in this directory:
 
 ```
-python3 deploy.py 192.168.1.29
+python3 deploy.py 192.168.1.26
 ```
 
 The uploader prompts for the existing root FTP password; it is never stored
@@ -148,7 +153,7 @@ as well. Never commit passwords, private runtime archives, or a mutable total.
 ## Check after restoration
 
 On the PDP, `/usr/local/libexec/webtop` should print one TOP frame. On the LAN,
-open `http://192.168.1.29/`; verify the amber frame and top-right visitor count,
+open `http://192.168.1.26/`; verify the amber frame and top-right visitor count,
 then refresh and confirm the count does not increment. `/cgi-bin/webtop`
 returns plain text and an `X-Snapshot-Age` header. Requests inside five seconds
 share one frame. Hidden tabs stop polling; the page has a Pause button.

@@ -48,9 +48,16 @@ async function visit({reload = false, cookies = true, storage = true,
 (async () => {
   for (const filename of ['index.source.html', 'index.html']) {
     const html = fs.readFileSync(path.join(__dirname, '../site', filename), 'utf8');
-    assert.ok(!/<img\b/i.test(html), 'Main page must not load an image');
-    assert.ok(!html.includes('pdp11.jpg'), 'Main page must not reference the photograph');
-    assert.match(html, /font:[^;{}]*clamp\(/, 'Keep the responsive heading font when minifying CSS');
+    assert.match(html, /<img\b[^>]*pdp1183-web\.jpg/, 'Restore the original machine photograph');
+    assert.ok(fs.statSync(path.join(__dirname, '../site/pdp1183-web.jpg')).size < 105000,
+              'The photograph must stay below 105,000 bytes');
+    assert.match(html, /loading=.?lazy/, 'Defer the photograph below the live panel');
+    assert.ok(html.indexOf('id="topout"') >= 0 || html.indexOf('id=topout') >= 0);
+    const main = html.slice(html.indexOf('<main'));
+    assert.ok(main.indexOf('webtop-panel') >= 0 && main.indexOf('webtop-panel') < main.indexOf('<img'),
+              'TOP precedes the photograph in the page body');
+    assert.ok(!/telnet|pdpVisitCount|Visits from this browser/.test(html),
+              'Keep private access details and the old per-refresh counter out');
     const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
     assert.equal(scripts.length, 1);
     source = scripts[0][1];
@@ -68,6 +75,6 @@ async function visit({reload = false, cookies = true, storage = true,
     const failedJar = {};
     assert.equal(await visit({jar: failedJar, fail: true}), increment);
     assert.equal(await visit({jar: failedJar}), read, 'Interrupted response must not cause a second increment');
-    console.log(`PASS ${filename}: no image, new sessions, reloads, new tabs, blocked storage, formatting, interrupted responses`);
+    console.log(`PASS ${filename}: restored photo under 105K, TOP panel, new sessions, reloads, new tabs, blocked storage, formatting, interrupted responses`);
   }
 })().catch(error => { console.error(error); process.exitCode = 1; });

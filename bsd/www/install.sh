@@ -4,7 +4,7 @@
 # This old shell exits on false if-tests under set -e. Check commands explicitly.
 umask 022 || exit 1
 id | grep 'uid=0(' >/dev/null || exit 1
-for file in webtop webtop-cgi visit-counter site/index.html site/index.previous.html site/pdp11.jpg
+for file in webtop webtop-cgi visit-counter site/index.html site/index.previous.html site/pdp11.jpg site/pdp1183-web.jpg
 do
     test -s "$file" || exit 1
 done
@@ -69,7 +69,7 @@ mv /home/www/cgi-bin/visit.new /home/www/cgi-bin/visit || exit 1
 if test ! -e /home/www/visits.txt; then
     ln -s /home/www-visits/total /home/www/visits.txt || exit 1
 fi
-for file in pdp11.jpg index.previous.html
+for file in pdp11.jpg pdp1183-web.jpg index.previous.html
 do
     cp "site/$file" "/home/www/$file.new" || exit 1
     chown root "/home/www/$file.new" || exit 1

@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Dave's PDP-11/83 collection, with a live 2.11BSD webtop panel, DEC and Emulex hardware, and classic disk and tape storage.">
-    <title>PDP-11/83 — Live System Overview</title>
+    <title>PDP-11/83 — Modern Overview</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -259,6 +258,23 @@
             transition: background-color 120ms ease-in;
         }
 
+        .hit-counter {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 14px;
+            background: rgba(194, 29, 60, 0.1);
+            border: 1px solid rgba(194, 29, 60, 0.3);
+            border-radius: 12px;
+            color: #f9dce3;
+            font-weight: 600;
+        }
+
+        .hit-counter .count {
+            font-size: 1.5rem;
+            line-height: 1;
+        }
+
         footer {
             max-width: 1080px;
             margin: 0 auto;
@@ -277,112 +293,66 @@
                 font-size: 1.6rem;
             }
         }
-
-        /* Webtop additions are scoped so the original card layout stays intact. */
-        :root { --mono: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace; color-scheme: dark; }
-        .nav-title { flex-wrap: wrap; column-gap: 10px; row-gap: 0; }
-        .visitor-count { color: var(--accent-2); font: 600 12px/1.5 var(--mono); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-        main > section, .two-col > *, .hero > * { min-width: 0; }
-        .hero-image img { height: auto; }
-        .webtop-panel { background: linear-gradient(135deg, var(--panel-2), var(--panel)); border: 1px solid rgba(240,196,76,.18); border-radius: var(--radius); padding: 20px; box-shadow: 0 10px 32px #0005; }
-        .webtop-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 2px 14px; }
-        .webtop-heading h2 { margin: 0; font: 600 16px/1.4 var(--mono); color: var(--accent-2); }
-        .webtop-heading span { color: var(--muted); font: 11px/1.5 var(--mono); }
-        .webtop-screen { background: #181107; border: 1px solid #080604; border-radius: 10px; box-shadow: inset 0 0 36px #050300; overflow: hidden; }
-        .webtop-scroll { overflow-x: auto; padding: 20px 22px; }
-        #topout { margin: 0; min-height: 31em; font: 13px/1.48 var(--mono); color: #ffbf62; text-shadow: 0 0 5px #ffae3024; white-space: pre; tab-size: 8; }
-        .webtop-status { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 2px 0; color: var(--muted); font: 11px/1.5 var(--mono); }
-        .webtop-status button { color: var(--text); font: inherit; background: #ffffff06; border: 1px solid #ffffff30; border-radius: 6px; padding: 7px 12px; cursor: pointer; white-space: nowrap; }
-        .webtop-status button:hover { border-color: var(--accent-2); }
-        .webtop-panel noscript p { color: var(--accent-2); margin-bottom: 0; }
-        :focus-visible { outline: 2px solid var(--accent-2); outline-offset: 4px; }
-        .skip { position: absolute; left: 20px; top: -100px; }
-        .skip:focus { top: 10px; z-index: 20; background: var(--panel); padding: 10px; }
-        .inventory { overflow-x: auto; }
-        @media (max-width: 640px) {
-            header { padding: 16px 16px 12px; }
-            main { padding: 16px 16px 40px; gap: 20px; }
-            .nav { gap: 12px; }
-            .nav-title { display: block; }
-            .nav-title h1 { font-size: 1.3rem; }
-            .nav-title span { font-size: .75rem; }
-            .visitor-count { font-size: 10px; }
-            .hero, .two-col { grid-template-columns: minmax(0, 1fr); }
-            .hero { padding: 20px; }
-            .webtop-panel { padding: 12px; }
-            .webtop-heading { gap: 10px; }
-            .webtop-heading span { font-size: 9px; }
-            .webtop-scroll { padding: 16px 14px; }
-            #topout { font-size: 11px; }
-            .webtop-status { gap: 10px; font-size: 9px; align-items: flex-start; }
-            .webtop-status button { padding: 7px 8px; }
-        }
     </style>
 </head>
 <body>
-    <a class="skip" href="#main">Skip to content</a>
     <header>
         <div class="nav">
             <div class="nav-title">
                 <h1>PDP-11/83</h1>
-                <span>Mentec M11 | DECstyle</span>
+                <span>J-11 QBus | DECstyle</span>
             </div>
-            <div class="visitor-count" title="One visit per browser session. Refreshes do not increase the count."><span id="visitors" role="status">VISITORS: …</span></div>
+            <div class="badge">Running custom BSD build</div>
         </div>
     </header>
 
-    <main id="main">
-        <section class="webtop-panel" aria-labelledby="webtop-title">
-            <div class="webtop-heading"><h2 id="webtop-title">TOP / System activity</h2><span>LIVE · 2.11BSD</span></div>
-            <div class="webtop-screen"><div class="webtop-scroll" tabindex="0" role="region" aria-label="Live process snapshot; scroll horizontally on small screens"><pre id="topout">Connecting to the PDP-11…
-
-Waiting for a system snapshot.</pre></div></div>
-            <div class="webtop-status"><span id="status" role="status">Awaiting snapshot · cached 5s · 2.11BSD</span><button id="pause" type="button" aria-pressed="false">Pause updates</button></div>
-            <noscript><p>Live updates need JavaScript. <a href="/cgi-bin/webtop">Read the current plain-text snapshot.</a></p></noscript>
-        </section>
-
+    <main>
         <section class="hero">
             <div class="hero-text">
                 <div class="tagline">Digital DNA • 1980s engineering</div>
-                <h2>PDP-11 power with modern polish</h2>
-                <p>A restored PDP-11/83 with a Mentec M11 processor, two chassis, and a mix of DEC and Emulex controllers. Classic disks, magnetic tape, serial terminals, and 2.11BSD keep this collection connected to its roots.</p>
+                <h2>J-11 power with modern polish</h2>
+                <p>A restored PDP-11/83 with mixed DEC and Emulex controllers, served live via a custom BSD kernel tuned for reliable storage, serial I/O, and Ethernet on vintage silicon.</p>
                 <div class="badge-row">
                     <span class="badge">Q-bus System</span>
-                    <span class="badge">Mentec M11 processor</span>
-                    <span class="badge">Onboard memory</span>
+                    <span class="badge">18 MHz J-11 + FPU</span>
+                    <span class="badge">4 MB parity RAM</span>
                     <span class="badge">RQDX3 • UC07 • KDA50</span>
+                </div>
+                <div class="hit-counter" aria-live="polite">
+                    <span>Visits from this browser:</span>
+                    <span class="count" id="visit-count">—</span>
                 </div>
             </div>
             <div class="hero-image">
-                <img src="pdp1183-web.jpg" width="640" height="360" loading="lazy" decoding="async" alt="PDP-11 cabinets, illuminated front panels, and a green-screen terminal">
+                <img src="pdp1183.jpg" alt="PDP-11/83 front panel and drives">
             </div>
         </section>
 
         <section>
             <center>
-                <p>The live panel above shows the system serving this page.</p>
+                <p>If you can read this, it's being served live by a real PDP-11!</p>
             </center>
         </section>
         <section class="quick-grid">
             <div class="card">
                 <h3>CPU Complex</h3>
-                <div class="stat">Mentec M11</div>
-                <p class="muted">A single-board PDP-11-compatible CPU with onboard memory, replacing the M8190 and two memory boards.</p>
+                <div class="stat">M8190 J-11</div>
+                <p class="muted">18 MHz bipolar bit-slice CPU with onboard FPP (FIS) and cache assist logic.</p>
             </div>
             <div class="card">
                 <h3>Memory</h3>
-                <div class="stat">Onboard RAM</div>
-                <p class="muted">The M11 combines CPU and memory on one board. Webtop reports the serving system's physical RAM, usage, and swap.</p>
+                <div class="stat">4 MB</div>
+                <p class="muted">M8367 + M8637 MSV11-J parity memory, 22-bit addressing, interleaved banks.</p>
             </div>
             <div class="card">
                 <h3>Bus + Timing</h3>
                 <div class="stat">Q22</div>
-                <p class="muted">Two Q-bus chassis interconnected by an M9404/M9405 pair, with adapters for storage, Ethernet, and serial I/O.</p>
+                <p class="muted">Q-bus backplane with adapters for mass storage; dual KDA50 pathing.</p>
             </div>
             <div class="card">
                 <h3>Kernel</h3>
-                <div class="stat">2.11BSD</div>
-                <p class="muted">PDP-11 UNIX with a native C compiler, networking, and a small HTTP server. The live panel reports kernel and process activity.</p>
+                <div class="stat">BSD</div>
+                <p class="muted">Custom BSD kernel with tuned device drivers, Ethernet stack, and fast interrupt path.</p>
             </div>
         </section>
 
@@ -392,10 +362,10 @@ Waiting for a system snapshot.</pre></div></div>
                 <ul class="list">
                     <li>M7555 RQDX3 for MFM disks and dual RX50</li>
                     <li>Emulex UC07 SCSI bridging disk + tape to Q-bus</li>
-                    <li>M8061 RLV12 for dual RL02 drives</li>
+                    <li>M8061 RL11 for dual RL02 drives (via MV11)</li>
                     <li>M7504 DEQNA Ethernet controller</li>
                     <li>M7165/M7164 KDA50 pair for RA8x/RA9x MSCP</li>
-                    <li>M3104 serial multiplexer for terminal lines</li>
+                    <li>M3104 DHV11-style serial mux for console and TTY lines</li>
                 </ul>
             </div>
             <div class="card">
@@ -404,9 +374,9 @@ Waiting for a system snapshot.</pre></div></div>
                     <li>RA82 + dual RA92 on MSCP via KDA50</li>
                     <li>MFM hard disk on RQDX3 for bootstrap and swap</li>
                     <li>RX50 dual floppies for field media</li>
-                    <li>RL02 pair on RLV12 for legacy images</li>
-                    <li>TKZ50 tape storage via UC07</li>
-                    <li>Removable disk and tape media for preserving software</li>
+                    <li>RL02 pair on RL11 for legacy images</li>
+                    <li>TKZ50 DLT via UC07 for backups</li>
+                    <li>Termcap, swap, and paging tuned for 4 MB window</li>
                 </ul>
             </div>
         </section>
@@ -415,27 +385,27 @@ Waiting for a system snapshot.</pre></div></div>
             <div class="card">
                 <h3 class="section-title">Networking & Services</h3>
                 <ul class="list">
-                    <li>DEQNA Ethernet with the BSD if_qe driver</li>
-                    <li>Serial terminals connected through the M3104</li>
-                    <li>TCP/IP networking on a 16-bit UNIX system</li>
-                    <li>Small HTTP server with a cached webtop sampler</li>
+                    <li>DEQNA Ethernet with tuned BSD if_qe driver</li>
+                    <li>rsh/telnet for console access; TTY served by M3104</li>
+                    <li>NFS exports from MSCP volumes; UUCP dial-in possible</li>
+                    <li>Custom HTTP server (this page) built for low IRQ latency</li>
                 </ul>
             </div>
             <div class="card">
                 <h3 class="section-title">Architecture Notes</h3>
                 <ul class="list">
-                    <li>Mentec M11 runs PDP-11 software with onboard memory</li>
+                    <li>FIS-enabled J-11 implements full PDP-11 ISA with EIS</li>
                     <li>22-bit memory management, SPL-aware drivers</li>
                     <li>MSCP storage for uniform disk/tape presentation</li>
-                    <li>Console ODT for examining memory and device registers</li>
-                    <li>Q-bus grant continuity links controllers across both chassis</li>
+                    <li>Console ODT present; boot via DL offline and netboot capable</li>
+                    <li>Backplane wiring balanced for DMA (KDA50 + DEQNA)</li>
                 </ul>
             </div>
         </section>
 
         <section class="card">
             <h3 class="section-title">System Inventory</h3>
-            <p class="muted">Boards and devices in the collection, with the M11 CPU upgrade reflected below.</p>
+            <p class="muted">Current board and device lineup as installed.</p>
             <div class="inventory">
                 <table>
                     <thead>
@@ -445,7 +415,18 @@ Waiting for a system snapshot.</pre></div></div>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr><td>Mentec M11</td><td>CPU and onboard memory</td></tr>
+                        <tr>
+                            <td>M8190</td>
+                            <td>CPU</td>
+                        </tr>
+                        <tr>
+                            <td>M8367</td>
+                            <td>RAM</td>
+                        </tr>
+                        <tr>
+                            <td>M8637</td>
+                            <td>RAM</td>
+                        </tr>
                         <tr>
                             <td>M3104</td>
                             <td>Serial multiplexer</td>
@@ -476,7 +457,7 @@ Waiting for a system snapshot.</pre></div></div>
                         </tr>
                         <tr>
                             <td>M8061</td>
-                            <td>RLV12 disk controller</td>
+                            <td>RL11 disc controller</td>
                         </tr>
                         <tr>
                             <td>M9404</td>
@@ -504,7 +485,7 @@ Waiting for a system snapshot.</pre></div></div>
                         </tr>
                         <tr>
                             <td>TKZ50</td>
-                            <td>Tape drive</td>
+                            <td>DLT drive</td>
                         </tr>
                     </tbody>
                 </table>
@@ -515,17 +496,17 @@ Waiting for a system snapshot.</pre></div></div>
             <div class="card">
                 <h3 class="section-title">Reliability & Tuning</h3>
                 <ul class="list">
-                    <li>One shared webtop snapshot, cached for five seconds</li>
-                    <li>Browser updates pause when the page is hidden</li>
-                    <li>A front-end cache reduces repeated homepage requests</li>
-                    <li>Source, site assets, and restore instructions preserved in Git</li>
+                    <li>Interrupt affinities balanced between storage and network</li>
+                    <li>RL02 serviced with elevator seeking to minimize latency</li>
+                    <li>Serial lines debounced for mechanical terminals</li>
+                    <li>Thermal headroom tracked via PSU airflow monitoring</li>
                 </ul>
             </div>
             <div class="card">
                 <h3 class="section-title">Boot & Maintenance</h3>
                 <ul class="list">
-                    <li>MSCP disk boot through the storage controllers</li>
-                    <li>RL02 provides an alternate boot path</li>
+                    <li>Primary boot: MSCP disk (RA82)</li>
+                    <li>Alt boot: RQDX3 MFM volume; fallback RX50</li>
                     <li>Backup rotation to TKZ50; periodic RL02 imaging</li>
                     <li>Console ODT scripts for fast diagnostics</li>
                 </ul>
@@ -534,71 +515,26 @@ Waiting for a system snapshot.</pre></div></div>
     </main>
 
     <footer>
-        <div>Dave's PDP-11/83 • 2.11BSD • DECstyle never sleeps.</div>
+        <div>Built and served on the PDP-11/83 • DECstyle never sleeps.</div>
     </footer>
 
     <script>
-(function(){
-'use strict';
-var display=document.getElementById('visitors');
-var marker='pdp11_visit_v1',countVisit=false;
-var navigation=window.performance&&performance.getEntriesByType?performance.getEntriesByType('navigation')[0]:null;
-var reload=navigation?navigation.type==='reload':!!(window.performance&&performance.navigation&&performance.navigation.type===1);
-var seen=false,remembered=false;
-try{seen=('; '+document.cookie).indexOf('; '+marker+'=1')>=0;}catch(error){}
-try{seen=seen||sessionStorage.getItem(marker)==='1';}catch(error){}
-if(!seen){
-    /* Reserve this session before the request: an interrupted response or
-       a subsequent reload must not cause another increment. No expiry
-       makes this a browser-session cookie, not a permanent identifier. */
-    try{
-        document.cookie=marker+'=1; Path=/; SameSite=Lax';
-        remembered=('; '+document.cookie).indexOf('; '+marker+'=1')>=0;
-    }catch(error){}
-    try{sessionStorage.setItem(marker,'1');remembered=remembered||sessionStorage.getItem(marker)==='1';}catch(error){}
-    /* If storage is disabled, only read the total to avoid counting reloads. */
-    countVisit=remembered&&!reload;
-}
-async function loadCount(){
-    var controller=new AbortController();
-    var timeout=setTimeout(function(){controller.abort();},12000);
-    try{
-        var response=await fetch(countVisit?'/cgi-bin/visit':'/visits.txt',{cache:'no-store',credentials:'omit',signal:controller.signal});
-        if(!response.ok)throw new Error('Count unavailable');
-        var text=await response.text();
-        if(text.length>32||!/^\d+\s*$/.test(text))throw new Error('Invalid count');
-        display.textContent='VISITORS: '+Number(text).toLocaleString('en-US');
-    }catch(error){display.textContent='VISITORS: unavailable';}
-    finally{clearTimeout(timeout);}
-}
-loadCount();
-})();
+        (function () {
+            var el = document.getElementById('visit-count');
+            if (!el) return;
 
-(function(){
-'use strict';
-var output=document.getElementById('topout'),status=document.getElementById('status'),button=document.getElementById('pause');
-var paused=false,busy=false,hasFrame=false,received=0,age=0,failed=false,lastAttempt=0;
-function drawStatus(){
-var state=paused?'Updates paused':failed?'Connection interrupted':document.hidden?'Updates paused while hidden':'';
-var elapsed=hasFrame?'snapshot age '+Math.max(0,Math.floor(age+(Date.now()-received)/1000))+'s':'Awaiting snapshot';
-status.textContent=(state?state+' · ':'')+elapsed+' · cached 5s · 2.11BSD';
-}
-async function refresh(){
-if(paused||busy||document.hidden||Date.now()-lastAttempt<5000)return;
-busy=true;lastAttempt=Date.now();var controller=new AbortController();var timeout=setTimeout(function(){controller.abort();},12000);
-try{
-var response=await fetch('/cgi-bin/webtop',{cache:'no-store',credentials:'omit',signal:controller.signal});
-if(!response.ok)throw new Error('Snapshot unavailable');
-var text=await response.text();
-if(text.indexOf('Tasks:')<0||text.length>8192)throw new Error('Invalid snapshot');
-output.textContent=text;age=Number(response.headers.get('X-Snapshot-Age'))||0;received=Date.now();hasFrame=true;failed=false;
-}catch(error){failed=true;if(!hasFrame)output.textContent='The PDP-11 is not answering right now.\n\nWe will try again in a few seconds.\nThe rest of the collection is below.';}
-finally{clearTimeout(timeout);busy=false;drawStatus();}
-}
-button.addEventListener('click',function(){paused=!paused;button.textContent=paused?'Resume updates':'Pause updates';button.setAttribute('aria-pressed',String(paused));drawStatus();if(!paused)refresh();});
-document.addEventListener('visibilitychange',function(){drawStatus();if(!document.hidden)refresh();});
-refresh();setInterval(refresh,5000);setInterval(drawStatus,1000);
-})();
-</script>
+            var count = 0;
+            try {
+                var stored = localStorage.getItem('pdpVisitCount');
+                count = stored ? parseInt(stored, 10) || 0 : 0;
+                count += 1;
+                localStorage.setItem('pdpVisitCount', String(count));
+            } catch (err) {
+                count = 'n/a';
+            }
+
+            el.textContent = count;
+        })();
+    </script>
 </body>
 </html>
