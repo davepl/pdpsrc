@@ -1,0 +1,3 @@
+# Merge this command into the existing inetd startup in /etc/rc.
+# Preserve surrounding INET checks, other services, and console messages.
+/usr/sbin/inetd -R 1000

@@ -156,3 +156,51 @@ after success.
   FTP and the console remained available. Restarting inetd restored HTTP for
   verification. This static layout change does not resolve that issue; no
   rate-limit, kernel, HTTP-server, or Varnish configuration change was made.
+
+## HTTP shutdown and TOP cache follow-up (September 20, Pacific time)
+
+- Confirmed port 80 was refusing connections while telnet still worked.
+  Logs showed inetd disabling HTTP with its service invocation-rate guard.
+  The archived 2.11BSD implementation defaults to 40 starts per minute,
+  although its manual documents 1,000. The installed executable supports
+  `-R rate`, and the original startup command specified no explicit rate.
+- Started inetd with `-R 1000` and preserved the same option in `/etc/rc`.
+  Verified the running command and the one-line startup diff. Original
+  startup file: `/etc/rc.before-webtop-rate-20260921`, root mode 644.
+  No kernel or executable replacement. No new inetd shutdown message appeared
+  during subsequent checks through 01:20 UTC.
+- Deployed Varnish `pdp_top_20260921` without restarting the proxy or evicting
+  the homepage. Public TOP now has a five-second shared cache and 15-second
+  grace, retaining no-store downstream and adding cache age to the displayed
+  snapshot age. Visitor increments, authenticated requests, and CGI query
+  strings retain their bypass behavior.
+- Both fake-origin Varnish tests passed: homepage tracking/cookie reuse,
+  shared TOP across cookies and browser no-cache requests, accurate age,
+  five-second expiry, retention after failed background refresh, repeated
+  uncached counter increments, authentication, and host/method guards.
+- Six serial public TOP requests from approximately 01:19:43–01:20:13 UTC
+  all returned 200 with advancing live timestamps. Responses included HIT
+  and short-lived STALE frames during background refresh; reported ages were
+  2–8 seconds. The existing public browser's TOP display resumed updating.
+- This does **not** establish that the wider network problem is resolved.
+  During verification, all tested TCP services and ping became unreachable
+  from the Mac and caddy, recovered without an uptime reset, then failed
+  again. The operator confirmed the console remained responsive and could
+  ping the router. `netstat -m` after recovery showed 517 cumulative denied
+  allocations and 153/170 mbufs in use; qe0 reported zero input/output errors.
+- Native socket inspection showed several direct Internet HTTP clients,
+  including established connections with queued send data and closing
+  connections. These bypassed caddy and its connection/cache limits. The
+  operator subsequently changed the UDM Pro's public port-80 forwarding from
+  `.26` to `.45`, placing new incoming HTTP connections behind the proxy.
+- Added the legacy DynDNS hostname to caddy's PDP site and canonicalized
+  accepted hostnames in Varnish. Both test scenarios passed again with alias
+  coverage; `pdp_alias_20260921` was activated and caddy reloaded after
+  validation. Public HTTPS `pdp1173.com` and HTTP `davepl.dyndns.org` both
+  returned 200 and exactly matched the restored homepage at 01:24 UTC.
+  Origin LAN reachability was still intermittent; successful cached homepage
+  delivery must not be mistaken for successful live TOP sampling.
+- The updated full source upload to the PDP timed out during the recurrence.
+  The active proxy and `/etc/rc` changes were applied and verified earlier;
+  the new documentation, tests, and backup-script update remain preserved
+  off-machine in Git and the local source bundle until upload is possible.

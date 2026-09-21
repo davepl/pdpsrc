@@ -12,12 +12,17 @@ vcl = vcl.replace('"192.168.1.26"', '"${s1_addr}"')
 vcl = vcl.replace('.port = "80";', '.port = "${s1_port}";')
 
 scenario = r'''
-varnishtest "Tracking links share the static homepage; CGI and auth still pass"
+varnishtest "Homepage and public TOP share cache; visitor increments and auth pass"
 server s1 {
     rxreq
     expect req.url == "/"
     expect req.http.Cookie == <undef>
     txresp -body "homepage"
+    accept
+    rxreq
+    expect req.url == "/cgi-bin/webtop"
+    expect req.http.Cookie == <undef>
+    txresp -hdr "Cache-Control: no-store" -hdr "X-Snapshot-Age: 2" -body "shared snapshot"
     accept
     rxreq
     expect req.url == "/cgi-bin/webtop?mode=test"
@@ -29,6 +34,15 @@ server s1 {
     txresp -hdr "Cache-Control: no-store" -body "counter"
     accept
     rxreq
+    expect req.url == "/cgi-bin/visit"
+    txresp -hdr "Cache-Control: no-store" -body "next counter"
+    accept
+    rxreq
+    expect req.url == "/cgi-bin/webtop"
+    expect req.http.Authorization == "Bearer test-only"
+    txresp -hdr "Cache-Control: private" -body "authenticated snapshot"
+    accept
+    rxreq
     expect req.url == "/"
     expect req.http.Authorization == "Bearer test-only"
     txresp -hdr "Cache-Control: private" -body "authenticated"
@@ -38,7 +52,7 @@ server s1 {
     expect req.http.Cookie == "other=preserved"
     txresp -hdr "Cache-Control: private" -body "other-path"
 } -start
-varnish v1 -vcl {
+varnish v1 -arg "-p timeout_idle=20" -vcl {
 VCL_SOURCE
 } -start
 client c1 {
@@ -68,6 +82,31 @@ client c1 {
     rxresp
     expect resp.http.X-Cache == "HIT"
 
+    txreq -url "/cgi-bin/webtop" -hdr "Host: pdp1173.com" -hdr "Cookie: first=1"
+    rxresp
+    expect resp.body == "shared snapshot"
+    expect resp.http.X-Cache == "MISS"
+    expect resp.http.Cache-Control == "no-store"
+    expect resp.http.X-Snapshot-Age == "2"
+
+    delay 1.1
+    txreq -url "/cgi-bin/webtop" -hdr "Host: pdp1173.com" -hdr "Cookie: other=2" -hdr "Cache-Control: no-cache"
+    rxresp
+    expect resp.body == "shared snapshot"
+    expect resp.http.X-Cache == "HIT"
+    expect resp.http.X-Snapshot-Age >= 3
+    expect resp.http.Cache-Control == "no-store"
+
+    txreq -url "/cgi-bin/webtop" -hdr "Host: davepl.dyndns.org:80"
+    rxresp
+    expect resp.body == "shared snapshot"
+    expect resp.http.X-Cache == "HIT"
+
+    txreq -url "/?fbclid=alias" -hdr "Host: www.pdp1173.com"
+    rxresp
+    expect resp.body == "homepage"
+    expect resp.http.X-Cache == "HIT"
+
     txreq -url "/cgi-bin/webtop?mode=test" -hdr "Host: pdp1173.com" -hdr "Cookie: pdp11_visit_v1=1"
     rxresp
     expect resp.body == "snapshot"
@@ -76,6 +115,16 @@ client c1 {
     txreq -url "/cgi-bin/visit" -hdr "Host: pdp1173.com"
     rxresp
     expect resp.body == "counter"
+    expect resp.http.X-Cache == "PASS"
+
+    txreq -url "/cgi-bin/visit" -hdr "Host: pdp1173.com"
+    rxresp
+    expect resp.body == "next counter"
+    expect resp.http.X-Cache == "PASS"
+
+    txreq -url "/cgi-bin/webtop" -hdr "Host: pdp1173.com" -hdr "Authorization: Bearer test-only"
+    rxresp
+    expect resp.body == "authenticated snapshot"
     expect resp.http.X-Cache == "PASS"
 
     txreq -url "/?fbclid=auth" -hdr "Host: pdp1173.com" -hdr "Authorization: Bearer test-only"
@@ -98,8 +147,62 @@ client c1 {
 } -run
 server s1 -wait
 '''
+refresh_scenario = r'''
+varnishtest "TOP refreshes after five seconds and preserves its last frame on background failure"
+server s1 {
+    rxreq
+    expect req.url == "/cgi-bin/webtop"
+    txresp -hdr "Cache-Control: no-store" -hdr "X-Snapshot-Age: 0" -body "first frame"
+    accept
+    rxreq
+    expect req.url == "/cgi-bin/webtop"
+    txresp -hdr "Cache-Control: no-store" -hdr "X-Snapshot-Age: 0" -body "second frame"
+    accept
+    rxreq
+    txresp -status 503 -body "origin temporarily unavailable"
+} -start
+varnish v1 -arg "-p timeout_idle=20" -vcl {
+VCL_SOURCE
+} -start
+client c1 {
+    txreq -url "/cgi-bin/webtop" -hdr "Host: pdp1173.com"
+    rxresp
+    expect resp.body == "first frame"
+    delay 5.1
+    txreq -url "/cgi-bin/webtop" -hdr "Host: pdp1173.com"
+    rxresp
+    expect resp.body == "first frame"
+    expect resp.http.X-Cache == "STALE"
+    expect resp.http.X-Snapshot-Age >= 5
+} -run
+varnish v1 -expect MAIN.fetch_length == 2
+client c2 {
+    txreq -url "/cgi-bin/webtop" -hdr "Host: pdp1173.com"
+    rxresp
+    expect resp.body == "second frame"
+    expect resp.http.X-Cache == "HIT"
+    delay 5.1
+    txreq -url "/cgi-bin/webtop" -hdr "Host: pdp1173.com"
+    rxresp
+    expect resp.body == "second frame"
+    expect resp.http.X-Cache == "STALE"
+} -run
+server s1 -wait
+client c3 {
+    txreq -url "/cgi-bin/webtop" -hdr "Host: pdp1173.com"
+    rxresp
+    expect resp.status == 200
+    expect resp.body == "second frame"
+    expect resp.http.X-Cache == "STALE"
+    expect resp.http.X-Snapshot-Age >= 5
+} -run
+'''
 with tempfile.TemporaryDirectory(prefix="webtop-vcl-test-") as directory:
-    path = Path(directory) / "tracking.vtc"
-    path.write_text(scenario.replace("VCL_SOURCE", vcl))
-    subprocess.run(["varnishtest", "-q", str(path)], check=True)
-print("PASS: homepage normalization, cache reuse, CGI, authorization, host/method guards")
+    for name, test in (("tracking", scenario), ("refresh", refresh_scenario)):
+        path = Path(directory) / (name + ".vtc")
+        path.write_text(test.replace("VCL_SOURCE", vcl))
+        result = subprocess.run(["varnishtest", "-v", str(path)], capture_output=True, text=True)
+        if result.returncode:
+            print(result.stdout + result.stderr)
+        result.check_returncode()
+print("PASS: homepage normalization, shared TOP and host aliases, refresh/failure handling, snapshot age, uncached increments, CGI queries, authorization, host/method guards")

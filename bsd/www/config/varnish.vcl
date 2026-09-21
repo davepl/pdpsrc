@@ -1,5 +1,7 @@
 vcl 4.1;
 
+import std;
+
 backend pdp {
     .host = "192.168.1.26";
     .port = "80";
@@ -10,9 +12,12 @@ backend pdp {
 }
 
 sub vcl_recv {
-    if (req.http.host !~ "(?i)^(www\.)?pdp1173\.com(:80)?$") {
+    if (req.http.host !~ "(?i)^((www\.)?pdp1173\.com|davepl\.dyndns\.org)(:80)?$") {
         return (synth(421, "Unknown host"));
     }
+    # All accepted names serve this same public site. Use one cache key so
+    # the old DynDNS address cannot multiply TOP polling against the PDP.
+    set req.http.host = "pdp1173.com";
     if (req.method != "GET" && req.method != "HEAD") {
         return (synth(405, "Only GET and HEAD are supported"));
     }
@@ -22,6 +27,11 @@ sub vcl_recv {
     # CGI URLs, other paths, and the built-in Authorization exclusion remain.
     if (req.url ~ "^/(index[.]html)?([?]|$)") {
         set req.url = "/";
+        unset req.http.Cookie;
+    }
+    # This exact endpoint is one public system snapshot, independent of the
+    # visitor. Share it across viewers; authenticated requests still pass.
+    if (req.url == "/cgi-bin/webtop") {
         unset req.http.Cookie;
     }
     # Fall through to the built-in cookie and authorization exclusions.
@@ -38,6 +48,16 @@ sub vcl_backend_response {
         return (abandon);
     }
     if (bereq.uncacheable) {
+        return (deliver);
+    }
+    if (bereq.url == "/cgi-bin/webtop" && beresp.status == 200 &&
+        !beresp.http.Set-Cookie) {
+        # Cache only in this proxy. Retain no-store for browsers/downstream
+        # caches, but skip the built-in rule that would prevent our own cache.
+        set beresp.http.Cache-Control = "no-store";
+        set beresp.ttl = 5s;
+        set beresp.grace = 15s;
+        set beresp.keep = 0s;
         return (deliver);
     }
     if (beresp.status != 200 ||
@@ -72,6 +92,14 @@ sub vcl_backend_error {
 }
 
 sub vcl_deliver {
+    if (req.url == "/cgi-bin/webtop" && resp.status == 200 &&
+        !obj.uncacheable) {
+        # The browser displays this age; include time spent in Varnish so a
+        # grace response can never masquerade as a newly sampled frame.
+        set resp.http.X-Snapshot-Age =
+            std.integer(resp.http.X-Snapshot-Age, 0) +
+            std.integer(duration=obj.age, fallback=0);
+    }
     if (obj.uncacheable) {
         set resp.http.X-Cache = "PASS";
     } elsif (obj.hits > 0) {

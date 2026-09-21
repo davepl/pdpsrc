@@ -87,6 +87,7 @@ the counter's approximate session semantics and limitations.
 | Regenerable TOP cache and lock | `/tmp/webtop.*` | No backup needed |
 | Original HTTP server | `/usr/libexec/httpd` | Exact deployed source in `server/` |
 | HTTP service wiring | `/etc/inetd.conf`, `/etc/services` | Relevant entries in `config/` |
+| inetd startup rate | `/etc/rc` | Merge `config/rc.inetd`; see `config/README.inetd.md` |
 
 The `server/` version is the original server from this physical PDP, including
 its `/home/www/` root and unusual CGI behavior. The sibling `../httpd` is a
@@ -96,6 +97,11 @@ build the preserved `server/` version on the PDP and follow its Makefile's
 install target as root. Preserve the existing `www` account and writable
 `/usr/adm/httpd.log`; merge the two HTTP configuration entries if needed.
 Reload inetd only if its configuration was changed.
+
+The `.26` host also requires the explicit inetd startup rate preserved in
+[`config/README.inetd.md`](config/README.inetd.md). Its implicit default was
+disabling HTTP under ordinary TOP polling. The website installer does not
+change `/etc/rc`; merge that documented startup command when restoring.
 
 ### First installation on a different 2.11BSD host
 

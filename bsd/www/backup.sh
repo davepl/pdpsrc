@@ -11,7 +11,7 @@ stamp=`date | tr ' :' '__'`
 dest="$base/$stamp-$$"
 mkdir "$dest" || exit 1
 paths=""
-for path in home/www home/www-visits usr/local/libexec/webtop usr/libexec/httpd etc/inetd.conf etc/services
+for path in home/www home/www-visits usr/local/libexec/webtop usr/libexec/httpd etc/inetd.conf etc/services etc/rc
 do
     if test -e "/$path"; then
         paths="$paths $path"

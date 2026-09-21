@@ -21,6 +21,8 @@ FILES = (
     "archive/pre-webtop-192.168.1.26/index.html",
     "archive/pre-webtop-192.168.1.26/pdp1183.jpg",
     "archive/amber-webtop/index.html", "archive/amber-webtop/index.source.html",
+    "config/rc.inetd", "config/README.inetd.md",
+    "config/Caddyfile.pdp",
 )
 
 
