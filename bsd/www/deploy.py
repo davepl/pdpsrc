@@ -33,6 +33,7 @@ FILES = (
     "archive/tmog-banner.first.png",
     "tests/virtual-panel.js", "archive/virtual-panel/UPSTREAM.md",
     "archive/virtual-panel/pdp11-70.svg",
+    "site/pdp1173-tmog-preview-v1.jpg", "archive/link-preview/tmog.original.png",
 )
 
 

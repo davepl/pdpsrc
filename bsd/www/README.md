@@ -37,7 +37,24 @@ within the same-width responsive section. `npm test` checks the source and
 minified-page animation, pause/resume, reduced motion and existing visitor logic.
 The regular page uploader preserves the old homepage for rollback and includes
 the panel's restore source. No PDP executable, installer change or new public
-asset is needed for this page update.
+asset is needed for the virtual panel itself.
+
+## Shared-link previews
+
+The static HTML head declares Open Graph metadata for Apple Messages and other
+link-preview clients, plus a Twitter large-image card. The preferred image is
+`https://pdp1173.com/pdp1173-tmog-preview-v1.jpg`, a 2108×1610 JPEG of Dave's
+supplied TMOG-11 screenshot. Its original PNG is retained at
+`archive/link-preview/tmog.original.png`. The image is a fixed screenshot;
+the page's TOP display continues to update normally.
+
+JPEG preserves compatibility with the native HTTP server's supported image
+types. The page uploader and full restore installer publish this image before
+the HTML. Keep preview tags in the HTML source because Apple's preview fetcher
+does not run JavaScript. Use a new image filename for future replacements and
+refresh the proxy's homepage cache after updating both PDPs. Messaging apps
+control their final presentation and may retain previews of previously shared
+links.
 
 ## Edit and minify the homepage
 

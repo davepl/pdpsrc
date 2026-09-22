@@ -23,8 +23,9 @@ SOURCE_FILES = (
     'archive/tmog-banner.first.png',
     'tests/virtual-panel.js', 'archive/virtual-panel/UPSTREAM.md',
     'archive/virtual-panel/pdp11-70.svg',
+    'site/pdp1173-tmog-preview-v1.jpg', 'archive/link-preview/tmog.original.png',
 )
-PUBLIC_IMAGES = ('pdp1183-web.jpg', 'tmog-banner-v2.jpg')
+PUBLIC_IMAGES = ('pdp1183-web.jpg', 'tmog-banner-v2.jpg', 'pdp1173-tmog-preview-v1.jpg')
 
 
 def read_ftp(ftp, path):
@@ -60,7 +61,8 @@ def main():
             print('Previous homepage saved to ' + backup, flush=True)
         # Keep the on-machine restore source in sync with the served page.
         for directory in ('archive', 'archive/pre-webtop-192.168.1.26',
-                          'archive/amber-webtop', 'archive/virtual-panel'):
+                          'archive/amber-webtop', 'archive/virtual-panel',
+                          'archive/link-preview'):
             target = SOURCE + '/' + directory
             try:
                 ftp.mkd(target)
