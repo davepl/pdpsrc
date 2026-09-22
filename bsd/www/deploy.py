@@ -11,6 +11,8 @@ ROOT = Path(__file__).resolve().parent
 FILES = (
     "Makefile", "install.sh", "backup.sh", "deploy.py", "README.md",
     "README.webtop", "README.visitors", "VERIFICATION.md", "webtop.c",
+    "webtop-fields.h", "tests/webtop-fields.c",
+    "deployments/2026-09-22-webtop-columns.md",
     "webtop-cgi.c", "visit-counter.c", "site/index.html",
     "visit-proxy.c", "site/health.txt", "proxy/visitor-service.py",
     "config/pdp-visitors.service", "tests/shared-counter.py", "tests/failover.py",

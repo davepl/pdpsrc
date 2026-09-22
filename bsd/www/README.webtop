@@ -1,14 +1,15 @@
-TMOG-11 ON THE PDP -- updated 2026-09-21
+TMOG-11 ON THE PDP -- updated 2026-09-22
 
 The homepage and the live TMOG-11 frame are served by the real PDP-11/83.
 No kernel, inetd configuration, httpd binary, or login accounts were changed.
 
 FILES
   /usr/src/local/webtop/webtop.c       privileged sampler source
+  /usr/src/local/webtop/webtop-fields.h integer CPU and display helpers
   /usr/src/local/webtop/webtop-cgi.c   fixed unprivileged CGI launcher
   /usr/local/libexec/webtop           root-owned sampler, mode 4711
   /home/www/cgi-bin/webtop            root-owned CGI launcher, mode 755
-  /home/www/index.html                homepage (15,484 bytes)
+  /home/www/index.html                homepage
   /home/www/index.html.bak            exact original homepage backup
   /home/www/index.previous.html       viewable copy of the old homepage
   /home/www/pdp11.jpg.bak             original photograph backup
@@ -31,7 +32,7 @@ INSTALL / UPDATE (root)
   cp webtop /usr/local/libexec/webtop.new
   chown root /usr/local/libexec/webtop.new
   chmod 4711 /usr/local/libexec/webtop.new
-  mv /usr/local/libexec/webtop.new /usr/local/libexec/webtop
+  mv -f /usr/local/libexec/webtop.new /usr/local/libexec/webtop
   cp webtop-cgi /home/www/cgi-bin/webtop.new
   chown root /home/www/cgi-bin/webtop.new
   chmod 755 /home/www/cgi-bin/webtop.new
@@ -52,12 +53,30 @@ this server. It does not read a query string or request body. This server
 includes query strings in its filesystem lookup, so use the exact URL.
 
 SAMPLING / CACHE
-A new frame uses two samples one second apart. It shows up to 22 processes,
-sorted by interval CPU time, then total CPU time. Commands are short names
+A new frame uses two samples with a one-second sleep between them. It shows
+up to 22 processes, sorted by interval CPU percentage, then total CPU time.
+Commands are short names
 from u_comm, never process arguments or environment. Process user-area
 reads are checked against u_procp, PID, process state, address, and SLOAD.
 User data races are marked [unavailable]. Uptime and clock use UTC.
-RAM, swap and per-process memory use KiB. TIME and DTIME use seconds.
+RAM, swap and per-process memory use KiB. The process table is at most 79
+columns wide, including all 16 command-name characters. Per-row K suffixes
+are omitted; the footer identifies the units. TIME is cumulative CPU seconds,
+with an h suffix for whole hours once the seconds field would overflow.
+CPU% replaces DTIME: user+system CPU ticks divided by each process's measured
+wall-clock interval, rounded to ticks using the native hz. This includes
+sample-sweep overhead, not just the sleep. New/reused PIDs, unreadable user
+areas, zombies and invalid clock/counter intervals show '-' rather than a
+false zero. Sorting puts unavailable CPU values after measured values.
+The overall CPU counters bracket both sampling sweeps and the sleep; the
+header reports that measured interval. Individual process reads span slightly
+different windows, so their percentages need not sum exactly to the summary.
+M is C for SLOAD (in core/RAM), S for swapped, or '-' for zombies. It is a
+residency flag, not an RSS estimate. TTY uses u_ttyp/u_ttyd and a bounded scan
+of /dev character-device names; devices are never opened. The tty prefix is
+omitted (ttyp0 becomes p0), console is cons, '-' means no controlling terminal,
+and '?' means unavailable. At most 512 directory entries and 64 terminal
+names are examined/stored, once per new frame after sampling.
 The process arrays are capped at 36,000 bytes total and 256 slots; a cap
 notice is displayed if applicable. Map buffers are capped at 4,096 bytes.
 
@@ -81,6 +100,7 @@ a Pause button. An error leaves the previous snapshot visible. The age
 includes the server-reported cache age. Responses are marked no-store.
 
 TEST
+  make test-fields
   /usr/local/libexec/webtop
   /usr/local/libexec/webtop | wc
   From the LAN: http://192.168.1.29/

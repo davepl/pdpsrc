@@ -4,7 +4,7 @@ CFLAGS=-O
 
 all: webtop webtop-cgi visit-proxy visit-total-proxy
 
-webtop: webtop.c
+webtop: webtop.c webtop-fields.h
 	$(CC) $(CFLAGS) -i -o webtop webtop.c
 
 webtop-cgi: webtop-cgi.c
@@ -26,4 +26,8 @@ backup:
 	sh backup.sh
 
 clean:
-	rm -f webtop webtop-cgi visit-counter visit-proxy visit-total-proxy *.o core
+	rm -f webtop webtop-cgi visit-counter visit-proxy visit-total-proxy test-fields *.o core
+
+test-fields: tests/webtop-fields.c webtop-fields.h
+	$(CC) $(CFLAGS) -o test-fields tests/webtop-fields.c
+	./test-fields

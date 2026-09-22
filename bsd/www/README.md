@@ -16,6 +16,12 @@ failover prefers `.29`, uses `.26` when needed, and returns to `.29` on recovery
 installation on `.29` is recorded in
 [`deployments/2026-09-21-192.168.1.29.md`](deployments/2026-09-21-192.168.1.29.md).
 
+The live process table fits within 80 columns, retaining 16-character command
+names. CPU% shows recent measured CPU use; TTY identifies the controlling
+terminal; M identifies core/RAM (C) or swapped (S) residency. Memory is in KiB
+and TIME is cumulative CPU time. See [`README.webtop`](README.webtop) for
+sampling details, abbreviations, native build instructions and field tests.
+
 ## Virtual PDP-11/70 console
 
 The decorative panel sits directly below TMOG-11 and shares its container width.

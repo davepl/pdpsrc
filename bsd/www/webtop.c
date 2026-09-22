@@ -10,6 +10,7 @@
 #include <sys/dk.h>
 #include <sys/resource.h>
 #include <sys/file.h>
+#include <sys/dir.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,6 +19,7 @@
 #include <pwd.h>
 #include <utmp.h>
 #include <nlist.h>
+#include "webtop-fields.h"
 
 #define CACHE "/tmp/webtop.cache"
 #define NEWCACHE "/tmp/webtop.cache.new"
@@ -30,8 +32,10 @@ static struct nlist nl[] = {
     { "_proc" }, { "_nproc" }, { "_hz" }, { "_cp_time" }, { "" }
 };
 struct pdata {
-    long total, delta, start;
-    short pid, valid;
+    long total, start;
+    struct timeval sampled;
+    short pid, valid, cpu, has_tty;
+    dev_t tty;
     unsigned text;
     char comm[17];
 };
@@ -42,6 +46,8 @@ static unsigned np, actual;
 static int hz, km, mm, sw;
 static unsigned long cpu0[CPUSTATES], cpu1[CPUSTATES];
 static struct { unsigned uid; char name[9]; int used; } names[16];
+static struct { dev_t dev; char name[5]; } ttymap[64];
+static int nttymap;
 extern char **environ;
 static char *emptyenv[] = { 0 };
 
@@ -147,6 +153,42 @@ unsigned uid;
     return number;
 }
 
+/* Names only: never open a terminal. Bound both directory work and storage. */
+static void readttys()
+{
+    DIR *dir;
+    struct direct *entry;
+    struct stat st;
+    char path[MAXNAMLEN + 6];
+    int scanned;
+    dir = opendir("/dev");
+    if (dir == NULL) return;
+    scanned = 0;
+    while (scanned++ < 512 && nttymap < 64 &&
+        (entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, "console") &&
+            (strncmp(entry->d_name, "tty", 3) || !entry->d_name[3])) continue;
+        strcpy(path, "/dev/");
+        strncat(path, entry->d_name, MAXNAMLEN);
+        if (lstat(path, &st) < 0 || !S_ISCHR(st.st_mode)) continue;
+        ttymap[nttymap].dev = st.st_rdev;
+        tty_short(ttymap[nttymap].name, entry->d_name);
+        nttymap++;
+    }
+    closedir(dir);
+}
+
+static char *ttylabel(d)
+struct pdata *d;
+{
+    int i;
+    if (!d->valid) return "?";
+    if (!d->has_tty) return "-";
+    for (i = 0; i < nttymap; i++)
+        if (ttymap[i].dev == d->tty) return ttymap[i].name;
+    return "?";
+}
+
 static int sample()
 {
     struct user u;
@@ -155,6 +197,7 @@ static int sample()
     int i, j, count, fd, valid;
     short oldpid;
     long oldtime, oldstart;
+    struct timeval oldsample;
     off_t pos, slot;
     if (!at(km, (off_t)nl[0].n_value, (char *)pt,
         np * sizeof(*pt))) return -1;
@@ -163,7 +206,9 @@ static int sample()
         p = &pt[i]; d = &pd[i];
         valid = d->valid; oldpid = d->pid;
         oldtime = d->total; oldstart = d->start;
+        oldsample = d->sampled;
         memset((char *)d, 0, sizeof(*d));
+        d->cpu = -1;
         if (!p->p_stat) continue;
         idx[count++] = i; d->pid = p->p_pid;
         if (p->p_stat == SZOMB) {
@@ -183,10 +228,16 @@ static int sample()
             check.p_addr != p->p_addr ||
             ((check.p_flag ^ p->p_flag) & SLOAD)) continue;
         d->valid = 1; d->start = u.u_start; d->text = u.u_tsize;
+        d->has_tty = u.u_ttyp != NULL; d->tty = u.u_ttyd;
         d->total = u.u_ru.ru_utime + u.u_ru.ru_stime;
         if (d->total < 0) d->total = 0;
+        if (gettimeofday(&d->sampled, (struct timezone *)0) < 0)
+            d->sampled.tv_sec = 0;
         if (valid && oldpid == p->p_pid && oldstart == d->start &&
-            d->total >= oldtime) d->delta = d->total - oldtime;
+            d->total >= oldtime && oldsample.tv_sec && d->sampled.tv_sec)
+            d->cpu = cpu_tenths(d->total - oldtime,
+                d->sampled.tv_sec - oldsample.tv_sec,
+                d->sampled.tv_usec - oldsample.tv_usec, hz);
         if (u.u_comm[0]) {
             for (j = 0; j < 16 && u.u_comm[j]; j++)
                 d->comm[j] = (u.u_comm[j] >= 32 && u.u_comm[j] <= 126) ?
@@ -202,7 +253,7 @@ int *a, *b;
 {
     struct pdata *x, *y;
     x = &pd[*a]; y = &pd[*b];
-    if (x->delta != y->delta) return x->delta > y->delta ? -1 : 1;
+    if (x->cpu != y->cpu) return x->cpu > y->cpu ? -1 : 1;
     if (x->total != y->total) return x->total > y->total ? -1 : 1;
     return x->pid - y->pid;
 }
@@ -243,12 +294,19 @@ FILE *out;
     pd = (struct pdata *)calloc(np, sizeof(*pd));
     idx = (int *)malloc(np * sizeof(*idx));
     if (pt == NULL || pd == NULL || idx == NULL) return 0;
-    if (sample() < 0 || !at(km, (off_t)nl[3].n_value,
-        (char *)cpu0, sizeof(cpu0))) return 0;
+    if (!at(km, (off_t)nl[3].n_value, (char *)cpu0, sizeof(cpu0)) ||
+        sample() < 0) return 0;
     sleep(1);
-    if (!at(km, (off_t)nl[3].n_value, (char *)cpu1, sizeof(cpu1)) ||
-        (count = sample()) < 0) return 0;
+    if ((count = sample()) < 0 || !at(km, (off_t)nl[3].n_value,
+        (char *)cpu1, sizeof(cpu1))) return 0;
+    total = 0;
+    for (i = 0; i < CPUSTATES; i++) {
+        diff[i] = cpu1[i] - cpu0[i];
+        if (diff[i] > 1000000L) return 0;
+        total += diff[i];
+    }
     close(km); close(mm); if (sw >= 0) close(sw);
+    readttys();
     time(&now); tm = gmtime(&now);
     gethostname(host, sizeof(host)-1); host[sizeof(host)-1] = 0;
     dot = strchr(host, '.'); if (dot) *dot = 0;
@@ -273,7 +331,8 @@ FILE *out;
             fprintf(out, "%s %ld.%02ld", i ? "," : "", load/100, load%100);
         }
     } else fprintf(out, " unavailable");
-    fprintf(out, "     CPU sampled over 1 second\n");
+    fprintf(out, "     CPU sampled over %lu.%lu seconds\n",
+        total / hz, (total % hz) * 10L / hz);
     run = sleeping = stop = zombie = 0;
     for (i = 0; i < count; i++) {
         switch (pt[idx[i]].p_stat) {
@@ -285,12 +344,6 @@ FILE *out;
     }
     fprintf(out, "Tasks: %3d total, %d running, %d sleeping, %d stopped, %d zombie\n",
         count, run, sleeping, stop, zombie);
-    total = 0;
-    for (i = 0; i < CPUSTATES; i++) {
-        diff[i] = cpu1[i] - cpu0[i];
-        if (diff[i] > 1000000L) return 0;
-        total += diff[i];
-    }
     fprintf(out, "Cpu  :");
     for (i = 0; i < CPUSTATES; i++) {
         pct = total ? diff[i] * 1000L / total : 0;
@@ -313,23 +366,28 @@ FILE *out;
         fprintf(out, "Swap : %5luK total, %5ldK free, %5luK used (%lu%%)\n",
             ram, freeswap, ram-freeswap, ram ? (ram-freeswap)*100L/ram : 0);
     } else fprintf(out, "Swap : unavailable\n");
-    fprintf(out, "\n  PID USER      PR NI TEXT DATA STK S      TIME  DTIME COMMAND\n");
+    fprintf(out, "\n%5s %-8s %3s %3s %4s %4s %4s %s %s %5s %9s %-4s %s\n",
+        "PID", "USER", "PR", "NI", "TEXT", "DATA", "STK", "S", "M",
+        "CPU%", "TIME", "TTY", "COMMAND");
     qsort((char *)idx, count, sizeof(*idx), compare);
     for (i = 0; i < count && i < ROWS; i++) {
         p = &pt[idx[i]]; d = &pd[idx[i]];
-        fprintf(out, "%5d %-8.8s %3d %2d %3uK %3uK %2uK %c %6ld.%02ld %3ld.%02ld %.16s\n",
+        process_row(out,
             p->p_pid, username((unsigned)p->p_uid),
             p->p_stat == SZOMB ? 0 : p->p_pri,
             p->p_stat == SZOMB ? 0 : p->p_nice,
-            d->text / 16, p->p_stat == SZOMB ? 0 : p->p_dsize / 16,
+            d->valid ? d->text / 16 : -1,
+            p->p_stat == SZOMB ? 0 : p->p_dsize / 16,
             p->p_stat == SZOMB ? 0 : p->p_ssize / 16,
             p->p_stat > 0 && p->p_stat <= 6 ? states[p->p_stat] : '?',
-            d->total/hz, (d->total%hz)*100L/hz,
-            d->delta/hz, (d->delta%hz)*100L/hz, d->comm);
+            p->p_stat == SZOMB ? '-' : (p->p_flag & SLOAD) ? 'C' : 'S',
+            d->cpu, d->valid || p->p_stat == SZOMB ? d->total : -1L,
+            hz, p->p_stat == SZOMB ? "-" : ttylabel(d), d->comm);
     }
-    if (count > ROWS) fprintf(out, "... %d more processes; sorted by DTIME, then TIME\n", count-ROWS);
+    if (count > ROWS) fprintf(out, "... %d more processes; sorted by CPU%%, then TIME\n", count-ROWS);
     if (np < actual) fprintf(out, "Process table capped: %u of %u slots examined\n", np, actual);
-    fprintf(out, "Memory columns: KiB; TIME / DTIME: seconds; command names only\n");
+    fprintf(out, "Memory: KiB; M: C=core, S=swapped; TIME: seconds (h=hours); CPU%%: interval\n");
+    fprintf(out, "TTY: tty prefix omitted, cons=console; -=none/no sample; ?=unavailable\n");
     return !ferror(out);
 }
 

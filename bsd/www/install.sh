@@ -48,7 +48,7 @@ fi
 cp webtop /usr/local/libexec/webtop.new || exit 1
 chown root /usr/local/libexec/webtop.new || exit 1
 chmod 4711 /usr/local/libexec/webtop.new || exit 1
-mv /usr/local/libexec/webtop.new /usr/local/libexec/webtop || exit 1
+mv -f /usr/local/libexec/webtop.new /usr/local/libexec/webtop || exit 1
 cp webtop-cgi /home/www/cgi-bin/webtop.new || exit 1
 chown root /home/www/cgi-bin/webtop.new || exit 1
 chmod 755 /home/www/cgi-bin/webtop.new || exit 1
