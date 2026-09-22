@@ -59,7 +59,7 @@ Commands are short names
 from u_comm, never process arguments or environment. Process user-area
 reads are checked against u_procp, PID, process state, address, and SLOAD.
 User data races are marked [unavailable]. Uptime and clock use UTC.
-RAM, swap and per-process memory use KiB. The process table is at most 79
+RAM, swap and per-process memory use KiB. The process table is at most 118
 columns wide, including all 16 command-name characters. Per-row K suffixes
 are omitted; the footer identifies the units. TIME is cumulative CPU seconds,
 with an h suffix for whole hours once the seconds field would overflow.
@@ -77,6 +77,19 @@ of /dev character-device names; devices are never opened. The tty prefix is
 omitted (ttyp0 becomes p0), console is cons, '-' means no controlling terminal,
 and '?' means unavailable. At most 512 directory entries and 64 terminal
 names are examined/stored, once per new frame after sampling.
+PPID identifies the parent. AGE is elapsed wall time since u_start; absent
+start times show a dash. A future start time or one predating the reported
+boot time shows ? (inconsistent clock). Clock corrections can leave old
+process timestamps inconsistent; no false age is fabricated. FD counts non-null entries in u_ofile,
+including file, socket and terminal descriptors. R/s and W/s are interval
+ru_inblock/ru_oublock deltas per second, using the same measured window as
+CPU%. They count accounted block operations, not bytes or read/write calls.
+Rates use tenths with compact k=1000 suffixes; unmatched processes, invalid
+windows, counter resets and unreadable data show a dash. I/D is Y for
+separate instruction/data spaces and N for combined spaces. OVL is the
+current overlay number; a dash means no overlay, and ? means unavailable.
+These fields use the already-read proc and user structures; they add no
+additional kernel reads or sampling passes.
 The process arrays are capped at 36,000 bytes total and 256 slots; a cap
 notice is displayed if applicable. Map buffers are capped at 4,096 bytes.
 

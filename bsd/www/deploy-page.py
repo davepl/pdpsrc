@@ -16,6 +16,7 @@ SOURCE_FILES = (
     'site/index.html', 'site/index.source.html', 'minify.mjs', 'package.json',
     'package-lock.json', 'deploy-page.py', 'deploy.py', 'README.md',
     'tests/visitors.js', 'site/pdp1183-web.jpg', 'install.sh', 'VERIFICATION.md',
+    'tests/site-integrity.py',
     'archive/README.md', 'archive/pre-webtop-192.168.1.26/index.html',
     'archive/pre-webtop-192.168.1.26/pdp1183.jpg',
     'archive/amber-webtop/index.html', 'archive/amber-webtop/index.source.html',

@@ -33,8 +33,10 @@ static struct nlist nl[] = {
 };
 struct pdata {
     long total, start;
+    long inblock, oublock, reads, writes;
     struct timeval sampled;
     short pid, valid, cpu, has_tty;
+    short fds, sep, overlay;
     dev_t tty;
     unsigned text;
     char comm[17];
@@ -196,7 +198,7 @@ static int sample()
     struct pdata *d;
     int i, j, count, fd, valid;
     short oldpid;
-    long oldtime, oldstart;
+    long oldtime, oldstart, oldin, oldout, sec, usec;
     struct timeval oldsample;
     off_t pos, slot;
     if (!at(km, (off_t)nl[0].n_value, (char *)pt,
@@ -206,9 +208,12 @@ static int sample()
         p = &pt[i]; d = &pd[i];
         valid = d->valid; oldpid = d->pid;
         oldtime = d->total; oldstart = d->start;
+        oldin = d->inblock; oldout = d->oublock;
         oldsample = d->sampled;
         memset((char *)d, 0, sizeof(*d));
         d->cpu = -1;
+        d->reads = d->writes = -1;
+        d->fds = d->sep = -1; d->overlay = -2;
         if (!p->p_stat) continue;
         idx[count++] = i; d->pid = p->p_pid;
         if (p->p_stat == SZOMB) {
@@ -229,15 +234,28 @@ static int sample()
             ((check.p_flag ^ p->p_flag) & SLOAD)) continue;
         d->valid = 1; d->start = u.u_start; d->text = u.u_tsize;
         d->has_tty = u.u_ttyp != NULL; d->tty = u.u_ttyd;
+        d->fds = 0;
+        for (j = 0; j < NOFILE; j++) if (u.u_ofile[j]) d->fds++;
+        d->sep = u.u_sep != 0;
+        d->overlay = !u.u_ovdata.uo_nseg ? -1 :
+            u.u_ovdata.uo_curov >= 0 && u.u_ovdata.uo_curov <= NOVL ?
+            u.u_ovdata.uo_curov : -2;
+        d->inblock = u.u_ru.ru_inblock; d->oublock = u.u_ru.ru_oublock;
         d->total = u.u_ru.ru_utime + u.u_ru.ru_stime;
         if (d->total < 0) d->total = 0;
         if (gettimeofday(&d->sampled, (struct timezone *)0) < 0)
             d->sampled.tv_sec = 0;
         if (valid && oldpid == p->p_pid && oldstart == d->start &&
-            d->total >= oldtime && oldsample.tv_sec && d->sampled.tv_sec)
-            d->cpu = cpu_tenths(d->total - oldtime,
-                d->sampled.tv_sec - oldsample.tv_sec,
-                d->sampled.tv_usec - oldsample.tv_usec, hz);
+            oldsample.tv_sec && d->sampled.tv_sec) {
+            sec = d->sampled.tv_sec - oldsample.tv_sec;
+            usec = d->sampled.tv_usec - oldsample.tv_usec;
+            if (d->total >= oldtime)
+                d->cpu = cpu_tenths(d->total - oldtime, sec, usec, hz);
+            if (oldin >= 0 && d->inblock >= oldin)
+                d->reads = io_tenths(d->inblock - oldin, sec, usec, hz);
+            if (oldout >= 0 && d->oublock >= oldout)
+                d->writes = io_tenths(d->oublock - oldout, sec, usec, hz);
+        }
         if (u.u_comm[0]) {
             for (j = 0; j < 16 && u.u_comm[j]; j++)
                 d->comm[j] = (u.u_comm[j] >= 32 && u.u_comm[j] <= 126) ?
@@ -264,7 +282,7 @@ FILE *out;
     unsigned long budget, total, diff[CPUSTATES], pct;
     unsigned long ram;
     unsigned swapblocks;
-    long freecore, freeswap, up, load;
+    long freecore, freeswap, up, load, bootsec;
     struct loadavg av;
     struct timeval boot;
     struct tm *tm;
@@ -312,7 +330,9 @@ FILE *out;
     dot = strchr(host, '.'); if (dot) *dot = 0;
     fprintf(out, "%s - %02d:%02d:%02d UTC", host,
         tm->tm_hour, tm->tm_min, tm->tm_sec);
+    bootsec = 0;
     if (ctl(CTL_KERN, KERN_BOOTTIME, (char *)&boot, sizeof(boot))) {
+        bootsec = boot.tv_sec;
         up = now - boot.tv_sec; if (up < 0) up = 0;
         fprintf(out, " up %ldd %02ld:%02ld", up / 86400L,
             up / 3600L % 24L, up / 60L % 60L);
@@ -366,14 +386,14 @@ FILE *out;
         fprintf(out, "Swap : %5luK total, %5ldK free, %5luK used (%lu%%)\n",
             ram, freeswap, ram-freeswap, ram ? (ram-freeswap)*100L/ram : 0);
     } else fprintf(out, "Swap : unavailable\n");
-    fprintf(out, "\n%5s %-8s %3s %3s %4s %4s %4s %s %s %5s %9s %-4s %s\n",
-        "PID", "USER", "PR", "NI", "TEXT", "DATA", "STK", "S", "M",
-        "CPU%", "TIME", "TTY", "COMMAND");
+    fprintf(out, "\n%5s %5s %-8s %3s %3s %4s %4s %4s %s %s %5s %9s %8s %-4s %3s %5s %5s %3s %3s %s\n",
+        "PID", "PPID", "USER", "PR", "NI", "TEXT", "DATA", "STK", "S", "M",
+        "CPU%", "TIME", "AGE", "TTY", "FD", "R/s", "W/s", "I/D", "OVL", "COMMAND");
     qsort((char *)idx, count, sizeof(*idx), compare);
     for (i = 0; i < count && i < ROWS; i++) {
         p = &pt[idx[i]]; d = &pd[idx[i]];
         process_row(out,
-            p->p_pid, username((unsigned)p->p_uid),
+            p->p_pid, p->p_ppid, username((unsigned)p->p_uid),
             p->p_stat == SZOMB ? 0 : p->p_pri,
             p->p_stat == SZOMB ? 0 : p->p_nice,
             d->valid ? d->text / 16 : -1,
@@ -382,12 +402,16 @@ FILE *out;
             p->p_stat > 0 && p->p_stat <= 6 ? states[p->p_stat] : '?',
             p->p_stat == SZOMB ? '-' : (p->p_flag & SLOAD) ? 'C' : 'S',
             d->cpu, d->valid || p->p_stat == SZOMB ? d->total : -1L,
-            hz, p->p_stat == SZOMB ? "-" : ttylabel(d), d->comm);
+            hz, d->valid ? process_age((long)now, d->start, bootsec) : -1L,
+            p->p_stat == SZOMB ? "-" : ttylabel(d), d->fds,
+            d->reads, d->writes, d->sep, d->overlay, d->comm);
     }
     if (count > ROWS) fprintf(out, "... %d more processes; sorted by CPU%%, then TIME\n", count-ROWS);
     if (np < actual) fprintf(out, "Process table capped: %u of %u slots examined\n", np, actual);
     fprintf(out, "Memory: KiB; M: C=core, S=swapped; TIME: seconds (h=hours); CPU%%: interval\n");
     fprintf(out, "TTY: tty prefix omitted, cons=console; -=none/no sample; ?=unavailable\n");
+    fprintf(out, "AGE: elapsed (?=inconsistent clock); FD: open descriptors; R/s,W/s: block operations/sec (k=1000)\n");
+    fprintf(out, "I/D: Y=separate instruction/data spaces, N=combined; OVL: current overlay (-=none)\n");
     return !ferror(out);
 }
 
