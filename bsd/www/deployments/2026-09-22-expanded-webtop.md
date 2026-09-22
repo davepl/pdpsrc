@@ -42,10 +42,40 @@ The browser shows the original article layout with no console SVG inside it.
 Desktop table overflow and narrow-screen page overflow were checked; the
 wide table scrolls within its own container on narrow screens.
 
-Offline repair of `.29`'s `/home` requires the user's pending approval.
-Keep the public route forced to `.26` until repair and static integrity
-verification complete; the HTTP health probe alone does not detect damaged
-page content. The new sampler is deployed on both machines.
+The user approved offline repair of `.29`'s `/home`. Public traffic remained
+on `.26`; only `.29`'s HTTP entry in `inetd.conf` was temporarily disabled.
+`/home` unmounted successfully without disconnecting other user sessions.
+The native repair command was:
+
+```
+/sbin/fsck -y -t /tmp/webtop-fsck.scratch /dev/rra0h
+```
+
+The repair removed only the two known damaged files, rebuilt the free list,
+and marked the filesystem clean: 949 files, 17,165 used blocks and 1,023,313
+free blocks. The complete log is preserved as `home-fsck-repair.txt` in the
+private staging directory and copied off-host. A separate forced read-only
+scan completed all five phases without errors and reported the same counts:
+
+```
+/sbin/fsck -f -n -t /tmp/webtop-fsck.scratch /dev/rra0h
+```
+
+Its log is preserved on the PDP and off-host as `home-fsck-verify-full.txt`.
+`-f` is necessary because plain `-n` skips a filesystem marked clean.
+
+After remounting `/home`, the original homepage and current README were
+restored from verified repository copies, using temporary files and atomic
+renames. Their original root:staff ownership and mode 644 were preserved.
+The original `inetd.conf` was restored byte-for-byte, and HTTP was re-enabled.
+The installed sampler remains root:wheel, mode 4711.
+
+Direct HTTP verification of `.29` passed for the homepage and all four
+checked images. Its live webtop endpoint passed the seven-column and width
+checks. Automatic routing was restored: `.29` is primary, `.26` is the
+fallback, and both report 3/3 healthy probes. The public homepage cache was
+invalidated once and public HTTPS passed the complete static integrity check.
+The shared visitor counter remained available throughout.
 
 Both direct snapshot endpoints and public HTTPS passed the expanded column,
 value, sort and width checks after installation. The static integrity test
