@@ -59,8 +59,8 @@ async function visit({reload = false, cookies = true, storage = true,
     assert.ok(!/telnet|pdpVisitCount|Visits from this browser/.test(html),
               'Keep private access details and the old per-refresh counter out');
     const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
-    assert.equal(scripts.length, 1);
-    source = scripts[0][1];
+    assert.equal(scripts.length, 2);
+    source = scripts.find(script => script[0].includes('pdp11_visit_v1'))[1];
     const increment = '/cgi-bin/visit', read = '/cgi-bin/visit-total';
     const jar = {}, session = {};
     assert.equal(await visit({jar, session}), increment);

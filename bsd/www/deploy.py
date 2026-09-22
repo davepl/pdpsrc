@@ -31,6 +31,8 @@ FILES = (
     "deployments/2026-09-21-public-cutover.md",
     "site/tmog-banner-v2.jpg", "archive/tmog-banner.original.png",
     "archive/tmog-banner.first.png",
+    "tests/virtual-panel.js", "archive/virtual-panel/UPSTREAM.md",
+    "archive/virtual-panel/pdp11-70.svg",
 )
 
 

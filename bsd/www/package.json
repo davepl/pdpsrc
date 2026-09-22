@@ -5,7 +5,7 @@
   "description": "Modern-host build tools for the static PDP-11 homepage",
   "scripts": {
     "build": "node minify.mjs",
-    "test": "node minify.mjs --check && node tests/visitors.js"
+    "test": "node minify.mjs --check && node tests/visitors.js && node tests/virtual-panel.js"
   },
   "devDependencies": {
     "html-minifier-terser": "7.2.0"

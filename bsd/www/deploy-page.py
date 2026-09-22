@@ -21,6 +21,8 @@ SOURCE_FILES = (
     'archive/amber-webtop/index.html', 'archive/amber-webtop/index.source.html',
     'site/tmog-banner-v2.jpg', 'archive/tmog-banner.original.png',
     'archive/tmog-banner.first.png',
+    'tests/virtual-panel.js', 'archive/virtual-panel/UPSTREAM.md',
+    'archive/virtual-panel/pdp11-70.svg',
 )
 PUBLIC_IMAGES = ('pdp1183-web.jpg', 'tmog-banner-v2.jpg')
 
@@ -58,7 +60,7 @@ def main():
             print('Previous homepage saved to ' + backup, flush=True)
         # Keep the on-machine restore source in sync with the served page.
         for directory in ('archive', 'archive/pre-webtop-192.168.1.26',
-                          'archive/amber-webtop'):
+                          'archive/amber-webtop', 'archive/virtual-panel'):
             target = SOURCE + '/' + directory
             try:
                 ftp.mkd(target)

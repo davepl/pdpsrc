@@ -3,9 +3,9 @@
 This is the website for Dave's Mentec PDP-11/83 collection, served by 2.11BSD.
 The original red-and-gold layout has been restored, with the amber TMOG-11 display
 above the main content and **VISITORS: n** in the masthead. A responsive TMOG
-banner immediately below TMOG-11 links to `https://tmog.org/`. Its 1440×480 JPEG
+banner below the virtual console links to `https://tmog.org/`. Its 1440×480 JPEG
 is 167,696 bytes; the original PNG is preserved in `archive/`.
-There is no public telnet/guest invitation. The HTML is minified to 15,484 bytes. The restored
+There is no public telnet/guest invitation. The HTML, CSS, inline panel artwork, and JavaScript are minified together. The restored
 640×360 photograph is 101,511 bytes, below the requested 105,000-byte limit,
 and loads lazily. Lossless JPEG optimization preserved its decoded pixels.
 Both previous designs and the untouched original photograph are retained in
@@ -15,6 +15,29 @@ are here. The complete application is deployed at both `192.168.1.26` and
 failover prefers `.29`, uses `.26` when needed, and returns to `.29` on recovery. The September 21
 installation on `.29` is recorded in
 [`deployments/2026-09-21-192.168.1.29.md`](deployments/2026-09-21-192.168.1.29.md).
+
+## Virtual PDP-11/70 console
+
+The decorative panel sits directly below TMOG-11 and shares its container width.
+It adapts Paul Nankervis' panel layout, scoped CSS, SVG logo, and bit-mask lamp
+updates from James Hagerman's mirror. Provenance and the unchanged upstream SVG
+are in `archive/virtual-panel/`. The logo is inline because the native HTTP
+server serves only HTML, JPEG and ICO with specific MIME types.
+
+This is explicitly labeled simulated. It follows the 2.11BSD `rdisply=0377`
+idle sequence (CLC/ROL/BPL/BIS), advancing at a nominal 30 steps/sec. Random
+activity runs for 0.65–2.2 seconds, separated by 8–20 seconds of idle animation.
+It does not sample registers, load an emulator or disk images, or issue network
+requests. Switches and selectors are artwork, not machine controls.
+
+The Pause animation button is independent of TOP's Pause updates. Hidden tabs
+and offscreen panels stop animating. Reduced-motion preferences start the panel
+paused; visitors can explicitly resume it. The entire 720×304 console scales
+within the same-width responsive section. `npm test` checks the source and
+minified-page animation, pause/resume, reduced motion and existing visitor logic.
+The regular page uploader preserves the old homepage for rollback and includes
+the panel's restore source. No PDP executable, installer change or new public
+asset is needed for this page update.
 
 ## Edit and minify the homepage
 
