@@ -31,6 +31,13 @@ FILES = (
     "deployments/2026-09-21-public-cutover.md",
     "site/tmog-banner-v2.jpg", "archive/tmog-banner.original.png",
     "archive/tmog-banner.first.png",
+    "site/pdp-ai.html", "site/gary-green-v1.jpg",
+    "site/unix-gary-apple-touch-icon-v1.png", "site/unix-gary-favicon-v1.png",
+    "site/unix-gary-preview-v1.jpg", "archive/gary-green-original.png",
+    "README.pdp-ai.md", "deploy-chat.py", "pdp-ai/server.py",
+    "pdp-ai/test_server.py", "pdp-ai/pdp-ai.service",
+    "config/pdp-ai-route.caddy.template",
+    "deployments/2026-09-23-unix-gary.md",
 )
 
 

@@ -1,0 +1,22 @@
+@pdpAiAlias path /pdp-ai /pdp-ai/
+redir @pdpAiAlias /pdp-ai.html 302
+
+# The legacy PDP httpd does not recognize PNG. Override its MIME type after proxying.
+@pdpAiIcons path /unix-gary-apple-touch-icon-v1.png /unix-gary-favicon-v1.png
+header @pdpAiIcons >Content-Type image/png
+
+# Chat bypasses Varnish. Only this bounded bridge can reach the local model.
+handle_path /pdp-ai-api/* {
+    request_body {
+        max_size 64KB
+    }
+    reverse_proxy 192.168.0.107:8091 {
+        header_up X-PDP-AI-Key "PROXY_KEY_PLACEHOLDER"
+        header_up X-PDP-AI-Client {http.request.header.CF-Connecting-IP}
+        # text/event-stream flushes immediately and preserves cancellation.
+        transport http {
+            dial_timeout 5s
+            response_header_timeout 95s
+        }
+    }
+}

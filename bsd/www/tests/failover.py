@@ -80,23 +80,36 @@ with tempfile.TemporaryDirectory(prefix='pdp-failover-') as directory:
             except (subprocess.CalledProcessError, StopIteration): pass
             time.sleep(.1)
         raise AssertionError('Health timeout '+node+' '+rows)
+    def chat_files(node):
+        # Skip existing cached copies so every path proves origin selection.
+        for path in ('/pdp-ai.html', '/gary-green-v1.jpg',
+                     '/unix-gary-apple-touch-icon-v1.png',
+                     '/unix-gary-favicon-v1.png', '/unix-gary-preview-v1.jpg'):
+            status, headers, body = fetch(path, headers={'Cookie': 'route_check=1'})
+            assert status == 200 and body == (node + ' ' + path).encode(), (path, status, body)
+            assert headers['X-PDP-Node'] == 'PDP .' + node, headers
+            assert headers['X-Cache'] == 'PASS', headers
     try:
         healthy('29', True); healthy('26', True)
+        chat_files('29')
         a = fetch('/cgi-bin/webtop'); assert a[2] == b'29 /cgi-bin/webtop', a
         assert a[1]['X-PDP-Node'] == 'PDP .29'
         # Forged selection headers cannot override primary preference.
         assert fetch('/cgi-bin/webtop', headers={'X-PDP-Mode':'26','X-PDP-Node':'PDP .26'})[2] == a[2]
         assert fetch('/cgi-bin/visit')[2] == b'0000005530\n'
         origins['29'].state['healthy'] = False; healthy('29', False)
+        chat_files('26')
         b = fetch('/cgi-bin/webtop'); assert b[2] == b'26 /cgi-bin/webtop', b
         assert b[1]['X-PDP-Node'] == 'PDP .26'
         assert fetch('/visits.txt')[2] == b'0000005530\n'
         assert fetch('/cgi-bin/visit')[2] == b'0000005531\n'
         origins['29'].state['healthy'] = True; healthy('29', True)
+        chat_files('29')
         assert fetch('/cgi-bin/webtop')[2] == a[2]
         # A failure before probes notice retries once on the other origin.
         adm('ban', 'req.url == /cgi-bin/webtop')
         origins['29'].state['fail'] = True
+        chat_files('26')
         b = fetch('/cgi-bin/webtop'); assert b[2] == b'26 /cgi-bin/webtop', b
         assert b[1]['X-PDP-Node'] == 'PDP .26'
         origins['29'].state['fail'] = False
@@ -122,7 +135,7 @@ with tempfile.TemporaryDirectory(prefix='pdp-failover-') as directory:
             adm('vcl.load', 'mode'+target, str(candidate)); time.sleep(.6)
             adm('vcl.use', 'mode'+target)
             assert fetch('/cgi-bin/webtop')[2] == expected
-        print('PASS: real probes, .29 preference, .26 failover, recovery, origin-specific frames, bounded retry, both-down grace, independent counter and manual overrides')
+        print('PASS: real probes, .29 preference, .26 failover, recovery, UNIX-Gary page/assets, origin-specific frames, bounded retry, both-down grace, independent counter and manual overrides')
     except Exception:
         output.flush(); output.seek(0); print(output.read())
         raise

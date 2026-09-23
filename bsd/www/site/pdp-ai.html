@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Chat with PDP Gary, a grumpy UNIX wizard. Served by a real PDP-11, with answers from a local AI.">
+<meta name="theme-color" content="#07110c">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' https://pdp1173.com; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<title>UNIX-Gary</title>
+<link rel="canonical" href="https://pdp1173.com/pdp-ai.html">
+<link rel="apple-touch-icon" sizes="180x180" href="/unix-gary-apple-touch-icon-v1.png">
+<meta name="apple-mobile-web-app-title" content="UNIX-Gary">
+<link rel="icon" type="image/png" sizes="32x32" href="/unix-gary-favicon-v1.png">
+<meta property="og:type" content="website">
+<meta property="og:title" content="UNIX-Gary">
+<meta property="og:site_name" content="pdp1173.com">
+<meta property="og:description" content="Chat with PDP Gary, a grumpy UNIX wizard. Served by a real PDP-11, with answers from a local AI.">
+<meta property="og:url" content="https://pdp1173.com/pdp-ai.html">
+<meta property="og:image" content="https://pdp1173.com/unix-gary-preview-v1.jpg">
+<meta property="og:image:secure_url" content="https://pdp1173.com/unix-gary-preview-v1.jpg">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="972">
+<meta property="og:image:height" content="972">
+<meta property="og:image:alt" content="PDP Gary, the bearded UNIX wizard, in phosphor green">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="UNIX-Gary">
+<meta name="twitter:description" content="Chat with PDP Gary, a grumpy UNIX wizard. Served by a real PDP-11, with answers from a local AI.">
+<meta name="twitter:image" content="https://pdp1173.com/unix-gary-preview-v1.jpg">
+<meta name="twitter:image:alt" content="PDP Gary, the bearded UNIX wizard, in phosphor green">
+
+<style>
+:root{color-scheme:dark;--bg:#07110c;--panel:#0b1a11;--line:#294d32;--ink:#b9f5a7;--muted:#87b982;--amber:#ffd28c;--green:#b9f5a7;--mono:"Courier New",Courier,ui-monospace,monospace}
+*{box-sizing:border-box}body{margin:0;background:#030a06;color:var(--ink);font:15px/1.5 var(--mono)}button,textarea{font:inherit}button{cursor:pointer}button:disabled{cursor:default;opacity:.5}a{color:inherit}button,a,textarea{-webkit-tap-highlight-color:transparent}button:focus-visible,a:focus-visible{outline:2px solid var(--amber);outline-offset:4px}textarea:focus{outline:none}::selection{background:#b9f5a7;color:#07110c}[hidden]{display:none!important}
+.case{height:calc(100vh - 32px);height:calc(100dvh - 32px);min-height:440px;max-width:1560px;margin:16px auto;padding:0 18px 18px;display:grid;grid-template-rows:76px minmax(0,1fr);background:#0a1b12;border:1px solid #294b34;border-bottom:7px solid #051008;border-radius:13px;box-shadow:0 8px 0 #020703,0 18px 40px #0005}.masthead{color:#b9f5a7;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:0 15px}.brand{display:flex;align-items:center;gap:20px;text-decoration:none}.logo{font-size:29px;font-weight:bold;letter-spacing:-2px;line-height:1;border-bottom:5px solid #6a965e;padding:6px 0}.logo span{color:#6a965e}.modelplate{font-size:10px;line-height:1.5;letter-spacing:1.6px;border-left:1px solid #35513a;padding-left:20px}.mastnote{display:flex;align-items:center;gap:24px;font-size:10px;letter-spacing:1.5px}.lamps{display:flex;gap:8px}.lamps i{width:7px;height:7px;border-radius:50%;background:#818370;box-shadow:inset 0 1px 2px #0004}.lamps i:nth-child(3n){background:#844955}.lamps i:nth-child(4n){background:#a88750}
+.workspace{display:grid;grid-template-columns:205px minmax(0,1fr);min-height:0;gap:16px}.sidebar{display:flex;flex-direction:column;gap:16px;padding:18px 14px 10px 10px;color:#a6c898;min-height:0;overflow-y:auto}.newchat{display:flex;align-items:center;gap:9px;width:100%;padding:12px 10px;background:#132c1c;border:1px solid #385942;border-bottom:4px solid #07160d;border-radius:3px;color:#b9f5a7;font-size:11px;text-align:left;box-shadow:0 2px 3px #0002}.newchat:hover{background:#1b3b26}.newchat svg{width:14px;height:14px;flex-shrink:0}.section-label{font-size:10px;letter-spacing:1.6px;margin-bottom:13px;color:#8bb67e}.rail-title{font-size:14px;line-height:1.4;font-weight:bold;margin:0 0 12px}.sidebar p{font-size:11px;line-height:1.8;margin:0;color:#8fb481}.chain{border-top:1px solid #2b4833;border-bottom:1px solid #2b4833;padding:12px 0;margin-top:22px}.node{display:flex;align-items:center;gap:9px;font-size:10px;padding:7px 0}.node b{width:7px;height:7px;background:#527a3d;border:1px solid #48643b;box-shadow:0 0 3px #a6d487}.node:last-child b{background:#ae813d;border-color:#8b6c38}.wire{height:13px;border-left:1px dashed #4b6b46;margin-left:3px}.rail-bottom{margin-top:auto;padding-top:18px;border-top:1px solid #2b4833}.back{text-decoration:none;font-size:11px;display:block}.back:hover{text-decoration:underline}.rail-bottom p{font-size:10px;margin-top:14px}
+.console{display:flex;flex-direction:column;position:relative;isolation:isolate;min-width:0;min-height:0;overflow:hidden;border:8px solid #14271a;border-bottom-color:#203a28;border-right-color:#1a3021;border-radius:17px;background:radial-gradient(ellipse at 48% 38%,#112719 0%,#08150e 65%,#060e0a 100%);box-shadow:inset 0 0 35px #0009,0 1px 0 #61864f44;text-shadow:0 0 5px #83f47522}.console:after{content:"";position:absolute;inset:0;z-index:4;pointer-events:none;border-radius:8px;background:repeating-linear-gradient(0deg,#0000000d 0,#0000000d 1px,transparent 1px,transparent 4px);box-shadow:inset 0 0 28px #0005}.consolebar{flex-shrink:0;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:16px 25px;border-bottom:1px solid var(--line);font-size:11px;letter-spacing:1px}.console-label{color:#92c487}.bar-right{display:flex;align-items:center;gap:17px}.connection{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--green);letter-spacing:0;white-space:nowrap}.connection.offline{color:var(--amber)}.dot{width:7px;height:7px;background:currentColor;box-shadow:0 0 7px #a9ef7780}.connection.busy .dot{animation:breathe 1.1s infinite}.mobile-new{display:none}
+.scroll-area{flex:1;min-height:0;overflow:auto;padding:0 30px;scroll-behavior:smooth;scrollbar-color:#436440 transparent}.welcome{max-width:790px;margin:0 auto;padding:clamp(24px,4vh,50px) 0 24px}.eyebrow{font-size:11px;letter-spacing:1px;color:#85b580;margin-bottom:16px}.eyebrow:before{content:"> ";color:var(--green)}h1{font-size:clamp(52px,6vw,76px);font-weight:bold;letter-spacing:5px;line-height:1;margin:0 0 10px;text-shadow:0 0 13px #92ef6840}.terminal-subtitle{margin:0 0 25px;font-size:13px;letter-spacing:2px;color:var(--amber)}.intro{font-size:15px;line-height:1.75;max-width:660px;margin:0;color:#b2dba6}.suggestions{display:grid;grid-template-columns:1fr 1fr;gap:0 24px;margin-top:25px;max-width:700px;border-top:1px dashed #355d3e;padding-top:11px}.suggestion{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 0;text-align:left;border:0;border-bottom:1px solid #26452e;border-radius:0;background:transparent;color:#9ed891;font-size:12px}.suggestion:hover{background:#173521;color:#d2ffc4}.suggestion span:last-child{color:#659464}.bootline{font-size:11px;margin-top:23px;color:#a7d79b;letter-spacing:1px}
+.messages{max-width:790px;margin:0 auto;padding:27px 0 12px}.messages:empty{display:none}.message{margin-bottom:28px}.speaker{display:flex;align-items:center;gap:9px;font-size:11px;letter-spacing:1px;margin-bottom:10px;color:var(--amber)}.avatar{display:grid;place-items:center;width:27px;height:23px;border:1px solid #716641;color:var(--amber);font-size:11px}.assistant .speaker{color:var(--green)}.assistant .avatar{border-color:#47683c;color:var(--green)}.user .content{white-space:pre-wrap;overflow-wrap:anywhere;color:#efd8a8;border-left:2px solid #7f714b;padding:7px 13px;background:#b2a76608}.assistant .content{line-height:1.75;font-size:14px;color:#b5e3a9;overflow-wrap:anywhere}.content.streaming{white-space:pre-wrap}.content p{margin:0 0 13px}.content p:last-child{margin-bottom:0}.content strong{color:#dcffd0}.content h3{font-size:15px;color:#d4f8bc;margin:20px 0 9px}.content ul,.content ol{padding-left:24px;margin:8px 0 16px}.content li{margin:4px 0}.content code{font:13px/1.65 var(--mono);color:#d6ecaa;background:#243520;padding:2px 4px}.codebox{border:1px solid #3c623a;background:#06100a;margin:14px 0;overflow:hidden}.codebar{display:flex;justify-content:space-between;align-items:center;padding:5px 10px;border-bottom:1px solid #35552f;color:#9dbd88;font-size:10px}.copy{font:11px var(--mono);border:0;background:transparent;color:var(--amber);padding:6px}.codebox pre{overflow:auto;margin:0;padding:14px}.codebox code{background:none;padding:0;white-space:pre;color:#c9e9a2}.message-meta{font-size:10px;color:#82ab76;margin-top:10px}.pending{display:flex;align-items:center;gap:8px;color:#a8cd8f;font-size:12px}.pending i{width:5px;height:9px;background:var(--green);animation:breathe 1.1s infinite}.pending i:nth-child(2){animation-delay:.2s}.pending i:nth-child(3){animation-delay:.4s}.error{color:#ffd28c!important}.retry{border:1px solid #947d46;background:#25291b;color:var(--amber);padding:8px 13px;margin-top:12px;font-size:11px}
+.composer-wrap{flex-shrink:0;padding:12px 30px 18px}.composer-shell{max-width:790px;margin:0 auto;padding:13px 15px 11px;border:1px solid #507946;background:#08170e;box-shadow:0 0 12px #0002}.composer-shell:focus-within{border-color:#9cc58a}.input-row{display:flex;gap:10px;align-items:flex-start}.prompt-mark{font-size:17px;color:var(--green);padding-top:1px}textarea{caret-color:#d3f7be;width:100%;resize:none;min-height:28px;max-height:150px;border:0;background:transparent;color:#d3f7be;font-size:14px;line-height:1.6;padding:0;font-family:var(--mono);border-radius:0}textarea::placeholder{color:#83ac78}.composer-controls{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:8px}.input-hint{font-size:9px;line-height:1.5;color:#8fb481}.send{display:flex;align-items:center;justify-content:center;gap:9px;min-width:92px;background:#bcc5a1;color:#182614;padding:8px 12px;border:1px solid #dfebc8;border-bottom:3px solid #687658;border-radius:2px;font-size:12px;font-weight:bold;text-shadow:none}.send:hover:not(:disabled){background:#dfebc5}.send svg{width:14px;height:14px}.send.stop{background:#514d31;border-color:#927f4d;color:#ffdea0}.footnote{display:flex;justify-content:space-between;gap:20px;max-width:790px;margin:10px auto 0;font-size:9px;line-height:1.5;color:#82a977}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@keyframes breathe{0%,100%{opacity:.4}50%{opacity:1}}
+@media(min-width:1600px){.case{margin-top:24px;height:calc(100dvh - 48px)}}
+@media(max-width:900px){.case{margin:8px;height:calc(100dvh - 16px);padding:0 10px 10px;grid-template-rows:66px minmax(0,1fr)}.workspace{grid-template-columns:1fr;gap:0}.sidebar{display:none}.masthead{padding:0 10px}.mastnote{display:none}.consolebar{padding:14px 20px}.mobile-new{display:block;border:0;background:transparent;color:#bad6a8;font-size:10px;padding:4px}.scroll-area{padding:0 24px}.composer-wrap{padding:12px 24px 16px}.footnote span:last-child{display:none}.welcome{padding-top:34px}}
+@media(max-width:480px){.case{margin:0;height:100vh;height:100dvh;min-height:360px;padding:0 7px 9px;border-radius:0;border:0;border-bottom:4px solid #051008;grid-template-rows:62px minmax(0,1fr)}.masthead{padding:0 10px}.brand{gap:14px}.logo{font-size:25px}.modelplate{font-size:8px;letter-spacing:1px;padding-left:13px}.console{border-width:5px;border-radius:12px}.consolebar{padding:12px 11px;gap:5px}.console-label{font-size:9px;letter-spacing:0}.bar-right{gap:9px}.connection{font-size:9px;gap:5px}.dot{width:5px;height:5px}.mobile-new{font-size:9px;padding:4px 0}.scroll-area{padding:0 17px}.welcome{padding-top:29px}h1{font-size:52px;letter-spacing:2px}.terminal-subtitle{font-size:10px;letter-spacing:.9px;margin-bottom:22px}.eyebrow{font-size:10px}.intro{font-size:13px;line-height:1.8}.suggestions{gap:0 14px;margin-top:22px}.suggestion{font-size:11px;line-height:1.5;padding:12px 0}.bootline{font-size:10px;margin-top:20px}.composer-wrap{padding:10px 12px 13px}.composer-shell{padding:12px 10px 9px}textarea{font-size:14px}.input-hint{font-size:8px}.send{min-width:78px;padding:8px 9px}.footnote{font-size:8px;margin-top:8px}.assistant .content{font-size:13px}.messages{padding-top:22px}}
+@media(min-width:901px) and (max-height:800px){.welcome{padding:16px 0 8px}.eyebrow{display:none}h1{font-size:48px;margin-bottom:6px}.terminal-subtitle{font-size:11px;line-height:16px;margin-bottom:12px}.intro{font-size:13.5px;line-height:1.5}.suggestions{margin-top:12px;padding-top:8px}.suggestion{padding:8px 0}.bootline{margin-top:14px;font-size:10px}}
+.gary-portrait{margin:0;padding:10px 10px 12px;background:#07110c;border:1px solid #45553b;border-radius:7px;color:#b9f5a7;box-shadow:inset 0 0 12px #0008}.gary-portrait img{display:block;width:100%;height:clamp(165px,28vh,265px);object-fit:contain}.gary-portrait figcaption{text-align:center;margin-top:9px;font-size:14px;letter-spacing:1.7px}.gary-portrait figcaption span{display:block;margin-top:5px;font-size:8px;letter-spacing:.6px;color:#8fbc83}.sidebar .chain{margin-top:0;padding:7px 0}.sidebar .rail-bottom{padding-top:13px}.sidebar .rail-bottom p{margin-top:10px}.gary-mobile{display:none}.welcome-copy:after{content:"";display:block;clear:both}
+@media(max-width:900px){.gary-mobile{display:block;float:left;width:90px;height:150px;object-fit:contain;margin:0 16px 10px 0;border:1px solid #294d32;border-radius:4px}.welcome-copy .intro{max-width:none}}
+@media(max-width:480px){h1{font-size:40px;letter-spacing:1px}.gary-mobile{width:80px;height:134px;margin-right:13px}.welcome{padding-top:22px}.terminal-subtitle{margin-bottom:18px}.welcome-copy .intro{font-size:12px;line-height:1.8}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<div class="case">
+<header class="masthead">
+  <a class="brand" href="pdp-ai.html" aria-label="UNIX-Gary home"><div class="logo">UNIX<span>-</span>Gary</div><div class="modelplate">CONVERSATIONAL<br>COMPUTING SYSTEM</div></a>
+  <div class="mastnote"><span>PDP-11 SERIES / OPERATOR CONSOLE</span><div class="lamps" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+</header>
+<div class="workspace">
+<aside class="sidebar">
+  <button class="newchat" id="new-chat"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M10 3v14M3 10h14"/></svg>New conversation</button>
+  <figure class="gary-portrait"><img src="gary-green-v1.jpg" alt="PDP Gary, the bearded UNIX wizard, in phosphor green" width="360" height="600"><figcaption>PDP GARY<span>RESIDENT UNIX WIZARD</span></figcaption></figure>
+  <div class="chain" aria-label="Page served by PDP-11; answers generated by local AI"><div class="node"><b></b>PDP-11 / 2.11BSD</div><div class="wire"></div><div class="node"><b></b>LOCAL AI / QWEN</div></div>
+  <div class="rail-bottom"><a class="back" href="/">← Back to the PDP</a><p>16-BIT HOST<br>UNLIMITED CURIOSITY</p></div>
+</aside>
+<main class="console">
+  <div class="consolebar"><span class="console-label">PDP-11 / 2.11BSD</span><div class="bar-right"><button class="mobile-new" id="mobile-new">+ New chat</button><span class="connection" id="connection" role="status"><span class="dot"></span><span id="connection-text">Connecting</span></span></div></div>
+  <div class="scroll-area" id="scroll-area">
+    <section class="welcome" id="welcome"><div class="eyebrow">UNIX-Gary TERMINAL / SESSION READY</div><h1>UNIX-Gary</h1><p class="terminal-subtitle">ARTIFICIAL INTELLIGENCE TERMINAL</p><div class="welcome-copy"><img class="gary-mobile" src="gary-green-v1.jpg" alt="PDP Gary, the bearded UNIX wizard, in phosphor green" width="360" height="600"><p class="intro">You're chatting with UNIX Gary, running on a real PDP-11, with the brains supplied by ethernet connection to dual Blackwell RTX6000 cards.</p></div><div class="suggestions">
+      <button class="suggestion" data-prompt="What made the PDP-11 such an influential computer?"><span>[1] Meet the PDP-11</span><span aria-hidden="true">↗</span></button>
+      <button class="suggestion" data-prompt="Write a short, fun BASIC program and explain how it works."><span>[2] Write some BASIC</span><span aria-hidden="true">↗</span></button>
+      <button class="suggestion" data-prompt="Why did PDP-11 programmers use octal numbers?"><span>[3] Think in octal</span><span aria-hidden="true">↗</span></button>
+      <button class="suggestion" data-prompt="Tell me a surprising story from the early days of computing."><span>[4] Surprise me</span><span aria-hidden="true">↗</span></button>
+    </div><div class="bootline">READY FOR INPUT</div></section>
+    <div class="messages" id="messages" role="log" aria-label="Conversation" aria-live="polite" aria-relevant="additions"></div>
+  </div>
+  <div class="composer-wrap"><form id="composer" class="composer-shell">
+    <div class="input-row"><span class="prompt-mark" aria-hidden="true">›</span><label for="prompt" class="sr-only">Your message</label><textarea id="prompt" rows="1" maxlength="2000" placeholder="Type your message here..." autocomplete="off"></textarea></div>
+    <div class="composer-controls"><span class="input-hint"><span id="count">0</span>/2000 <span aria-hidden="true">·</span> Enter to send <span aria-hidden="true">·</span> Shift + Enter for a new line</span><button class="send" id="send" type="submit" disabled><span id="send-label">Send</span><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M4 10h11M10 5l5 5-5 5"/></svg></button></div>
+  </form><div class="footnote"><span>Chat stays in this tab. Messages are sent to the local AI. Answers can be mistaken.</span><span>UNIX-Gary / V1.3</span></div></div>
+</main>
+</div></div>
+<noscript><p style="padding:20px">UNIX-Gary needs JavaScript enabled to send messages and show answers.</p></noscript>
+<script>
+(function(){
+'use strict';
+var $=function(id){return document.getElementById(id);};
+var field=$('prompt'),send=$('send'),scroll=$('scroll-area'),list=$('messages');
+var publicHosts=['pdp1173.com','www.pdp1173.com','davepl.dyndns.org'];
+var api=(publicHosts.indexOf(location.hostname)>=0?'':'https://pdp1173.com')+'/pdp-ai-api';
+var key='pdp-ai-chat-v1',messages=[],busy=false,controller=null,version=0;
+var fence=String.fromCharCode(96).repeat(3);
+try{var saved=JSON.parse(sessionStorage.getItem(key)||'[]');if(Array.isArray(saved))messages=saved.filter(function(m){return m&&['user','assistant'].indexOf(m.role)>=0&&typeof m.text==='string'&&m.text.length<=16000;}).slice(-100);}catch(e){}
+function save(){try{sessionStorage.setItem(key,JSON.stringify(messages.slice(-100)));}catch(e){}}
+function el(tag,cls,text){var n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n;}
+function status(text,kind){$('connection-text').textContent=text;$('connection').className='connection'+(kind?' '+kind:'');}
+function atBottom(){return scroll.scrollHeight-scroll.scrollTop-scroll.clientHeight<110;}
+function down(force){if(force||atBottom())scroll.scrollTop=scroll.scrollHeight;}
+function inline(node,text){
+  var pattern=/(\*\*[^*\n]+\*\*|\x60[^\x60\n]+\x60)/g,last=0,match;
+  while((match=pattern.exec(text))){node.appendChild(document.createTextNode(text.slice(last,match.index)));var strong=match[0].indexOf('**')===0;node.appendChild(el(strong?'strong':'code','',match[0].slice(strong?2:1,strong?-2:-1)));last=pattern.lastIndex;}
+  node.appendChild(document.createTextNode(text.slice(last)));
+}
+function markdown(node,text){
+  node.replaceChildren();node.classList.remove('streaming');
+  var lines=text.split('\n'),paragraph=[],items=null,code=null,language='';
+  function flush(){if(paragraph.length){var p=el('p');inline(p,paragraph.join('\n'));p.style.whiteSpace='pre-wrap';node.appendChild(p);paragraph=[];}items=null;}
+  lines.forEach(function(line){
+    if(line.indexOf(fence)===0){
+      flush();
+      if(code!==null){
+        var box=el('div','codebox'),bar=el('div','codebar'),button=el('button','copy','Copy'),raw=code.join('\n');
+        button.type='button';button.setAttribute('aria-label','Copy code');
+        button.addEventListener('click',function(){if(navigator.clipboard){navigator.clipboard.writeText(raw).then(function(){button.textContent='Copied';setTimeout(function(){button.textContent='Copy';},1500);}).catch(function(){button.textContent='Select to copy';});}else{var r=document.createRange();r.selectNodeContents(box.querySelector('code'));var s=getSelection();s.removeAllRanges();s.addRange(r);}});
+        bar.append(el('span','',language||'CODE'),button);var pre=el('pre');pre.appendChild(el('code','',raw));box.append(bar,pre);node.appendChild(box);code=null;
+      }else{code=[];language=line.slice(3).trim().slice(0,24);}
+    }else if(code!==null){code.push(line);}
+    else if(/^#{1,4} /.test(line)){flush();var h=el('h3');inline(h,line.replace(/^#{1,4} /,''));node.appendChild(h);}
+    else if(/^\s*([-*]|\d+\.) /.test(line)){
+      if(paragraph.length)flush();
+      var type=/^\s*\d+\./.test(line)?'ol':'ul';
+      if(!items||items.tagName.toLowerCase()!==type){items=el(type);node.appendChild(items);}
+      var li=el('li');inline(li,line.replace(/^\s*([-*]|\d+\.) /,''));items.appendChild(li);
+    }else if(!line.trim()){flush();}
+    else{items=null;paragraph.push(line);}
+  });
+  if(code!==null){var pre=el('pre','codebox');pre.appendChild(el('code','',code.join('\n')));node.appendChild(pre);}
+  flush();
+}
+function drawMessage(m,index){
+  var wrap=el('article','message '+m.role),speaker=el('div','speaker');
+  speaker.append(el('span','avatar',m.role==='user'?'U':'AI'),el('span','',m.role==='user'?'YOU':'PDP Gary'));
+  var content=el('div','content');
+  if(m.pending&&!m.text){var pending=el('div','pending');pending.append(el('i'),el('i'),el('i'),el('span','','Thinking…'));content.appendChild(pending);}
+  else if(m.role==='user'||m.pending){content.textContent=m.text;content.classList.add('streaming');}
+  else{markdown(content,m.text);}
+  if(m.error)content.classList.add('error');
+  wrap.append(speaker,content);
+  if(m.error){var retry=el('button','retry','Try again');retry.type='button';retry.disabled=busy;retry.addEventListener('click',function(){if(!busy){messages=messages.slice(0,index-1);run(m.question);}});wrap.appendChild(retry);}
+  if(m.note)wrap.appendChild(el('div','message-meta',m.note));
+  return wrap;
+}
+function render(){list.replaceChildren();messages.forEach(function(m,i){list.appendChild(drawMessage(m,i));});$('welcome').hidden=messages.length>0;}
+function update(){send.disabled=!busy&&!field.value.trim();send.classList.toggle('stop',busy);$('send-label').textContent=busy?'Stop':'Send';send.setAttribute('aria-label',busy?'Stop generating':'Send message');field.disabled=busy;$('count').textContent=field.value.length;field.style.height='auto';field.style.height=Math.min(field.scrollHeight,150)+'px';}
+function context(){
+  var result=[];
+  for(var i=0;i<messages.length-2;i+=2){var a=messages[i],b=messages[i+1];if(a&&b&&a.role==='user'&&b.role==='assistant'&&!b.error&&!b.pending&&b.text)result.push({role:'user',content:a.text},{role:'assistant',content:b.text});}
+  result.push({role:'user',content:messages[messages.length-2].text});
+  while(result.length>25||result.reduce(function(n,m){return n+m.content.length;},0)>24000)result.splice(0,2);
+  return result;
+}
+async function run(question){
+  if(busy||!question.trim())return;
+  var current=++version,answer={role:'assistant',text:'',pending:true},started=Date.now(),done=false;
+  messages.push({role:'user',text:question},answer);busy=true;field.value='';controller=new AbortController();status('Thinking','busy');update();render();down(true);
+  try{
+    var response=await fetch(api+'/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:context()}),signal:controller.signal,cache:'no-store',credentials:'omit'});
+    if(!response.ok){var error=await response.json().catch(function(){return {};});throw new Error(error.error||'The AI is unavailable. Please try again.');}
+    if(!response.body)throw new Error('Your browser cannot receive this answer. Please try a newer browser.');
+    var reader=response.body.getReader(),decoder=new TextDecoder(),buffer='';
+    while(true){
+      var chunk=await reader.read();
+      if(chunk.done)break;
+      if(current!==version){await reader.cancel();return;}
+      buffer+=decoder.decode(chunk.value,{stream:true});
+      var boundary;
+      while((boundary=buffer.indexOf('\n\n'))>=0){
+        var block=buffer.slice(0,boundary);buffer=buffer.slice(boundary+2);
+        var event='message',data='';
+        block.split('\n').forEach(function(line){if(line.indexOf('event: ')===0)event=line.slice(7);if(line.indexOf('data: ')===0)data+=line.slice(6);});
+        if(!data)continue;
+        var payload=JSON.parse(data);
+        if(event==='error')throw new Error(payload.error||'The answer was interrupted.');
+        if(event==='delta'){
+          var follow=atBottom();answer.text+=payload.text;
+          var body=list.lastElementChild.querySelector('.content');body.className='content streaming';body.textContent=answer.text;down(follow);status('Receiving','busy');
+        }
+        if(event==='done'){done=true;answer.note=payload.finish_reason==='length'?'Response limit reached. Ask “continue” to carry on.':'Answered in '+payload.seconds+'s';}
+      }
+    }
+    if(!done)throw new Error('The answer was interrupted. Please try again.');
+    answer.pending=false;status('AI online','');
+  }catch(error){
+    if(current!==version)return;
+    answer.pending=false;
+    if(error.name==='AbortError'){
+      if(answer.text){answer.note='Response stopped';}
+      else{answer.text='Response stopped before an answer arrived.';answer.error=true;answer.question=question;}
+      status('Ready','');
+    }else{answer.text=error.message;answer.error=true;answer.question=question;status('Try again','offline');}
+  }finally{
+    if(current===version){var follow=atBottom();busy=false;controller=null;save();render();update();down(follow);field.focus();}
+  }
+}
+function reset(){version++;if(controller)controller.abort();controller=null;busy=false;messages=[];field.value='';save();render();update();scroll.scrollTop=0;status('Ready','');field.focus();}
+$('composer').addEventListener('submit',function(e){e.preventDefault();if(busy){controller.abort();return;}run(field.value.trim());});
+field.addEventListener('input',update);
+field.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();if(!busy&&field.value.trim())run(field.value.trim());}});
+$('new-chat').addEventListener('click',reset);$('mobile-new').addEventListener('click',reset);
+document.querySelectorAll('[data-prompt]').forEach(function(button){button.addEventListener('click',function(){field.value=button.dataset.prompt;update();field.focus();});});
+messages.forEach(function(m){if(m.pending){m.pending=false;m.error=true;m.text='This answer was interrupted when the page closed.';}});
+render();update();if(messages.length)down(true);
+fetch(api+'/health',{cache:'no-store',credentials:'omit'}).then(function(r){if(!busy)status(r.ok?'AI online':'AI offline',r.ok?'':'offline');}).catch(function(){if(!busy)status('AI offline','offline');});
+})();
+</script>
+</body>
+</html>
