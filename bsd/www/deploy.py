@@ -42,6 +42,7 @@ FILES = (
     "tests/gary-visitors.js", "tests/gary-counter.py", "config/pdp-gary-route.caddy",
     "site/glass-tty-vt220-v1.woff2", "archive/glasstty/Glass_TTY_VT220.ttf",
     "archive/glasstty/LICENSE", "archive/glasstty/UPSTREAM.md",
+    "proxy/ai-bridge.py", "proxy/gary-system-prompt.txt",
 )
 
 

@@ -32,6 +32,7 @@ SOURCE_FILES = (
     'config/pdp-gary-route.caddy', 'config/README.varnish.md', 'README.visitors',
     'site/glass-tty-vt220-v1.woff2', 'archive/glasstty/Glass_TTY_VT220.ttf',
     'archive/glasstty/LICENSE', 'archive/glasstty/UPSTREAM.md',
+    'proxy/ai-bridge.py', 'proxy/gary-system-prompt.txt',
 )
 PUBLIC_IMAGES = ('pdp1183-web.jpg', 'tmog-banner-v2.jpg', 'pdp1173-tmog-preview-v1.jpg')
 PUBLIC_ASSETS = PUBLIC_IMAGES + ('gary-green-v1.jpg', 'glass-tty-vt220-v1.woff2')

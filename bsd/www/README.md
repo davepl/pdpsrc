@@ -99,6 +99,20 @@ The homepage starts with a compact green PDP-Gary banner using the same font
 and existing portrait; its Chat Now link opens `pdp-ai.html`. The banner uses
 only static markup and CSS and adds no scripts or visitor-counter requests.
 
+Gary's complete system prompt is in `proxy/gary-system-prompt.txt`. It combines
+the mildly snarky persona with dated website/owner background, distinguishes
+the collection inventory from live telemetry, and casts the modern inference
+machines as "AI dongles" without misrepresenting their actual work. The bridge
+source is preserved in `proxy/ai-bridge.py`; this runs on the modern AI host,
+not on either PDP. It reads the adjacent prompt file at startup and prepends
+it to each validated conversation. Prompt changes require restarting only
+`pdp-ai.service`, not the model service. Preserve private model/proxy keys in
+their existing protected files; credentials are not part of the source bundle.
+The request uses temperature 0.7, a 1,024-token response cap, and disables
+thinking; recent browser-supplied history remains bounded to 25 messages and
+24,000 characters. The prompt's site facts are a curated snapshot, not a live
+website fetch or hardware/tool access for Gary.
+
 For a Gary page/asset update, run `python3 deploy-page.py HOST --page pdp-ai`.
 This preserves the prior page privately, updates the on-machine restore source,
 publishes images and the font before HTML, and verifies the result over FTP and HTTP. Install
