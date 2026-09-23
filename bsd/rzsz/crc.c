@@ -5,6 +5,10 @@
  *  Crc - 32 BIT ANSI X3.66 CRC checksum files
  */
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+int crc32file();
 #define OK 0
 #define ERROR (-1)
 #define LINT_ARGS
@@ -163,9 +167,10 @@ char *name;
 			for (l = charcnt; l % Block; ++l)
 				oldcrc32 = UPDC32(032, oldcrc32);
 		}
-		crc32 = oldcrc32;  oldcrc = oldcrc32 = ~oldcrc32;
+		crc32 = oldcrc32;
+		oldcrc = oldcrc32 = ~oldcrc32 & 0xFFFFFFFFUL;
 
-		printf("%08lX %7ld ", oldcrc, charcnt);
+		printf("%08lx %7ld ", oldcrc, charcnt);
 		if (Block == 128)
 			printf("%5ld+%3ld ", charcnt/Block, charcnt%Block);
 		if (Block == 1024)

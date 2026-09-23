@@ -50,6 +50,13 @@ long Locbit = LLITOUT;	/* Bit SUPPOSED to disable output translations */
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <stdarg.h>
+void vfile(char *, ...);
+void zperr(char *, ...);
+#define zperr1 zperr
+#define zperr2 zperr
+#define zperr3 zperr
 #ifndef READCHECK
 #ifndef FIONREAD
 #define SV
@@ -69,6 +76,11 @@ char *getenv();
 #endif
 
 #include <setjmp.h>
+
+int zmputs();
+#ifndef POSIX
+int vfile();
+#endif
 
 #if HOWMANY  > 255
 Howmany must be 255 or less
@@ -539,6 +551,36 @@ char *s;
 }
 
 
+#ifdef POSIX
+/* Real varargs are required by modern calling conventions (including arm64). */
+void
+vfile(char *f, ...)
+{
+	va_list args;
+
+	if (Verbose > 2) {
+		va_start(args, f);
+		vfprintf(stderr, f, args);
+		va_end(args);
+		fprintf(stderr, "\n");
+	}
+}
+
+void
+zperr(char *f, ...)
+{
+	extern int errors;
+	va_list args;
+
+	if (Verbose <= 0)
+		return;
+	fprintf(stderr, "Retry %d: ", errors);
+	va_start(args, f);
+	vfprintf(stderr, f, args);
+	va_end(args);
+	fprintf(stderr, "\n");
+}
+#else
 /* VARARGS1 */
 vfile(f, a, b, c, d)
 char *f;
@@ -549,5 +591,6 @@ long a, b, c, d;
 		fprintf(stderr, "\n");
 	}
 }
+#endif
 
 /* End of rbsb.c */

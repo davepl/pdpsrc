@@ -2,6 +2,12 @@ char* Version= "minirb 3.02 12-21-94 Copyright 1994 Omen Technology INC";
 #include <stdio.h>
 #include <signal.h>
 #include <setjmp.h>
+#include <stdlib.h>
+#include <string.h>
+#include "../pdp11_unistd.h"
+
+void wcreceive();
+int wcrxpn(), procheader(), wcrx(), sendline(), wcgetsec(), rdln();
 
 FILE *fout; long Bytesleft; int Blklen; char secbuf[1024]; char linbuf[1024];
 int Lleft=0; jmp_buf tohere;
@@ -21,7 +27,7 @@ main() {
  printf("Send your files with a YAM/ZCOMM \042sb file ...\042 command\r\n");
  wcreceive(); mode(0); exit(0); }
 
-wcreceive() {
+void wcreceive() {
  for (;;) {
   if (wcrxpn(secbuf) == -1) break;
   if (secbuf[0]==0) return;

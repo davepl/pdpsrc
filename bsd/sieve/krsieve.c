@@ -118,7 +118,8 @@ int main(argc, argv) int argc;
 char *argv[];
 {
     int limit, oneshot, print_primes, quiet, seconds, passes;
-    int prime_count, i;
+    int prime_count, i, opt;
+    char *argval;
     time_t start_time, current_time;
     double elapsed_time, total_time;
 
@@ -136,15 +137,22 @@ char *argv[];
     {
         if (argv[i][0] == '-')
         {
-            switch (argv[i][1])
+            opt = argv[i][1];
+            switch (opt)
             {
             case 'l':
-                if (++i < argc)
-                    limit = atoi(argv[i]);
+                i++;
+                if (i < argc) {
+                    argval = argv[i];
+                    limit = atoi(argval);
+                }
                 break;
             case 's':
-                if (++i < argc)
-                    seconds = atoi(argv[i]);
+                i++;
+                if (i < argc) {
+                    argval = argv[i];
+                    seconds = atoi(argval);
+                }
                 break;
             case '1':
                 oneshot = 1;

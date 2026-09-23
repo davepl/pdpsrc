@@ -3,7 +3,7 @@
  * arguments and a fixed environment. The helper supplies the HTTP response.
  */
 #include <stdio.h>
-#include <unistd.h>
+#include "../pdp11_unistd.h"
 int main()
 {
     static char *args[] = { "webtop", 0 };

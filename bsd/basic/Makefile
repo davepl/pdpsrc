@@ -4,9 +4,9 @@ TARGET=basic
 SRCS=basic.c
 
 # Defaults for modern systems; PDP11 settings are chosen in the rule below.
-CC?=cc
-CFLAGS?=-Wall -std=c89 -pedantic -O2 -DHAVE_USLEEP
-LDFLAGS?=-lm
+CC=cc
+CFLAGS=-Wall -std=c89 -pedantic -O2 -DHAVE_USLEEP
+LDFLAGS=-lm
 
 all: $(TARGET)
 

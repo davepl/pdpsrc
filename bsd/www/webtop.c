@@ -14,7 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+#include "../pdp11_unistd.h"
 #include <signal.h>
 #include <pwd.h>
 #include <utmp.h>

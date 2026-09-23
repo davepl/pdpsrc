@@ -1,3 +1,4 @@
+MAKE=make
 AS=as
 CC=cc
 PROG=attn
@@ -8,7 +9,7 @@ all:
 	case "`uname -s 2>/dev/null`" in \
 	Darwin) echo "PDP-11 assembly build is intended for 2.11BSD."; \
 	        echo "Use 'make regen' on macOS to regenerate attn.s from ../sample sources." ;; \
-	*) make ${PROG} ;; \
+	*) ${MAKE} ${PROG} ;; \
 	esac
 
 ${PROG}: ${OBJS}
