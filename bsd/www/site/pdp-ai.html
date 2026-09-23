@@ -8,6 +8,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' https://pdp1173.com; img-src 'self' data:; base-uri 'none'; form-action 'none'">
 <title>PDP-Gary</title>
 <link rel="canonical" href="https://pdp1173.com/pdp-ai.html">
+<link rel="preload" href="glass-tty-vt220-v1.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="apple-touch-icon" sizes="180x180" href="/pdp-gary-apple-touch-icon-v2.png">
 <meta name="apple-mobile-web-app-title" content="PDP-Gary">
 <link rel="icon" type="image/png" sizes="32x32" href="/pdp-gary-favicon-v2.png">
@@ -29,6 +30,8 @@
 <meta name="twitter:image:alt" content="PDP-Gary, the bearded UNIX wizard, in phosphor green">
 
 <style>
+/* Glass TTY VT220 by Viacheslav Slavinsky; Unlicense. See archive/glasstty. */
+@font-face{font-family:"Glass TTY VT220";src:url("glass-tty-vt220-v1.woff2") format("woff2");font-style:normal;font-weight:400;font-display:swap}
 :root{color-scheme:dark;--bg:#07110c;--panel:#0b1a11;--line:#294d32;--ink:#b9f5a7;--muted:#87b982;--amber:#ffd28c;--green:#b9f5a7;--mono:"Courier New",Courier,ui-monospace,monospace}
 *{box-sizing:border-box}body{margin:0;background:#030a06;color:var(--ink);font:15px/1.5 var(--mono)}button,textarea{font:inherit}button{cursor:pointer}button:disabled{cursor:default;opacity:.5}a{color:inherit}button,a,textarea{-webkit-tap-highlight-color:transparent}button:focus-visible,a:focus-visible{outline:2px solid var(--amber);outline-offset:4px}textarea:focus{outline:none}::selection{background:#b9f5a7;color:#07110c}[hidden]{display:none!important}
 .case{height:calc(100vh - 32px);height:calc(100dvh - 32px);min-height:440px;max-width:1560px;margin:16px auto;padding:0 18px 18px;display:grid;grid-template-rows:76px minmax(0,1fr);background:#0a1b12;border:1px solid #294b34;border-bottom:7px solid #051008;border-radius:13px;box-shadow:0 8px 0 #020703,0 18px 40px #0005}.masthead{color:#b9f5a7;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:0 15px}.brand{display:flex;align-items:center;gap:20px;text-decoration:none}.logo{font-size:29px;font-weight:bold;letter-spacing:-2px;line-height:1;border-bottom:5px solid #6a965e;padding:6px 0}.logo span{color:#6a965e}.modelplate{font-size:10px;line-height:1.5;letter-spacing:1.6px;border-left:1px solid #35513a;padding-left:20px}.mastnote{display:flex;align-items:center;gap:24px;font-size:10px;letter-spacing:1.5px}.lamps{display:flex;gap:8px}.lamps i{width:7px;height:7px;border-radius:50%;background:#818370;box-shadow:inset 0 1px 2px #0004}.lamps i:nth-child(3n){background:#844955}.lamps i:nth-child(4n){background:#a88750}
@@ -50,6 +53,25 @@
 @media(max-width:900px){.gary-mobile{display:block;float:left;width:90px;height:150px;object-fit:contain;margin:0 16px 10px 0;border:1px solid #294d32;border-radius:4px}.welcome-copy .intro{max-width:none}}
 @media(max-width:480px){h1{font-size:40px;letter-spacing:1px}.gary-mobile{width:80px;height:134px;margin-right:13px}.welcome{padding-top:22px}.terminal-subtitle{margin-bottom:18px}.welcome-copy .intro{font-size:12px;line-height:1.8}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;scroll-behavior:auto!important}}
+/* The CRT face uses the font's own scanlines; cabinet lettering stays separate. */
+.console{--mono:"Glass TTY VT220","Courier New",Courier,ui-monospace,monospace;font-family:var(--mono);font-size:20px;line-height:1.4;font-synthesis:none;text-shadow:0 0 3px #83f47518}
+.console:after{background:none}
+.consolebar,.connection,.eyebrow,.speaker,.avatar,.bootline,.codebar,.copy,.retry,.mobile-new{font-size:16px}
+.consolebar,.speaker,.eyebrow,.bootline{letter-spacing:0}
+.console h1{font-weight:400;letter-spacing:1px}
+.console .terminal-subtitle{font-size:18px;line-height:1.25;letter-spacing:1px}
+.console .intro,.console .welcome-copy .intro,.console .content,.console .assistant .content{font-size:20px;line-height:1.4}
+.console .content h3{font-size:24px;font-weight:400}
+.console .content strong{font-weight:400}
+.console .content code{font:20px/1.4 var(--mono)}
+.console .suggestion,.console .pending,.console .send{font-size:18px}
+.console .send{font-weight:400}
+.console textarea{font:20px/1.4 var(--mono)}
+.console .prompt-mark{font-size:24px}
+.console .input-hint,.console .footnote,.console .message-meta{font-size:12px;line-height:1.4}
+.gary-portrait figcaption{font:20px/1.2 "Glass TTY VT220",var(--mono);letter-spacing:1px}
+.gary-portrait figcaption span{font-size:12px}
+@media(max-width:480px){.consolebar,.console-label,.connection,.mobile-new{font-size:14px}.console .terminal-subtitle{font-size:16px;letter-spacing:0}.console .suggestion{font-size:16px}.console .input-hint{max-width:190px}.console .send{min-width:70px}.console .composer-controls{gap:8px}}
 </style>
 </head>
 <body>

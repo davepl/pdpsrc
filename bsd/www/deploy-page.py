@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish a static page and images over the PDP's LAN FTP service."""
+"""Publish a static page and its assets over the PDP's LAN FTP service."""
 import argparse
 import ftplib
 import getpass
@@ -30,10 +30,14 @@ SOURCE_FILES = (
     'site/pdp-gary-apple-touch-icon-v2.png', 'tests/gary-visitors.js',
     'tests/gary-counter.py', 'proxy/visitor-service.py',
     'config/pdp-gary-route.caddy', 'config/README.varnish.md', 'README.visitors',
+    'site/glass-tty-vt220-v1.woff2', 'archive/glasstty/Glass_TTY_VT220.ttf',
+    'archive/glasstty/LICENSE', 'archive/glasstty/UPSTREAM.md',
 )
 PUBLIC_IMAGES = ('pdp1183-web.jpg', 'tmog-banner-v2.jpg', 'pdp1173-tmog-preview-v1.jpg')
+PUBLIC_ASSETS = PUBLIC_IMAGES + ('gary-green-v1.jpg', 'glass-tty-vt220-v1.woff2')
 GARY_IMAGES = ('gary-green-v1.jpg', 'pdp-gary-preview-v1.jpg',
                'pdp-gary-favicon-v2.png', 'pdp-gary-apple-touch-icon-v2.png')
+GARY_ASSETS = GARY_IMAGES + ('glass-tty-vt220-v1.woff2',)
 
 
 def read_ftp(ftp, path):
@@ -53,7 +57,7 @@ def main():
     files = {name: (ROOT / name).read_bytes() for name in SOURCE_FILES}
     filename = args.page + '.html'
     page = files['site/' + filename]
-    images = GARY_IMAGES if args.page == 'pdp-ai' else PUBLIC_IMAGES
+    assets = GARY_ASSETS if args.page == 'pdp-ai' else PUBLIC_ASSETS
     if len(files['site/pdp1183-web.jpg']) >= 105000:
         parser.error('The homepage photograph must be below 105,000 bytes')
     password = (sys.stdin.readline().rstrip('\r\n') if args.password_stdin
@@ -73,7 +77,7 @@ def main():
         # Keep the on-machine restore source in sync with the served page.
         for directory in ('archive', 'archive/pre-webtop-192.168.1.26',
                           'archive/amber-webtop', 'archive/virtual-panel',
-                          'archive/link-preview', 'proxy', 'config'):
+                          'archive/link-preview', 'archive/glasstty', 'proxy', 'config'):
             target = SOURCE + '/' + directory
             try:
                 ftp.mkd(target)
@@ -85,9 +89,9 @@ def main():
             target = SOURCE + '/' + name
             ftp.storbinary('STOR ' + target + '.upload', io.BytesIO(content))
             ftp.rename(target + '.upload', target)
-        # Publish images before the page that references them. Keep any
+        # Publish assets before the page that references them. Keep any
         # older public copy in the private source directory before replacement.
-        for name in images:
+        for name in assets:
             content = files['site/' + name]
             target = DOCROOT + '/' + name
             try:
@@ -105,7 +109,7 @@ def main():
                 ftp.sendcmd('SITE CHMOD 644 ' + target + '.new')
                 ftp.rename(target + '.new', target)
             if read_ftp(ftp, target) != content:
-                raise RuntimeError('FTP image readback does not match: ' + name)
+                raise RuntimeError('FTP asset readback does not match: ' + name)
         if previous != page:
             temporary = DOCROOT + '/' + args.page + '.page.new'
             ftp.storbinary('STOR ' + temporary, io.BytesIO(page))
@@ -119,11 +123,11 @@ def main():
     with urllib.request.urlopen(request, timeout=20) as response:
         if response.status != 200 or response.read() != page:
             raise RuntimeError('HTTP readback does not match the prepared page')
-    for name in images:
+    for name in assets:
         with urllib.request.urlopen('http://' + args.host + '/' + name, timeout=20) as response:
             if response.status != 200 or response.read() != files['site/' + name]:
-                raise RuntimeError('HTTP image readback does not match: ' + name)
-    print('Verified page and images over FTP and HTTP: ' + str(len(page)) + ' bytes HTML.')
+                raise RuntimeError('HTTP asset readback does not match: ' + name)
+    print('Verified page and assets over FTP and HTTP: ' + str(len(page)) + ' bytes HTML.')
 
 
 if __name__ == '__main__':

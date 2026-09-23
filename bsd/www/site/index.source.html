@@ -6,6 +6,7 @@
     <meta name="description" content="Dave's PDP-11/83 collection, with a live 2.11BSD TMOG-11 panel, DEC and Emulex hardware, and classic disk and tape storage.">
     <title>PDP-11/83 — Live System Overview</title>
     <link rel="canonical" href="https://pdp1173.com/">
+    <link rel="preload" href="glass-tty-vt220-v1.woff2" as="font" type="font/woff2" crossorigin>
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Dave's PDP-11/83">
     <meta property="og:url" content="https://pdp1173.com/">
@@ -23,6 +24,32 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        /* Glass TTY VT220: Unlicense; provenance in archive/glasstty/. */
+        @font-face { font-family: 'Glass TTY VT220'; src: url('glass-tty-vt220-v1.woff2') format('woff2'); font-style: normal; font-weight: 400; font-display: swap; }
+        .gary-promo { display: grid; grid-template-columns: 70px minmax(0, 1fr) auto; align-items: center; gap: 18px; width: calc(100% - 48px); max-width: 1032px; min-height: 86px; margin: 16px auto 0; padding: 8px 20px 8px 12px; border: 1px solid #35552e; border-radius: 4px; background: #051008; color: #b9f99b; font: 400 20px/1.3 'Glass TTY VT220', 'Courier New', monospace; font-synthesis: none; }
+        .gary-promo-portrait { position: relative; width: 70px; height: 68px; overflow: hidden; border-radius: 3px; background: #040e08; }
+        .gary-promo-portrait img { display: block; position: absolute; width: 91px; height: auto; max-width: none; left: -11px; top: -3px; }
+        .gary-promo-name { margin: 0; color: #b9f99b; font-size: 26px; line-height: 1.15; font-weight: 400; letter-spacing: .015em; }
+        .gary-promo-description { margin: 5px 0 0; color: #9fb795; font-size: 18px; line-height: 1.3; }
+        .gary-promo-chat { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 44px; padding: 10px 16px; border: 1px solid #b9f99b; border-radius: 3px; background: #b9f99b; color: #071008; text-decoration: none; white-space: nowrap; font: inherit; font-size: 20px; line-height: 1.2; }
+        .gary-promo-chat:hover { background: #d1ffb9; }
+        .gary-promo-chat span { font: 20px/1 'Courier New', monospace; }
+        @media (max-width: 640px) { .gary-promo { width: calc(100% - 32px); } }
+        @media (max-width: 430px) {
+            .gary-promo { grid-template-columns: 52px minmax(0, 1fr) auto; gap: 10px; padding: 9px 10px; }
+            .gary-promo-portrait { width: 52px; height: 62px; }
+            .gary-promo-portrait img { width: 78px; left: -12px; top: 0; }
+            .gary-promo-name { font-size: 22px; }
+            .gary-promo-description { font-size: 16px; line-height: 1.15; }
+            .gary-promo-chat { padding: 10px; font-size: 18px; gap: 7px; }
+            .gary-promo-chat span { font-size: 16px; }
+        }
+        @media (max-width: 360px) {
+            .gary-promo { grid-template-columns: 44px minmax(0, 1fr) auto; gap: 8px; padding: 8px; }
+            .gary-promo-portrait { width: 44px; height: 62px; }
+            .gary-promo-chat { padding: 10px 8px; font-size: 16px; }
+            .gary-promo-chat span { display: none; }
+        }
         :root {
             --bg: #0f0c11;
             --panel: #17131b;
@@ -549,6 +576,11 @@
 </head>
 <body>
     <a class="skip" href="#main">Skip to content</a>
+    <aside class="gary-promo" aria-label="Chat with PDP-Gary">
+        <div class="gary-promo-portrait"><img src="gary-green-v1.jpg" width="360" height="600" alt="Gary, the bearded PDP mascot" decoding="async"></div>
+        <div><p class="gary-promo-name">PDP-Gary</p><p class="gary-promo-description">Retro terminal. Modern AI.</p></div>
+        <a class="gary-promo-chat" href="pdp-ai.html">Chat Now <span aria-hidden="true">→</span></a>
+    </aside>
     <header>
         <div class="nav">
             <div class="nav-title">

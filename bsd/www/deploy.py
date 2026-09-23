@@ -40,6 +40,8 @@ FILES = (
     "site/pdp-ai.html", "site/gary-green-v1.jpg", "site/pdp-gary-preview-v1.jpg",
     "site/pdp-gary-favicon-v2.png", "site/pdp-gary-apple-touch-icon-v2.png",
     "tests/gary-visitors.js", "tests/gary-counter.py", "config/pdp-gary-route.caddy",
+    "site/glass-tty-vt220-v1.woff2", "archive/glasstty/Glass_TTY_VT220.ttf",
+    "archive/glasstty/LICENSE", "archive/glasstty/UPSTREAM.md",
 )
 
 

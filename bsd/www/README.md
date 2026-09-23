@@ -90,9 +90,18 @@ homepage; **ONLINE NOW** shows browser sessions active on Gary in the last
 `config/README.varnish.md` for routes, migration and backup details. The chat
 bridge configuration and its credentials remain private on Caddy.
 
-For a Gary page/image update, run `python3 deploy-page.py HOST --page pdp-ai`.
+The green Gary terminal uses the locally hosted Glass TTY VT220 font for its
+welcome screen, chat, code and input. The 6,536-byte WOFF2 retains the complete
+font; the original TTF, Unlicense and provenance are in `archive/glasstty/`.
+Its built-in scanlines replace the extra CSS scanline overlay. The page keeps
+a standard monospace fallback and does not contact a third-party font service.
+The homepage starts with a compact green PDP-Gary banner using the same font
+and existing portrait; its Chat Now link opens `pdp-ai.html`. The banner uses
+only static markup and CSS and adds no scripts or visitor-counter requests.
+
+For a Gary page/asset update, run `python3 deploy-page.py HOST --page pdp-ai`.
 This preserves the prior page privately, updates the on-machine restore source,
-publishes images before HTML, and verifies the result over FTP and HTTP. Install
+publishes images and the font before HTML, and verifies the result over FTP and HTTP. Install
 the new counter service and Caddy route before publishing this page.
 
 For a homepage/image update on an already installed system, run
