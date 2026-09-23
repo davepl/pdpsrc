@@ -1,0 +1,12 @@
+# Import inside the existing PDP hostname block, before its Varnish proxy.
+# Presence requests terminate here on Caddy's host, never on either PDP.
+handle /pdp-visitors/* {
+	request_body {
+		max_size 256B
+	}
+	reverse_proxy 127.0.0.1:6083
+}
+
+# The legacy PDP httpd does not recognize PNG; set the type after proxying.
+@pdpGaryIcons path /pdp-gary-apple-touch-icon-v2.png /pdp-gary-favicon-v2.png
+header @pdpGaryIcons >Content-Type image/png

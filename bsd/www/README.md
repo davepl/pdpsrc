@@ -83,6 +83,18 @@ the counter checks run against both source and generated output. Commit
 both HTML files and preserve the images in `site/`. The native installer and uploader use the
 prebuilt `site/index.html`; no Node.js or minifier runs on the PDP.
 
+The PDP-Gary chat page is preserved in `site/pdp-ai.html`, with its portrait,
+icons and preview image. Its **TOTAL VISITS** counter is independent of the
+homepage; **ONLINE NOW** shows browser sessions active on Gary in the last
+90 seconds. Both are managed by the existing counter service on Caddy. See
+`config/README.varnish.md` for routes, migration and backup details. The chat
+bridge configuration and its credentials remain private on Caddy.
+
+For a Gary page/image update, run `python3 deploy-page.py HOST --page pdp-ai`.
+This preserves the prior page privately, updates the on-machine restore source,
+publishes images before HTML, and verifies the result over FTP and HTTP. Install
+the new counter service and Caddy route before publishing this page.
+
 For a homepage/image update on an already installed system, run
 `python3 deploy-page.py 192.168.1.26`. It prompts for the existing FTP
 password, saves the previous page (and any replaced images) outside the document

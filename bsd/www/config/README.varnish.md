@@ -68,8 +68,45 @@ Public `/visits.txt` is served by the central service.
 
 Browser session deduplication remains unchanged: refreshes and snapshot polling
 do not increment. This is an approximate session count, not unique people or
-fraud-resistant analytics. No visitor identifiers are stored by the service.
+fraud-resistant analytics. The homepage counter stores no visitor identifiers.
 If the proxy/counter fails, neither PDP silently starts a divergent local count.
+
+## PDP-Gary visitors
+
+`pdp-ai.html` has its own total, independent of the homepage. The service adds
+`gary_counter` and `sessions` tables to the existing database on first startup;
+Gary starts at zero, while the existing homepage total stays unchanged. Both
+totals are included in the same online SQLite backup. Never remove/reinitialize
+the database during deployment. Invalid existing totals fail closed.
+
+Install `config/pdp-gary-route.caddy` as `/etc/caddy/pdp-gary-route.caddy` and
+import it inside the existing PDP hostname block. Preserve the separate private
+`pdp-ai-route.caddy` import and its chat credentials. Validate and reload Caddy.
+The new import sends `/pdp-visitors/*` directly to the loopback counter service,
+bypassing Varnish and the PDPs, and sets PNG types for the renamed Gary icons.
+
+- `GET`/`HEAD /pdp-visitors/stats`: read Gary's total and active count as JSON.
+- `POST /pdp-visitors/heartbeat`: a 32-character random hexadecimal `session`
+  and boolean `increment`; each token can increment Gary's total only once.
+- Visible pages send a heartbeat every 30 seconds. **ONLINE NOW** means distinct
+  browser sessions seen on this page within 90 seconds, including readers who
+  haven't sent a chat. Hidden/closed pages expire, and multiple tabs share a
+  session cookie. Hostnames and cookie-blocked tabs may count separately.
+
+Session cookies and a separate `pdp_gary_visit_v1` marker prevent refreshes or
+new tabs from adding visits. sessionStorage is the fallback; if storage is
+blocked, only read the counters. Interrupted first visits can be missed, and
+simultaneous first loads can race while creating their browser cookie. This is
+an approximate session count, not unique people or fraud-resistant analytics.
+The service stores only SHA-256 hashes of random session tokens, with no IPs or
+chat content; rows inactive for 24 hours are pruned on the next heartbeat.
+Retries and restarts reuse these records and do not add another visit.
+
+Direct `.26` and `.29` pages use the canonical HTTPS counter endpoint. Its CORS
+allowlist covers these LAN origins and the three public hostnames. Requests and
+responses are uncached; failure displays a dash rather than a guessed count.
+Tests use private databases: `python3 tests/gary-counter.py` and
+`node tests/gary-visitors.js`.
 
 ## Restore the Linux service
 
