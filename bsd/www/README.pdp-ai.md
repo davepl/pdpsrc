@@ -22,8 +22,8 @@ Both PDPs store the same five files in `/home/www`:
 | --- | --- |
 | `pdp-ai.html` | Complete page, CSS and browser JavaScript |
 | `gary-green-v1.jpg` | Left-column Gary portrait |
-| `unix-gary-apple-touch-icon-v1.png` | 180 × 180 Apple touch icon |
-| `unix-gary-favicon-v1.png` | 32 × 32 browser icon |
+| `unix-gary-apple-touch-icon-v2.png` | 180 × 180 Apple touch icon |
+| `unix-gary-favicon-v2.png` | 32 × 32 browser icon |
 | `unix-gary-preview-v1.jpg` | 972 × 972 Open Graph link-preview image |
 
 The HTML uses absolute public URLs for preview metadata. Apple and other

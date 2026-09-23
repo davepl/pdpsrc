@@ -2,7 +2,7 @@
 redir @pdpAiAlias /pdp-ai.html 302
 
 # The legacy PDP httpd does not recognize PNG. Override its MIME type after proxying.
-@pdpAiIcons path /unix-gary-apple-touch-icon-v1.png /unix-gary-favicon-v1.png
+@pdpAiIcons path /unix-gary-apple-touch-icon-v1.png /unix-gary-apple-touch-icon-v2.png /unix-gary-favicon-v1.png /unix-gary-favicon-v2.png
 header @pdpAiIcons >Content-Type image/png
 
 # Chat bypasses Varnish. Only this bounded bridge can reach the local model.

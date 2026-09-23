@@ -83,8 +83,8 @@ with tempfile.TemporaryDirectory(prefix='pdp-failover-') as directory:
     def chat_files(node):
         # Skip existing cached copies so every path proves origin selection.
         for path in ('/pdp-ai.html', '/gary-green-v1.jpg',
-                     '/unix-gary-apple-touch-icon-v1.png',
-                     '/unix-gary-favicon-v1.png', '/unix-gary-preview-v1.jpg'):
+                     '/unix-gary-apple-touch-icon-v2.png',
+                     '/unix-gary-favicon-v2.png', '/unix-gary-preview-v1.jpg'):
             status, headers, body = fetch(path, headers={'Cookie': 'route_check=1'})
             assert status == 200 and body == (node + ' ' + path).encode(), (path, status, body)
             assert headers['X-PDP-Node'] == 'PDP .' + node, headers

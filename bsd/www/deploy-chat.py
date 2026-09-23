@@ -12,8 +12,8 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parent
 # Publish every dependency before the HTML that references it.
-FILES = ('gary-green-v1.jpg', 'unix-gary-apple-touch-icon-v1.png',
-         'unix-gary-favicon-v1.png', 'unix-gary-preview-v1.jpg', 'pdp-ai.html')
+FILES = ('gary-green-v1.jpg', 'unix-gary-apple-touch-icon-v2.png',
+         'unix-gary-favicon-v2.png', 'unix-gary-preview-v1.jpg', 'pdp-ai.html')
 
 
 def read_ftp(ftp, name):
