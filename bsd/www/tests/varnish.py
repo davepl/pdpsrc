@@ -221,12 +221,67 @@ client c3 {
     expect resp.http.X-Snapshot-Age >= 5
 } -run
 '''
+gary_scenario = r'''
+varnishtest "Gary tracking links and session cookies share the static page cache"
+server s1 {
+    rxreq
+    expect req.url == "/pdp-ai.html"
+    expect req.http.Cookie == <undef>
+    txresp -body "PDP-Gary"
+    accept
+    rxreq
+    expect req.url == "/pdp-ai.html"
+    expect req.http.Authorization == "Bearer test-only"
+    txresp -hdr "Cache-Control: private" -body "authorized Gary"
+    accept
+    rxreq
+    expect req.url == "/pdp-ai.html/other?fbclid=keep"
+    expect req.http.Cookie == "other=preserved"
+    txresp -hdr "Cache-Control: private" -body "other-path"
+} -start
+varnish v1 -arg "-p timeout_idle=20" -vcl {
+VCL_SOURCE
+} -start
+client c1 {
+    txreq -url "/pdp-ai.html?fbclid=first" -hdr "Host: pdp1173.com" -hdr "Cookie: pdp_gary_visit_v1=1"
+    rxresp
+    expect resp.status == 200
+    expect resp.body == "PDP-Gary"
+    expect resp.http.X-Cache == "MISS"
+
+    txreq -url "/pdp-ai.html" -hdr "Host: pdp1173.com"
+    rxresp
+    expect resp.body == "PDP-Gary"
+    expect resp.http.X-Cache == "HIT"
+
+    txreq -url "/pdp-ai.html?utm_source=facebook&fbclid=second" -hdr "Host: www.pdp1173.com" -hdr "Cookie: pdp_gary_session_v1=another"
+    rxresp
+    expect resp.body == "PDP-Gary"
+    expect resp.http.X-Cache == "HIT"
+
+    txreq -req HEAD -url "/pdp-ai.html?fbclid=head" -hdr "Host: pdp1173.com"
+    rxresp
+    expect resp.status == 200
+    expect resp.http.X-Cache == "HIT"
+
+    txreq -url "/pdp-ai.html?fbclid=auth" -hdr "Host: pdp1173.com" -hdr "Authorization: Bearer test-only"
+    rxresp
+    expect resp.body == "authorized Gary"
+    expect resp.http.X-Cache == "PASS"
+
+    txreq -url "/pdp-ai.html/other?fbclid=keep" -hdr "Host: pdp1173.com" -hdr "Cookie: other=preserved"
+    rxresp
+    expect resp.body == "other-path"
+    expect resp.http.X-Cache == "PASS"
+} -run
+server s1 -wait
+'''
 with tempfile.TemporaryDirectory(prefix="webtop-vcl-test-") as directory:
-    for name, test in (("tracking", scenario), ("refresh", refresh_scenario)):
+    for name, test in (("tracking", scenario), ("refresh", refresh_scenario), ("gary", gary_scenario)):
         path = Path(directory) / (name + ".vtc")
         path.write_text(test.replace("VCL_SOURCE", vcl))
         result = subprocess.run(["varnishtest", "-v", str(path)], capture_output=True, text=True)
         if result.returncode:
             print(result.stdout + result.stderr)
         result.check_returncode()
-print("PASS: homepage normalization, shared TOP and host aliases, refresh/failure handling, snapshot age, uncached increments and counter reads, CGI queries, authorization, host/method guards")
+print("PASS: homepage and Gary tracking normalization, shared TOP and host aliases, refresh/failure handling, snapshot age, uncached increments and counter reads, CGI queries, authorization, host/method guards")

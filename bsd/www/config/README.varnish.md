@@ -40,8 +40,11 @@ failure between probes without blindly repeating state-changing requests.
 Successful static pages default to five minutes of freshness and 24 hours of
 grace. A cached homepage can survive both PDPs being down. Uncached content
 cannot. Homepage aliases, Facebook query strings, and cookies normalize to the
-same cache key. Authorization still bypasses caching; other paths retain their
-query strings and cookie behavior.
+same cache key. The static `/pdp-ai.html` page also drops query strings and
+cookies before origin lookup and caching. This is required because the native
+PDP HTTP server otherwise treats `?fbclid=...` as part of the filename and
+returns an error that Varnish reports as 503. Authorization still bypasses
+caching; other paths retain their query strings and cookie behavior.
 
 The exact `/cgi-bin/webtop` snapshot is cached for five seconds with 15 seconds
 of grace, separately per selected PDP. Its response identifies the actual

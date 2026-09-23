@@ -78,6 +78,13 @@ sub vcl_recv {
         set req.url = "/";
         unset req.http.Cookie;
     }
+    # Gary is also static. The native HTTP server treats query strings as
+    # filenames, so Facebook links must reach it without tracking parameters.
+    # Share the page cache even when the browser has a Gary session cookie.
+    if (req.url ~ "^/pdp-ai[.]html([?]|$)") {
+        set req.url = "/pdp-ai.html";
+        unset req.http.Cookie;
+    }
     # This exact endpoint is one public system snapshot, independent of the
     # visitor. Share it across viewers; authenticated requests still pass.
     if (req.url == "/cgi-bin/webtop") {
