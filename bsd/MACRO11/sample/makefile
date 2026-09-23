@@ -1,3 +1,4 @@
+MAKE=make
 MACRO11=../src/macro11
 OBJ2BIN=../src/obj2bin
 

@@ -1,54 +1,48 @@
-# Makefile for socket client/server programs
-# Compatible with macOS, NetBSD, and 211BSD
-# Clients are now organized by platform under arch/
+MAKE=make
+# Build only the client for the running system, plus the portable server.
+CC=cc
+CFLAGS=-O
 
-CC = cc
-CFLAGS = -O
-
-# Default target
 all: client server
 
-# Detect platform and build appropriate client
-client:
-	@echo "Detecting platform..."
-	@if [ "`uname -s`" = "Darwin" ]; then \
-		echo "Building macOS client..."; \
-		cd arch/macOS && $(MAKE) && cd ../..; \
-		cp arch/macOS/client client; \
-	elif [ "`uname -s`" = "NetBSD" ]; then \
-		if [ "`uname -m`" = "amd64" ]; then \
-			echo "Building NetBSD x64 client..."; \
-			cd arch/NetBSDx64 && $(MAKE) && cd ../..; \
-			cp arch/NetBSDx64/client client; \
-		else \
-			echo "Building NetBSD VAX client..."; \
-			cd arch/NetBSDVAX && $(MAKE) && cd ../..; \
-			cp arch/NetBSDVAX/client client; \
-		fi; \
-	elif [ "`uname -s`" = "Linux" ]; then \
-		echo "Building Linux x64 client..."; \
-		cd arch/LinuxX64 && $(MAKE) && cd ../..; \
-		cp arch/LinuxX64/client client; \
-	elif [ -f /usr/include/pdp11 ] || [ "`uname -s`" = "2.11BSD" ]; then \
-		echo "Building 2.11BSD client..."; \
-		cd arch/211BSD && $(MAKE) && cd ../..; \
-		cp arch/211BSD/client client; \
-	else \
-		echo "Unknown platform, defaulting to macOS client..."; \
-		cd arch/macOS && $(MAKE) && cd ../..; \
-		cp arch/macOS/client client; \
-	fi
+client: FORCE
+	@case "`uname -m`:`uname -s`" in \
+	pdp11:*) dir=211BSD ;; \
+	*:Darwin) dir=macOS ;; \
+	amd64:NetBSD) dir=NetBSDx64 ;; \
+	*:NetBSD) dir=NetBSDVAX ;; \
+	*:Linux) dir=LinuxX64 ;; \
+	*) echo "Unsupported socket client platform"; exit 1 ;; \
+	esac; \
+	${MAKE} native-client CLIENTDIR=arch/$$dir
 
-server: server.c
-	$(CC) $(CFLAGS) -o server server.c
+native-client: FORCE
+	cd ${CLIENTDIR} && ${MAKE} all
+	cp ${CLIENTDIR}/client client
 
-clean:
-	rm -f client server
-	@for dir in arch/*/; do \
-		if [ -f "$$dir/Makefile" ]; then \
-			echo "Cleaning $$dir..."; \
-			cd "$$dir" && $(MAKE) clean && cd ../..; \
-		fi; \
-	done
+server: server.c common.c panel_packet.h arch/211BSD/panel_state.h arch/NetBSDVAX/panel_state.h arch/NetBSDx64/panel_state.h arch/macOS/panel_state.h arch/LinuxX64/panel_state.h ../pdp11_unistd.h
+	${CC} ${CFLAGS} -o server server.c
 
-.PHONY: all clean client server
+test: test-layout
+	./test-layout
+
+test-layout: test-layout.o
+	${CC} -o test-layout test-layout.o
+
+test-layout.o: test-layout.c panel_packet.h arch/211BSD/panel_state.h arch/NetBSDVAX/panel_state.h ../tools/cpp
+	case "`uname -m`" in \
+	pdp11) ${CC} -tp -B../tools/ ${CFLAGS} -c test-layout.c ;; \
+	*) ${CC} ${CFLAGS} -c test-layout.c ;; \
+	esac
+
+# Avoid parsing foreign makefiles (Linux needs GNU make and kernel headers).
+clean: FORCE
+	rm -f client server test-layout *.o
+	rm -f arch/*/client arch/*/*.o
+	rm -f arch/211BSD/paneldump arch/211BSD/symboltest arch/211BSD/memtest
+	rm -f arch/211BSD/endiantest arch/211BSD/clocktest arch/211BSD/allcounters
+	rm -f arch/211BSD/memdiag arch/211BSD/udptest
+	rm -f arch/LinuxX64/*.ko arch/LinuxX64/*.mod arch/LinuxX64/*.mod.c
+	rm -f arch/LinuxX64/Module.symvers arch/LinuxX64/modules.order
+
+FORCE:

@@ -29,7 +29,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+#include "../pdp11_unistd.h"
 
 #define CGI_BIN
 #define BUF_SIZE 256

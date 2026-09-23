@@ -1,8 +1,52 @@
+MAKE=make
 # Makefile for Unix/Xenix rz and sz programs
 # Some targets may not be up to date
 CC=cc
 OFLAG= -O
+# Retain K&R C on macOS without passing Clang options to the PDP compiler.
+HOSTFLAGS=case "`uname -s`" in Darwin) hostflags="-std=gnu89 -Wno-deprecated-non-prototype" ;; *) hostflags= ;; esac
 
+# Native default; the historical "all" target packaged a source release.
+RZLINKS=rb rx rc
+SZLINKS=sb sx zcommand zcommandi
+TEXTLINKS=tounix todos unmac tomac tocpm unparity
+all: rz sz undos crc minirb ${RZLINKS} ${SZLINKS} ${TEXTLINKS}
+
+rz: rz.c rbsb.c crctab.c zm.c zmr.c zmodem.h
+	@${HOSTFLAGS}; \
+	case "`uname -m`" in \
+	pdp11|pdp-11) flags="-i -DSMALL -DMD=2 -Dstrchr=index -DV7" ;; \
+	*) flags="-DPOSIX -DMD=2" ;; \
+	esac; \
+	${CC} $$hostflags ${CFLAGS} ${RFLAGS} ${OFLAG} $$flags rz.c -o rz
+
+sz: sz.c rbsb.c crctab.c zm.c zmr.c zmodem.h
+	@${HOSTFLAGS}; \
+	case "`uname -m`" in \
+	pdp11|pdp-11) flags="-i -DSMALL -DV7 -DNFGVMIN" ;; \
+	*) flags="-DPOSIX" ;; \
+	esac; \
+	${CC} $$hostflags ${CFLAGS} ${RFLAGS} ${OFLAG} $$flags sz.c -o sz
+
+${RZLINKS}: rz
+	rm -f $@
+	ln rz $@
+
+${SZLINKS}: sz
+	rm -f $@
+	ln sz $@
+
+${TEXTLINKS}: undos
+	rm -f $@
+	ln undos $@
+
+crc: crc.c
+	@${HOSTFLAGS}; \
+	${CC} $$hostflags ${CFLAGS} ${OFLAG} -o crc crc.c
+
+minirb: minirb.c ../pdp11_unistd.h
+	@${HOSTFLAGS}; \
+	${CC} $$hostflags ${CFLAGS} ${OFLAG} -o minirb minirb.c
 
 nothing:
 	@echo
@@ -32,7 +76,7 @@ nothing:
 	@echo "	doc	Format the man pages with nroff"
 	@echo
 
-all:doc usenet unixforum sshar shar zoo
+dist:doc usenet unixforum sshar shar zoo
 
 usenet:doc
 	shar -c -a -n rzsz -o /tmp/rzsz -l64 \
@@ -60,6 +104,7 @@ doc:rz.doc sz.doc crc.doc minirb.doc undos.doc
 clean:
 	rm -f *.o *.out sz sb sx zcommand zcommandi rz rb rx rc
 	rm -f undos tounix todos unmac tomac tocpm unparity
+	rm -f crc minirb
 
 minirb.doc:minirb.1
 	nroff -man minirb.1 | col  >minirb.doc
@@ -372,8 +417,9 @@ next:
 	ln sz zcommand
 	ln sz zcommandi
 
-undos:	undos.c
-	cc -O undos.c -o undos
+undos:	undos.c ../pdp11_unistd.h
+	@${HOSTFLAGS}; \
+	${CC} $$hostflags ${CFLAGS} ${OFLAG} undos.c -o undos
 	-rm -f tounix todos unmac tomac tocpm unparity
 	ln undos tounix
 	ln undos todos
@@ -386,9 +432,3 @@ undos:	undos.c
 lint:
 	lint -DUSG -DSV -DOLD sz.c >/tmp/sz.fluff
 	lint -DUSG -DSV -DOLD rz.c >/tmp/rz.fluff
-
-
-sz: nothing
-sb: nothing
-rz: nothing
-rb: nothing

@@ -85,6 +85,23 @@ static void trim(
         *cp = 0;
 }
 
+/* Keep the tail scan out of mlb_open's nested directory loops: the
+   native PDP-11 compiler has limited statement nesting space. */
+static unsigned long library_end(FILE *fp)
+{
+    unsigned long max;
+    int c;
+
+    fseek(fp, 0L, SEEK_END);
+    max = ftell(fp);
+    do {
+        max--;
+        fseek(fp, max, SEEK_SET);
+        c = fgetc(fp);
+    } while (max > 0 && c == 0);
+    return max + 1;
+}
+
 /* mlb_open opens a file which is given to be a macro library. */
 /* Returns NULL on failure. */
 
@@ -192,19 +209,7 @@ MLB            *mlb_open(
             if (j < i - 1) {
                 mlb->directory[j].length = BYTEPOS(ent + entsize) - BYTEPOS(ent);
             } else {
-                unsigned long   max;
-                char            c;
-
-                fseek(mlb->fp, 0, SEEK_END);
-                max = ftell(mlb->fp);
-                /* Look for last non-zero */
-                do {
-                    max--;
-                    fseek(mlb->fp, max, SEEK_SET);
-                    c = fgetc(mlb->fp);
-                } while (max > 0 && c == 0);
-                max++;
-                mlb->directory[j].length = max - BYTEPOS(ent);
+                mlb->directory[j].length = library_end(mlb->fp) - BYTEPOS(ent);
             }
         }
 

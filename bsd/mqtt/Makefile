@@ -1,9 +1,11 @@
-# Makefile for compiling mtqq.c
+# Makefile for compiling mqtt.c
 
 CC = cc
 CFLAGS = -O
 
-mtqq: mqtt.c
+all: mqtt
+
+mqtt: mqtt.c ../pdp11_unistd.h
 	$(CC) $(CFLAGS) -o mqtt mqtt.c
 
 clean:

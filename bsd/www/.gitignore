@@ -3,6 +3,7 @@
 /visit-counter
 /visit-proxy
 /visit-total-proxy
+/test-fields
 /server/httpd
 /backups/
 /dist/

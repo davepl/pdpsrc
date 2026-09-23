@@ -19,7 +19,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <stdio.h>
-#include <unistd.h>
+#include "../pdp11_unistd.h"
 #include <string.h>
 #include <stdlib.h>
 

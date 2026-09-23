@@ -77,6 +77,15 @@ char *Copyrrz = "Copyright 1997 Omen Technology Inc All Rights Reserved";
 #include <ctype.h>
 #include <errno.h>
 extern int errno;
+#ifdef POSIX
+#include <time.h>
+#include <utime.h>
+#endif
+
+int chkinvok(), usage(), wcreceive(), tryz(), rzfiles(), wcrxpn();
+int procheader(), checkpath(), wcrx(), wcgetsec(), putsec(), closeit();
+int openit(), make_dirs(), sys2(), rzfile();
+void exec2();
 
 #define OK 0
 #define FALSE 0
@@ -165,7 +174,11 @@ char secbuf[1025];
 #endif
 
 
+#ifdef POSIX
+struct utimbuf timep;
+#else
 time_t timep[2];
+#endif
 char Lzmanag;		/* Local file management request */
 char Lzconv;		/* Local ZMODEM file conversion request */
 char zconv;		/* ZMODEM file conversion request */
@@ -177,6 +190,7 @@ int Zrwindow = 1400;	/* RX window size (controls garbage count) */
 /*
  * Log an error
  */
+#ifndef POSIX
 void
 zperr1(s,p,u)
 char *s, *p, *u;
@@ -209,6 +223,7 @@ char *s, *p, *u;
 	fprintf(stderr, s, p, u);
 	fprintf(stderr, "\n");
 }
+#endif
 
 #include "zm.c"
 #include "zmr.c"
@@ -621,6 +636,7 @@ char *name;
 {
 	register char *openmode, *p;
 	static dummy;
+	long serial;
 	struct stat f;
 
 	/* set default parameters and overrides */
@@ -650,9 +666,9 @@ char *name;
 
 	p = name + 1 + strlen(name);
 	if (*p) {	/* file coming from Unix or DOS system */
-		sscanf(p, "%ld%lo%o%lo%d%ld%d%d",
+		sscanf(p, "%ld%lo%o%lo%ld%ld%d%d",
 		  &Bytesleft, &Modtime, &Filemode,
-		  &dummy, &Filesleft, &Totalleft, &dummy, &dummy);
+		  &serial, &Filesleft, &Totalleft, &dummy, &dummy);
 		if (Filemode & UNIXFILE)
 			++Thisbinary;
 		if (Verbose) {
@@ -679,7 +695,8 @@ char *name;
 		zmanag &= ZMMASK;
 		if (zmanag==ZMPROT)
 			goto skipfile;
-		vfile("Current %s is %ld %lo", name, f.st_size, f.st_mtime);
+		vfile("Current %s is %ld %lo", name, (long) f.st_size,
+		  (long) f.st_mtime);
 		if (Thisbinary && zconv==ZCRESUM) {
 			rxbytes = f.st_size & ~511;
 			if (Bytesleft < rxbytes) {
@@ -1322,9 +1339,15 @@ closeit()
 		return ERROR;
 	}
 	if (Modtime) {
+#ifdef POSIX
+		timep.actime = time(NULL);
+		timep.modtime = Modtime;
+		utime(Pathname, &timep);
+#else
 		timep[0] = time(NULL);
 		timep[1] = Modtime;
 		utime(Pathname, timep);
+#endif
 	}
 	if (
 #ifdef POSIX

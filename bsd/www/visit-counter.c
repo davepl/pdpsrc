@@ -6,7 +6,7 @@
 #include <sys/stat.h>
 #include <sys/file.h>
 #include <stdio.h>
-#include <unistd.h>
+#include "../pdp11_unistd.h"
 #include <signal.h>
 #include <errno.h>
 

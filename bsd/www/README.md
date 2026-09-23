@@ -3,9 +3,9 @@
 This is the website for Dave's Mentec PDP-11/83 collection, served by 2.11BSD.
 The original red-and-gold layout has been restored, with the amber TMOG-11 display
 above the main content and **VISITORS: n** in the masthead. A responsive TMOG
-banner immediately below TMOG-11 links to `https://tmog.org/`. Its 1440×480 JPEG
+banner below the virtual console links to `https://tmog.org/`. Its 1440×480 JPEG
 is 167,696 bytes; the original PNG is preserved in `archive/`.
-There is no public telnet/guest invitation. The HTML is minified to 15,484 bytes. The restored
+There is no public telnet/guest invitation. The HTML, CSS, inline panel artwork, and JavaScript are minified together. The restored
 640×360 photograph is 101,511 bytes, below the requested 105,000-byte limit,
 and loads lazily. Lossless JPEG optimization preserved its decoded pixels.
 Both previous designs and the untouched original photograph are retained in
@@ -15,6 +15,57 @@ are here. The complete application is deployed at both `192.168.1.26` and
 failover prefers `.29`, uses `.26` when needed, and returns to `.29` on recovery. The September 21
 installation on `.29` is recorded in
 [`deployments/2026-09-21-192.168.1.29.md`](deployments/2026-09-21-192.168.1.29.md).
+
+The live process table fits within 118 columns, retaining 16-character command
+names. CPU% shows recent measured CPU use; TTY identifies the controlling
+terminal; M identifies core/RAM (C) or swapped (S) residency. Memory is in KiB
+and TIME is cumulative CPU time. See [`README.webtop`](README.webtop) for
+sampling details, abbreviations, native build instructions and field tests.
+PPID, AGE, FD, block I/O rates, I/D separation and the current overlay add
+process relationships, lifetime, resources and PDP-specific execution details.
+After page or sampler deployments, `python3 tests/site-integrity.py ORIGIN...`
+compares the homepage and public images byte-for-byte with this checkout.
+For example, use `http://192.168.1.26/` and `https://pdp1173.com/` as origins.
+
+## Virtual PDP-11/70 console
+
+The decorative panel sits directly below TMOG-11 and shares its container width.
+It adapts Paul Nankervis' panel layout, scoped CSS, SVG logo, and bit-mask lamp
+updates from James Hagerman's mirror. Provenance and the unchanged upstream SVG
+are in `archive/virtual-panel/`. The logo is inline because the native HTTP
+server serves only HTML, JPEG and ICO with specific MIME types.
+
+This is explicitly labeled simulated. It follows the 2.11BSD `rdisply=0377`
+idle sequence (CLC/ROL/BPL/BIS), advancing at a nominal 30 steps/sec. Random
+activity runs for 0.65–2.2 seconds, separated by 8–20 seconds of idle animation.
+It does not sample registers, load an emulator or disk images, or issue network
+requests. Switches and selectors are artwork, not machine controls.
+
+The Pause animation button is independent of TOP's Pause updates. Hidden tabs
+and offscreen panels stop animating. Reduced-motion preferences start the panel
+paused; visitors can explicitly resume it. The entire 720×304 console scales
+within the same-width responsive section. `npm test` checks the source and
+minified-page animation, pause/resume, reduced motion and existing visitor logic.
+The regular page uploader preserves the old homepage for rollback and includes
+the panel's restore source. No PDP executable, installer change or new public
+asset is needed for the virtual panel itself.
+
+## Shared-link previews
+
+The static HTML head declares Open Graph metadata for Apple Messages and other
+link-preview clients, plus a Twitter large-image card. The preferred image is
+`https://pdp1173.com/pdp1173-tmog-preview-v1.jpg`, a 2108×1610 JPEG of Dave's
+supplied TMOG-11 screenshot. Its original PNG is retained at
+`archive/link-preview/tmog.original.png`. The image is a fixed screenshot;
+the page's TOP display continues to update normally.
+
+JPEG preserves compatibility with the native HTTP server's supported image
+types. The page uploader and full restore installer publish this image before
+the HTML. Keep preview tags in the HTML source because Apple's preview fetcher
+does not run JavaScript. Use a new image filename for future replacements and
+refresh the proxy's homepage cache after updating both PDPs. Messaging apps
+control their final presentation and may retain previews of previously shared
+links.
 
 ## Edit and minify the homepage
 
@@ -31,6 +82,41 @@ The pinned minifier compresses HTML, inline CSS, and inline JavaScript;
 the counter checks run against both source and generated output. Commit
 both HTML files and preserve the images in `site/`. The native installer and uploader use the
 prebuilt `site/index.html`; no Node.js or minifier runs on the PDP.
+
+The PDP-Gary chat page is preserved in `site/pdp-ai.html`, with its portrait,
+icons and preview image. Its **TOTAL VISITS** counter is independent of the
+homepage; **ONLINE NOW** shows browser sessions active on Gary in the last
+90 seconds. Both are managed by the existing counter service on Caddy. See
+`config/README.varnish.md` for routes, migration and backup details. The chat
+bridge configuration and its credentials remain private on Caddy.
+
+The green Gary terminal uses the locally hosted Glass TTY VT220 font for its
+welcome screen, chat, code and input. The 6,536-byte WOFF2 retains the complete
+font; the original TTF, Unlicense and provenance are in `archive/glasstty/`.
+Its built-in scanlines replace the extra CSS scanline overlay. The page keeps
+a standard monospace fallback and does not contact a third-party font service.
+The homepage starts with a compact green PDP-Gary banner using the same font
+and existing portrait; its Chat Now link opens `pdp-ai.html`. The banner uses
+only static markup and CSS and adds no scripts or visitor-counter requests.
+
+Gary's complete system prompt is in `proxy/gary-system-prompt.txt`. It combines
+the mildly snarky persona with dated website/owner background, distinguishes
+the collection inventory from live telemetry, and casts the modern inference
+machines as "AI dongles" without misrepresenting their actual work. The bridge
+source is preserved in `proxy/ai-bridge.py`; this runs on the modern AI host,
+not on either PDP. It reads the adjacent prompt file at startup and prepends
+it to each validated conversation. Prompt changes require restarting only
+`pdp-ai.service`, not the model service. Preserve private model/proxy keys in
+their existing protected files; credentials are not part of the source bundle.
+The request uses temperature 0.7, a 1,024-token response cap, and disables
+thinking; recent browser-supplied history remains bounded to 25 messages and
+24,000 characters. The prompt's site facts are a curated snapshot, not a live
+website fetch or hardware/tool access for Gary.
+
+For a Gary page/asset update, run `python3 deploy-page.py HOST --page pdp-ai`.
+This preserves the prior page privately, updates the on-machine restore source,
+publishes images and the font before HTML, and verifies the result over FTP and HTTP. Install
+the new counter service and Caddy route before publishing this page.
 
 For a homepage/image update on an already installed system, run
 `python3 deploy-page.py 192.168.1.26`. It prompts for the existing FTP

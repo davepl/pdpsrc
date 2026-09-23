@@ -7,7 +7,7 @@ SRCS = sudo.c
 
 all: $(PROGRAM)
 
-$(PROGRAM): $(SRCS)
+$(PROGRAM): $(SRCS) ../pdp11_unistd.h
 	@if [ "`uname -m`" = "pdp11" ]; then \
 		$(CC) $(CFLAGS) -o $(PROGRAM) $(SRCS); \
 	else \

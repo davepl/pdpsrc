@@ -73,6 +73,11 @@ char *substr();
 extern int errno;
 #define STATIC
 
+int chkinvok(), usage(), chartest(), countem(), getzrxinit(), zsendcmd();
+int wcsend(), wcs(), getnak(), wctxpn(), wctx(), zsendfile(), wcputsec();
+int filbuf(), initzsendmsk(), sendzsinit(), zsendfdata(), getinsync();
+void saybibi();
+
 #define PATHLEN 1000
 #define OK 0
 #define FALSE 0
@@ -224,6 +229,7 @@ STATIC int Zrwindow = 1400;	/* RX window size (controls garbage count) */
 /*
  * Log an error
  */
+#ifndef POSIX
 void
 zperr1(s,p,u)
 char *s, *p, *u;
@@ -257,6 +263,7 @@ char *s, *p, *u;
 	fprintf(stderr, "\n");
 }
 
+#endif
 
 #include "zm.c"
 #include "zmr.c"
@@ -625,7 +632,7 @@ char *name;
 	if (Modem2) {
 		if (*name && fstat(fileno(in), &f)!= -1) {
 			fprintf(stderr, "Sending %s, %ld XMODEM blocks. ",
-			  name, (127+f.st_size)>>7);
+			  name, (long) ((127+f.st_size)>>7));
 		}
 		printf("Start your local XMODEM receive.     ");
 		fflush(stdout);
@@ -661,7 +668,8 @@ char *name;
 		*q++ = 0;
 	if (*name) {
 		if (fstat(fileno(in), &f)!= -1)
-			sprintf(p, "%lu %lo %o 3 %d %ld", f.st_size, f.st_mtime,
+			sprintf(p, "%lu %lo %o 3 %d %ld", (long) f.st_size,
+			  (long) f.st_mtime,
 			  f.st_mode, Filesleft, Totalleft);
 		Totalleft -= f.st_size;
 	}
@@ -1641,7 +1649,7 @@ register char **argv;
 			++Filesleft;  Totalleft += f.st_size;
 		}
 		if (Verbose>2)
-			fprintf(stderr, " %ld", f.st_size);
+			fprintf(stderr, " %ld", (long) f.st_size);
 	}
 	if (Verbose>2)
 		fprintf(stderr, "\ncountem: Total %d %ld\n",

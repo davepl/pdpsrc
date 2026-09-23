@@ -409,6 +409,84 @@ void rad50name(
     trim(name);
 }
 
+/* Decode complex relocations outside got_rld's nested switch so the
+   native PDP-11 compiler does not exhaust its nesting stack. */
+static int dump_complex(xp)
+    char *xp;
+{
+    char name[16];
+    int size;
+    int total = 0;
+
+    for (;;) {
+        size = 1;
+        switch (*xp) {
+        case 000:
+            fputs("nop ", stdout);
+            break;
+        case 001:
+            fputs("+ ", stdout);
+            break;
+        case 002:
+            fputs("- ", stdout);
+            break;
+        case 003:
+            fputs("* ", stdout);
+            break;
+        case 004:
+            fputs("/ ", stdout);
+            break;
+        case 005:
+            fputs("& ", stdout);
+            break;
+        case 006:
+            fputs("! ", stdout);
+            break;
+        case 010:
+            fputs("neg ", stdout);
+            break;
+        case 011:
+            fputs("^C ", stdout);
+            break;
+        case 012:
+            fputs("store ", stdout);
+            break;
+        case 013:
+            fputs("store{disp} ", stdout);
+            break;
+
+        case 016:
+            rad50name(xp + 1, name);
+            printf("%s ", name);
+            size = 5;
+            break;
+
+        case 017:
+            if ((xp[1] & 0377) >= psectid) {
+                fprintf(stderr, "Invalid PSECT index in complex relocation\n");
+                exit(EXIT_FAILURE);
+            }
+            printf("%s:%o ", psects[xp[1] & 0377], WORD(xp + 2));
+            size = 4;
+            break;
+
+        case 020:
+            printf("%o ", WORD(xp + 1));
+            size = 3;
+            break;
+        default:
+            printf("**UNKNOWN COMPLEX CODE** %o\n", *xp & 0377);
+            return -1;
+        }
+        total += size;
+        if (*xp == 012 || *xp == 013)
+            break;
+        xp += size;
+    }
+    fputc('\n', stdout);
+    return total;
+}
+
 void got_rld(
     char *cp,
     int len)
@@ -516,75 +594,14 @@ void got_rld(
         case 017:
             badbin = 1;
             printf("\tComplex%s %o=", byte, addr);
-            i += 2; {
-                char           *xp = cp + i;
-                int             size;
+            {
+                int size = dump_complex(cp + i + 2);
 
-                for (;;) {
-                    size = 1;
-                    switch (*xp) {
-                    case 000:
-                        fputs("nop ", stdout);
-                        break;
-                    case 001:
-                        fputs("+ ", stdout);
-                        break;
-                    case 002:
-                        fputs("- ", stdout);
-                        break;
-                    case 003:
-                        fputs("* ", stdout);
-                        break;
-                    case 004:
-                        fputs("/ ", stdout);
-                        break;
-                    case 005:
-                        fputs("& ", stdout);
-                        break;
-                    case 006:
-                        fputs("! ", stdout);
-                        break;
-                    case 010:
-                        fputs("neg ", stdout);
-                        break;
-                    case 011:
-                        fputs("^C ", stdout);
-                        break;
-                    case 012:
-                        fputs("store ", stdout);
-                        break;
-                    case 013:
-                        fputs("store{disp} ", stdout);
-                        break;
-
-                    case 016:
-                        rad50name(xp + 1, name);
-                        printf("%s ", name);
-                        size = 5;
-                        break;
-
-                    case 017:
-                        assert((xp[1] & 0377) < psectid);
-                        printf("%s:%o ", psects[xp[1] & 0377], WORD(xp + 2));
-                        size = 4;
-                        break;
-
-                    case 020:
-                        printf("%o ", WORD(xp + 1));
-                        size = 3;
-                        break;
-                    default:
-                        printf("**UNKNOWN COMPLEX CODE** %o\n", *xp & 0377);
-                        return;
-                    }
-                    i += size;
-                    if (*xp == 012 || *xp == 013)
-                        break;
-                    xp += size;
-                }
-                fputc('\n', stdout);
-                break;
+                if (size < 0)
+                    return;
+                i += size + 2;
             }
+            break;
 
         default:
             printf("\t***Unknown RLD code %o\n", cp[i] & 0xff);

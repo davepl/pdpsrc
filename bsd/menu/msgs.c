@@ -34,7 +34,7 @@
 #include <ctype.h>
 #include <time.h>
 #include <curses.h>
-#include <unistd.h>
+#include "../pdp11_unistd.h"
 
 #include "data.h"
 #include "platform.h"

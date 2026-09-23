@@ -1,8 +1,8 @@
 # Makefile for 2.11BSD
 
 # List all .c files and their corresponding executable targets
-SRCS = bug1.c bug2.c bug3.c bug4.c bug5.c bug6.c
-PROGS = bug1 bug2 bug3 bug4 bug5 bug6
+SRCS = bug1.c bug2.c bug3.c bug4.c bug5.c bug6.c bug7.c
+PROGS = bug1 bug2 bug3 bug4 bug5 bug6 bug7
 
 all: ${PROGS}
 
@@ -24,6 +24,9 @@ bug5: bug5.c
 
 bug6: bug6.c
 	cc -o bug6 bug6.c
+
+bug7: bug7.c
+	cc -o bug7 bug7.c
 
 clean:
 	rm -f ${PROGS} *.o

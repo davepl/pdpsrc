@@ -1,0 +1,97 @@
+top for 2.11BSD UNIX / PDP-11
+===========================
+
+Build on the PDP:
+    cd /home/dave/source/repos/pdpsrc/bsd/top
+    make
+
+Run from a Telnet terminal (root, or equivalent read access to the memory
+and swap devices):
+    TERM=vt100; export TERM
+    ./top
+
+The program uses the native 2.11BSD curses library and termcap, with
+separate instruction and data spaces (-i). It does not use ncurses, /proc,
+Linux interfaces, or subprocesses to collect its statistics.
+
+Display
+-------
+The layout follows the supplied mentec reference: hostname/time/uptime,
+user count and load averages; tasks; four CPU states; memory; swap; a blank
+line; a reverse-video heading; then processes ordered by recent CPU use.
+
+    PID USER      PR  NI  TEXT  DATA STACK S     TIME   DTIME COMMAND
+
+TIME is cumulative user + system CPU time in seconds, excluding children.
+DTIME is CPU seconds since the preceding sample. The first display follows
+one sampling interval. Newly seen processes start with zero DTIME until
+they have a preceding sample; PID plus start time distinguishes reuse.
+Memory columns are KiB (1024 bytes); process segment sizes use the kernel's
+64-byte clicks. Swap allocation uses 512-byte blocks. Used memory includes
+kernel and other allocations, so it is not a sum of process sizes.
+
+States: R running/runnable, S sleeping/waiting, T stopped, Z zombie.
+A following 's' means the process is swapped out. '?' in the time fields
+means that its user area was unavailable or changed during the sample.
+Processes can exit or move while top reads memory; they do not abort the
+monitor. Zombie exit accounting is read without interpreting its overlaid
+live-process fields.
+
+A wide terminal (at least 100 columns) shows the long reference summary.
+The first line becomes compact when needed. Long commands are clipped
+at the right margin rather than wrapping. Rows adapt to the terminal;
+-n can limit the number of processes. Large terminals are capped at 160
+columns, 50 rows and 5000 cells to fit the PDP-11's 64 KiB data space.
+SIGWINCH resizes the curses screen. Terminal settings are restored on quit,
+Ctrl-C, termination, and handled runtime errors.
+
+The mentec telnetd accepts NAWS (Negotiate About Window Size) but does not
+ask for it automatically. With the Mac's telnet client, press Ctrl-] and
+enter this at the local telnet> prompt once per connection:
+
+    send will naws
+
+Return to the PDP session; resizing the Mac terminal will now update the
+PDP's terminal size. Without NAWS, set the size manually before running:
+
+    stty rows 30 columns 120
+
+Use `stty size` to inspect the size that the PDP actually sees.
+
+Options and keys
+----------------
+    -s seconds    Refresh interval, 0.1 to 1800 seconds (default 1).
+    -o column     Sort column, 0..10 (default 9, DTIME then TIME).
+    -n rows       Maximum processes shown (0 fills the screen).
+    -I            Initially hide idle processes.
+    -h            Print command-line help.
+
+    q             Quit.
+    Space         Refresh now.
+    Ctrl-L        Redraw.
+    I or i        Toggle idle processes.
+    P             Sort by DTIME, then TIME.
+    T             Sort by cumulative TIME.
+    N             Sort by PID.
+    M             Sort by data size.
+    s             Prompt for refresh interval (Escape cancels).
+    o             Prompt for sort column (Escape cancels).
+    h or ?        Toggle interactive help.
+
+Sort columns: 0 PID, 1 numeric UID, 2 priority, 3 nice, 4 text size,
+5 data size, 6 stack size, 7 state, 8 TIME, 9 DTIME, 10 command.
+
+Implementation notes
+--------------------
+This implementation was developed against the running mentec 2.11BSD
+patch-level 498 kernel and its installed headers. /unix must match the
+running kernel. It reads _proc, _nproc, _hz and _cp_time using nlist and
+/dev/kmem. User structures come from /dev/mem or /dev/swap. Kernel sysctl
+provides boot time, physical memory and allocation maps; getloadavg and
+utmp provide load and login information. In this 2.11BSD kernel, sysctl
+returns a byte count on success rather than zero.
+
+The kernel interfaces and presentation were checked against the installed
+2.11BSD ps, vmstat and top sources. The existing top was written by Digby
+Tarvin, with later contributions including Johnny Billquist and other
+2.11BSD maintainers. The system copy of top is not replaced by this build.

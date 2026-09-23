@@ -11,6 +11,9 @@ ROOT = Path(__file__).resolve().parent
 FILES = (
     "Makefile", "install.sh", "backup.sh", "deploy.py", "README.md",
     "README.webtop", "README.visitors", "VERIFICATION.md", "webtop.c",
+    "webtop-fields.h", "tests/webtop-fields.c",
+    "tests/site-integrity.py", "deployments/2026-09-22-expanded-webtop.md",
+    "deployments/2026-09-22-webtop-columns.md",
     "webtop-cgi.c", "visit-counter.c", "site/index.html",
     "visit-proxy.c", "site/health.txt", "proxy/visitor-service.py",
     "config/pdp-visitors.service", "tests/shared-counter.py", "tests/failover.py",
@@ -31,6 +34,15 @@ FILES = (
     "deployments/2026-09-21-public-cutover.md",
     "site/tmog-banner-v2.jpg", "archive/tmog-banner.original.png",
     "archive/tmog-banner.first.png",
+    "tests/virtual-panel.js", "archive/virtual-panel/UPSTREAM.md",
+    "archive/virtual-panel/pdp11-70.svg",
+    "site/pdp1173-tmog-preview-v1.jpg", "archive/link-preview/tmog.original.png",
+    "site/pdp-ai.html", "site/gary-green-v1.jpg", "site/pdp-gary-preview-v1.jpg",
+    "site/pdp-gary-favicon-v2.png", "site/pdp-gary-apple-touch-icon-v2.png",
+    "tests/gary-visitors.js", "tests/gary-counter.py", "config/pdp-gary-route.caddy",
+    "site/glass-tty-vt220-v1.woff2", "archive/glasstty/Glass_TTY_VT220.ttf",
+    "archive/glasstty/LICENSE", "archive/glasstty/UPSTREAM.md",
+    "proxy/ai-bridge.py", "proxy/gary-system-prompt.txt",
 )
 
 

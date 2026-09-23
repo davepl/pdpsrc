@@ -19,7 +19,7 @@ int main(int argc, char *argv[])
     struct hostent *host;
     char *server_ip;
     int server_port;
-    char message[] = "Test UDP message from 2.11BSD";
+    static char message[] = "Test UDP message from 2.11BSD";
     int result;
     
     if (argc != 3) {
