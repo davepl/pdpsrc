@@ -4,7 +4,7 @@
 # This old shell exits on false if-tests under set -e. Check commands explicitly.
 umask 022 || exit 1
 id | grep 'uid=0(' >/dev/null || exit 1
-for file in webtop webtop-cgi visit-proxy visit-total-proxy site/index.html site/pdp-ai.html site/glass-tty-vt220-v1.woff2 site/gary-green-v1.jpg site/pdp-gary-preview-v1.jpg site/pdp-gary-favicon-v2.png site/pdp-gary-apple-touch-icon-v2.png site/index.previous.html site/pdp11.jpg site/pdp1183-web.jpg site/tmog-banner-v2.jpg site/pdp1173-tmog-preview-v1.jpg site/health.txt
+for file in webtop webtop-cgi visit-proxy visit-total-proxy site/index.html site/pdp-ai.html site/glass-tty-vt220-v1.woff2 site/gary-green-v2.jpg site/pdp-gary-preview-v2.jpg site/pdp-gary-favicon-v3.png site/pdp-gary-apple-touch-icon-v3.png site/index.previous.html site/pdp11.jpg site/pdp1183-web.jpg site/tmog-banner-v2.jpg site/pdp1173-tmog-preview-v1.jpg site/health.txt
 do
     test -s "$file" || exit 1
 done
@@ -62,7 +62,7 @@ chown root /home/www/cgi-bin/visit-total.new || exit 1
 chmod 755 /home/www/cgi-bin/visit-total.new || exit 1
 mv /home/www/cgi-bin/visit-total.new /home/www/cgi-bin/visit-total || exit 1
 
-for file in pdp11.jpg pdp1183-web.jpg tmog-banner-v2.jpg pdp1173-tmog-preview-v1.jpg index.previous.html health.txt gary-green-v1.jpg pdp-gary-preview-v1.jpg pdp-gary-favicon-v2.png pdp-gary-apple-touch-icon-v2.png glass-tty-vt220-v1.woff2 pdp-ai.html
+for file in pdp11.jpg pdp1183-web.jpg tmog-banner-v2.jpg pdp1173-tmog-preview-v1.jpg index.previous.html health.txt gary-green-v2.jpg pdp-gary-preview-v2.jpg pdp-gary-favicon-v3.png pdp-gary-apple-touch-icon-v3.png glass-tty-vt220-v1.woff2 pdp-ai.html
 do
     cp "site/$file" "/home/www/$file.new" || exit 1
     chown root "/home/www/$file.new" || exit 1

@@ -96,8 +96,14 @@ font; the original TTF, Unlicense and provenance are in `archive/glasstty/`.
 Its built-in scanlines replace the extra CSS scanline overlay. The page keeps
 a standard monospace fallback and does not contact a third-party font service.
 The homepage starts with a compact green PDP-Gary banner using the same font
-and existing portrait; its Chat Now link opens `pdp-ai.html`. The banner uses
+and the supplied September 24 portrait; its Chat Now link opens `pdp-ai.html`. The banner uses
 only static markup and CSS and adds no scripts or visitor-counter requests.
+
+Gary's current artwork comes from `archive/gary/gary-original-v2.png`, the
+unchanged second image supplied on September 24. The full portrait is served
+as `gary-green-v2.jpg` (480×720); a 600×600 face crop supplies
+`pdp-gary-preview-v2.jpg` and the v3 browser/touch icons. Versioned filenames
+avoid stale image caches. Older assets remain available for rollback.
 
 Gary's complete system prompt is in `proxy/gary-system-prompt.txt`. It combines
 the mildly snarky persona with dated website/owner background, distinguishes
