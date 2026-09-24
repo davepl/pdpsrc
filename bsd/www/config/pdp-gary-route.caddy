@@ -8,5 +8,5 @@ handle /pdp-visitors/* {
 }
 
 # The legacy PDP httpd does not recognize PNG; set the type after proxying.
-@pdpGaryIcons path /pdp-gary-apple-touch-icon-v2.png /pdp-gary-favicon-v2.png
+@pdpGaryIcons path /pdp-gary-apple-touch-icon-v2.png /pdp-gary-favicon-v2.png /pdp-gary-apple-touch-icon-v3.png /pdp-gary-favicon-v3.png
 header @pdpGaryIcons >Content-Type image/png
