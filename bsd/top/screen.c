@@ -33,6 +33,7 @@ static char output_buffer[BUFSIZ];
 static char *image, *cap_store;
 static char *cm, *cl, *ce, *so, *se, *ti, *te, *ks, *ke;
 static char valid[MAXROWS], seen[MAXROWS], reverse_row[MAXROWS];
+static unsigned char row_length[MAXROWS];
 static int term_rows, term_cols, tty_saved, active;
 static int output_pending;
 static struct sgttyb savedtty;
@@ -195,18 +196,27 @@ screen_row(y, text, reverse)
 int y, reverse;
 char *text;
 {
-    char line[MAXCOLS], *old;
-    int n, start, end, oldlen, same, i;
+    char line[MAXCOLS];
+    /* Explicit register hints matter to this native compiler. These three
+     * values are reused while clipping and comparing characters, so keep
+     * them in word registers instead of repeatedly fetching stack locals. */
+    register char *old;
+    register int n, start;
+    int end, oldlen, same, i;
 
     if (!active || y < 0 || y >= screen_rows) return;
     seen[y] = 1;
-    for (n = 0; text[n] && n < screen_cols - 1; n++)
-        line[n] = text[n] >= ' ' && text[n] <= '~' ? text[n] : '?';
-    line[n] = 0;
     reverse = reverse && so != NULL;
     old = image + y * screen_cols;
     same = valid[y] && reverse_row[y] == reverse;
-    oldlen = valid[y] ? strlen(old) : 0;
+    /* Cached text is already sanitized. Exact equality therefore proves
+     * that another copy/filter/length pass cannot change the visible row.
+     * Truncated or unsanitized strings take the ordinary bounded path. */
+    if (same && !strcmp(old, text)) return;
+    for (n = 0; text[n] && n < screen_cols - 1; n++)
+        line[n] = text[n] >= ' ' && text[n] <= '~' ? text[n] : '?';
+    line[n] = 0;
+    oldlen = valid[y] ? row_length[y] : 0;
     start = 0;
     /* Unchanged cells keep both their characters and their attributes.
      * Skip an equal prefix/suffix so a clock tick need not retransmit a
@@ -226,6 +236,7 @@ char *text;
     /* Clear only when shortening, or when this row has no known image. */
     if (!valid[y] || oldlen > n) emit(ce, 1);
     strcpy(old, line);
+    row_length[y] = n;
     reverse_row[y] = reverse;
     valid[y] = 1;
 }

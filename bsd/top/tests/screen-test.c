@@ -198,6 +198,19 @@ int main(void)
     screen_clear(); screen_flush();
     assert(!strcmp(output, "<cl>[0,0]") && flushes == 1);
 
+    /* Equal visible text must also be recognized after sanitization or
+     * clipping, even when the fast raw-text equality check cannot match. */
+    reset_output(); screen_begin();
+    screen_row(0, "control?byte", 0); screen_finish();
+    reset_output(); screen_begin();
+    screen_row(0, "control\nbyte", 0); screen_finish();
+    assert(used == 0 && flushes == 0);
+    columns = 8; lines = 10; assert(screen_start());
+    screen_begin(); screen_row(0, "abcdefghijk", 0); screen_finish();
+    reset_output(); screen_begin();
+    screen_row(0, "abcdefgDIFFERENT", 0); screen_finish();
+    assert(used == 0 && flushes == 0);
+
     random_frames();
     columns = lines = 65535;
     assert(screen_start()); assert(screen_cols == 160 && screen_rows == 31);

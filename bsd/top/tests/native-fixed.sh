@@ -21,11 +21,15 @@ else
     echo "cannot create private test directory $testdir" >&2
     exit 1
 fi
+# This old shell can reset $? before an EXIT trap. Track success explicitly
+# so cleanup cannot turn a failed compile or test into a successful exit.
+test_status=1
 trap '
     cd /
     rm -f "$testdir/fixed-under-test.h" "$testdir/fixed-test.c" \
         "$testdir/fixed-test.o" "$testdir/fixed-test" "$testdir/core"
     rmdir "$testdir"
+    exit $test_status
 ' 0
 trap 'exit 1' 1 2 3 15
 
@@ -38,6 +42,7 @@ trap 'exit 1' 1 2 3 15
 cp "$source_dir/tests/fixed-test.c" "$testdir/fixed-test.c" || exit 1
 cd "$testdir" || exit 1
 cc -O -i -o fixed-test fixed-test.c || exit 1
-./fixed-test
-result=$?
-exit $result
+./fixed-test || exit 1
+echo "native top fixed-point tests passed"
+test_status=0
+exit 0

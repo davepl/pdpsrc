@@ -6,8 +6,8 @@ on the **same 2.11BSD machine** as every program being compared:
 
 ```sh
 make
-TOPBENCH_REFRESHES=1000 ./topbench 300 /usr/ucb/top -s1
-TOPBENCH_REFRESHES=1000 ./topbench 300 /path/to/new-top -s1
+TOPBENCH_REFRESHES=3000 ./topbench 300 /usr/ucb/top -s1
+TOPBENCH_REFRESHES=3000 ./topbench 300 /path/to/new-top -s1
 ```
 
 Run as root: the observer reads the kernel process table through `/dev/kmem`,
@@ -99,13 +99,13 @@ tie into convincing evidence. Instead, request the same large number of
 updates from each program:
 
 ```sh
-TOPBENCH_REFRESHES=1000 ./topbench 300 /usr/ucb/top -s1
-TOPBENCH_REFRESHES=1000 ./topbench 300 /path/to/new-top -s1
+TOPBENCH_REFRESHES=3000 ./topbench 300 /usr/ucb/top -s1
+TOPBENCH_REFRESHES=3000 ./topbench 300 /path/to/new-top -s1
 ```
 
-Warm each executable once, then collect **five interleaved trials of 1000
+Warm each executable once, then collect **five interleaved trials of 3000
 requests per executable**, reversing which one runs first between rounds.
-Do not include warmups in the reported five trials. If 1000 requests still
+Do not include warmups in the reported five trials. If 3000 requests still
 produce too few CPU ticks on a different host, increase the count equally
 for all candidates and repeat the whole set.
 
@@ -153,10 +153,10 @@ comparison, and default startup remains a separate measurement.
    The observer also resolves kernel symbols before timing. Label subsequent
    results as warm-cache measurements; this is not a disk cold-start test.
 4. Run five interleaved fixed-request trials per program with
-   `TOPBENCH_REFRESHES=1000` and `-s1`. Reverse candidate order between rounds
+   `TOPBENCH_REFRESHES=3000` and `-s1`. Reverse candidate order between rounds
    to reduce the effect of background changes. Keep the same terminal size,
    process workload, and privileges. Check that every successful trial reports
-   exactly 1000 requests and no failure flags. Retain every raw result,
+   exactly 3000 requests and no failure flags. Retain every raw result,
    including failed trials, and explain any exclusions. Inspect all five
    measurements as well as their median: if differences overlap or depend on
    run order, increase the measurement length or report the result as
@@ -189,7 +189,7 @@ system workload and tick accounting fluctuate.
 On a modern host, summarize captured measurements with:
 
 ```sh
-python3 summarize.py forced-1000.log default-startup.log > summary.csv
+python3 summarize.py forced-3000.log default-startup.log > summary.csv
 ```
 
 Keep each interval and workload in its own input file. The script groups by

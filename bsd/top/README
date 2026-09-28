@@ -109,7 +109,10 @@ A PDP-11 process has a 64 KiB data address space even when the machine has
 free physical RAM. Its variables, heap and stack must share that space.
 screen.c therefore keeps one bounded character image instead of two curses
 screen images. It compares each new row with its previous contents and
-sends only the changed span. An unchanged frame emits nothing. Output is
+sends only the changed span. An exactly matching row bypasses copying and
+sanitizing, while clipped or unsanitized input still takes the bounded path.
+The cache also remembers each row length, avoiding another scan of old text.
+An unchanged frame emits nothing. Output is
 buffered until the frame is ready, avoiding a system call for each
 character. termcap supplies the terminal's cursor and clearing sequences;
 the renderer does not assume ANSI escapes.
@@ -150,9 +153,29 @@ Separating the integer part from the remainder before scaling prevents
 large counters from overflowing. Quotients are reused rather than asking
 the native compiler to repeat a software division for the remainder.
 Powers of two use exact shifts and masks, and decimal rounding carries
-into the integer part when necessary. Long sampling gaps scale down both
+into the integer part when necessary. Decimal conversion starts with 32-bit
+arithmetic only when needed, then finishes with native 16-bit operations
+once the integer part fits. This does not limit the displayed counter.
+Long sampling gaps scale down both
 sides of a CPU ratio before multiplication. A forced refresh within the
 same kernel clock tick retains the last measured CPU percentage.
+
+The process-row layout is fixed, so format.h appends typed fields directly
+to one bounded line instead of interpreting two printf formats for each
+process. Field widths remain next to the values in draw(), and every append
+reserves the terminating NUL byte. Summary and error messages still use
+printf where the extra formatting machinery is useful.
+
+Header text is cached only while all its inputs match: current time, user
+count, load values and query status, and terminal width. Each refresh still
+samples those inputs. This saves repeated formatting during rapid manual
+refreshes; the clock normally invalidates it on every one-second update.
+
+Selected loop indices and pointers use explicit register declarations.
+This historical compiler otherwise leaves these locals on the stack; its
+three available word registers suit frequently reused word-sized values.
+That is a target-specific choice backed by measurements, not general advice
+for modern compilers. The code keeps ordinary named structures and fields.
 
 The first screen does not wait for a refresh timer: cumulative values are
 already meaningful, while rates require two observations. Signals merely
@@ -169,13 +192,16 @@ The tests compile the actual renderer with fake terminal services and
 check the resulting characters and attributes. They cover changed spans,
 disappearing rows, 200 randomized frames, resizing, allocation failures
 and terminal restoration. The actual fixed-point formatter is also tested
-against 29 explicit expected results, including rounding boundaries and
-the largest unsigned 32-bit counters. Host tests do not replace native
-tests of the PDP-11's narrower integer types and library behavior.
+against 88 explicit expected results, including rounding boundaries and
+the largest unsigned 32-bit counters. Further checks exhaust the signed
+16-bit integer range for row fields, compare 128 complete rows with the
+former layout, and verify header-cache invalidation. An optional independent
+64-bit oracle checks 274,630 fixed-point results. Host tests do not replace
+native tests of narrower integer types and library behavior.
 
-Run the same formatter boundary cases on 2.11BSD with:
+Run numeric and row-formatting checks on 2.11BSD with:
 
-    /bin/sh tests/native-fixed.sh
+    /bin/sh tests/native-format.sh
 
 The script uses the native compiler and libc, keeps generated files in a
 private temporary directory, and cleans up when it finishes. See

@@ -24,6 +24,7 @@
 #include <nlist.h>
 #include <sgtty.h>
 #include "screen.h"
+#include "format.h"
 
 #define FIRSTPROC 7
 #define NCACHE 32
@@ -86,6 +87,9 @@ static char hostname[64];
 static char error_text[160];
 static char status_text[160];
 
+/* Native cc reserves dedicated local registers only for explicit register
+ * declarations. Its three word registers suit frequently reused loop indices
+ * and pointers; using them avoids repeated stack accesses in these paths. */
 static int readat(), sample(), compare(), keywait();
 static void draw(), putrow(), usage();
 
@@ -139,12 +143,12 @@ size_t *bytes;
 static int
 map_free(item, map, bytes, unit, result)
 int item;
-struct mapent *map;
+register struct mapent *map;
 size_t bytes;
 unsigned int unit;
 unsigned long *result;
 {
-    unsigned int i;
+    register unsigned int i;
     unsigned long sum;
     if (!getvalue(CTL_VM, item, (char *)map, bytes))
         return 0;
@@ -238,7 +242,7 @@ static char *
 username(uid)
 short uid;
 {
-    int i;
+    register int i;
     struct passwd *pw;
     struct username *entry;
     for (i = 0; i < NCACHE; i++)
@@ -266,13 +270,14 @@ static int
 sample(baseline)
 int baseline;
 {
-    unsigned int i, j, newcap, validation_slots;
+    register unsigned int i;
+    unsigned int j, newcap, validation_slots;
     int fd;
     off_t address, paddress;
     unsigned long ticks[CPUSTATES], diff[CPUSTATES], sum, scaled, divisor;
     int wrapped_sum;
-    struct proc *p;
-    struct row *r;
+    register struct proc *p;
+    register struct row *r;
     struct row *newrows;
     struct history *h;
 
@@ -457,7 +462,7 @@ static int
 compare(ai, bi)
 unsigned short *ai, *bi;
 {
-    struct row *a, *b;
+    register struct row *a, *b;
     int n;
     a = &rows[*ai];
     b = &rows[*bi];
@@ -503,7 +508,11 @@ user_count()
     return n;
 }
 
-/* Fixed-point decimal output avoids floating arithmetic in every process row. */
+/* Fixed-point decimal output avoids floating arithmetic in every process row.
+ * This private helper accepts one or two decimal places and a positive
+ * scale no greater than 32767 (the largest native clock frequency).
+ * Callers provide 24 bytes, enough for a 32-bit value and its fraction.
+ * Those scale bounds keep remainder * 100 + scale / 2 within 32 bits. */
 /* Split before multiplying: scaling a large cumulative counter directly
  * could overflow 32 bits. Only the remainder is scaled, then rounded; a
  * carry such as 9.96 -> 10.0 is applied to the integer part explicitly. */
@@ -514,8 +523,10 @@ unsigned long value, scale;
 int digits;
 {
     unsigned long quotient, remainder;
-    unsigned int base, fraction, n;
-    char reversed[10], *out;
+    unsigned int base, fraction, small_quotient;
+    register unsigned int n, small;
+    char reversed[10];
+    register char *out;
 
     base = digits == 2 ? 100 : 10;
     /* Quotient and remainder describe the same division: value = q*s + r.
@@ -542,11 +553,20 @@ int digits;
      * Avoiding a second printf format parse for EVERY numeric cell matters
      * more here than it would on a modern machine. This handles zero too. */
     n = 0;
-    do {
+    /* Most displayed integer parts fit in 16 bits. Use the wider divide
+     * only while it is needed, then finish with native word arithmetic.
+     * 65535 is the unsigned range limit on the target, not a display cap. */
+    while (value > 65535UL) {
         quotient = value / 10;
         reversed[n++] = '0' + (value - quotient * 10);
         value = quotient;
-    } while (value);
+    }
+    small = (unsigned int)value;
+    do {
+        small_quotient = small / 10;
+        reversed[n++] = '0' + (small - small_quotient * 10);
+        small = small_quotient;
+    } while (small);
     out = buf;
     while (n) *out++ = reversed[--n];
     *out++ = '.';
@@ -564,35 +584,72 @@ char *text;
     screen_row(y, text, reverse);
 }
 
-static void
-draw()
+/* Cache only header formatting. Every call still reads the current time,
+ * utmp user count and all three load averages. Those fresh values, the
+ * load-query result and screen width are the complete changing key;
+ * hostname and boot time were fixed by setup(). Thus a login, failed or
+ * recovered query, clock tick or resize cannot reuse stale header text. */
+static char *
+header_text()
 {
-    char line[256], times[48], first[128], load[80], field[7][24];
+    static char text[256];
+    static double previous_loads[3];
+    static time_t previous_time;
+    static int previous_users, previous_result, previous_cols, valid;
+    char load[80];
+    double loads[3];
     time_t now;
     struct tm *tm;
     long up;
-    int i, y, users, shown, days, hours, minutes;
-    double loads[3];
-    struct row *r;
+    int users, result, days, hours, minutes;
 
     time(&now);
+    users = user_count();
+    loads[0] = loads[1] = loads[2] = 0.0;
+    result = getloadavg(loads, 3);
+    if (valid && now == previous_time && users == previous_users &&
+            result == previous_result && screen_cols == previous_cols &&
+            !memcmp((char *)loads, (char *)previous_loads, sizeof(loads)))
+        return text;
+
     tm = localtime(&now);
     up = now - boottime.tv_sec;
     if (up < 0) up = 0;
     days = up / 86400L;
     hours = (up / 3600L) % 24;
     minutes = (up / 60L) % 60;
-    users = user_count();
-    sprintf(first, "%.16s - %02d:%02d:%02d up %2d days, %2d:%02d, %3d user%s",
-        hostname, tm->tm_hour, tm->tm_min, tm->tm_sec,
-        days, hours, minutes, users, users == 1 ? "" : "s");
-    loads[0] = loads[1] = loads[2] = 0.0;
-    if (getloadavg(loads, 3) == 3)
-        sprintf(load, "%.2f, %.2f, %.2f",
-            loads[0], loads[1], loads[2]);
+    if (result == 3)
+        sprintf(load, "%.2f, %.2f, %.2f", loads[0], loads[1], loads[2]);
     else
         strcpy(load, "unavailable");
-    sprintf(line, "%s,  load average: %s", first, load);
+    sprintf(text, "%.16s - %02d:%02d:%02d up %2d days, %2d:%02d, %3d user%s,  load average: %s",
+        hostname, tm->tm_hour, tm->tm_min, tm->tm_sec,
+        days, hours, minutes, users, users == 1 ? "" : "s", load);
+    if (strlen(text) >= screen_cols) {
+        /* Both layouts reuse one conversion of the fresh load values. */
+        sprintf(text, "%.8s %02d:%02d:%02d up %dd %d:%02d, %d user%s, load %s",
+            hostname, tm->tm_hour, tm->tm_min, tm->tm_sec,
+            days, hours, minutes, users, users == 1 ? "" : "s", load);
+    }
+    previous_time = now;
+    previous_users = users;
+    previous_result = result;
+    previous_cols = screen_cols;
+    memcpy((char *)previous_loads, (char *)loads, sizeof(loads));
+    valid = 1;
+    return text;
+}
+
+static void
+draw()
+{
+    char line[256], field[4][24], *header;
+    struct output_line row_text;
+    register int i;
+    int y, shown;
+    register struct row *r;
+
+    header = header_text();
     screen_begin();
     if (screen_rows < 9 || screen_cols < 40) {
         putrow(0, "top: enlarge terminal to at least 40x9", 0);
@@ -600,16 +657,7 @@ draw()
         screen_finish();
         return;
     }
-    if (strlen(line) >= screen_cols) {
-        /* Reuse the converted load values when the long header will not fit.
-         * Decimal floating conversion is costly on this machine; doing it
-         * twice for the usual 80-column screen adds no information. */
-        sprintf(line, "%.8s %02d:%02d:%02d up %dd %d:%02d, %d user%s, load %s",
-            hostname, tm->tm_hour, tm->tm_min, tm->tm_sec,
-            days, hours, minutes, users, users == 1 ? "" : "s",
-            load);
-    }
-    putrow(0, line, 0);
+    putrow(0, header, 0);
     sprintf(line, "Tasks:%4d total, %3d running, %4d sleeping, %3d stopped, %3d zombie",
         count, running, sleeping, stopped, zombies);
     putrow(1, line, 0);
@@ -652,19 +700,39 @@ draw()
             r = &rows[row_index[i]];
             if (!showidle && r->delta == 0 && r->state != 'R') continue;
             if (limit && shown >= limit) break;
-            if (r->valid)
-                sprintf(times, "%8s %7s",
-                    fixed(field[0], (unsigned long)r->ticks, (unsigned long)hz, 2),
-                    interval_valid ? fixed(field[1], (unsigned long)r->delta,
-                        (unsigned long)hz, 2) : "-");
-            else
-                strcpy(times, "       ?       ?");
-            sprintf(line, "%5d %-8.8s%4d%4d%5sK%5sK%5sK %c%c%s %s",
-                r->pid, username(r->uid), r->pri, r->nice,
-                fixed(field[2], (unsigned long)r->text, 16L, 1),
-                fixed(field[3], (unsigned long)r->data, 16L, 1),
-                fixed(field[4], (unsigned long)r->stack, 16L, 1), r->state,
-                r->swapped ? 's' : ' ', times, r->command);
+            /* The process-row layout never changes. Typed appends avoid
+             * reparsing two printf formats for every process on every frame.
+             * Each call still states the field width beside its value. */
+            line_start(&row_text, line, sizeof(line));
+            line_number(&row_text, r->pid, 5);
+            line_character(&row_text, ' ');
+            line_text(&row_text, username(r->uid), -8, 8);
+            line_number(&row_text, r->pri, 4);
+            line_number(&row_text, r->nice, 4);
+            line_text(&row_text,
+                fixed(field[0], (unsigned long)r->text, 16L, 1), 5, 0);
+            line_character(&row_text, 'K');
+            line_text(&row_text,
+                fixed(field[0], (unsigned long)r->data, 16L, 1), 5, 0);
+            line_character(&row_text, 'K');
+            line_text(&row_text,
+                fixed(field[0], (unsigned long)r->stack, 16L, 1), 5, 0);
+            line_character(&row_text, 'K');
+            line_character(&row_text, ' ');
+            line_character(&row_text, r->state);
+            line_character(&row_text, r->swapped ? 's' : ' ');
+            if (r->valid) {
+                line_text(&row_text,
+                    fixed(field[0], (unsigned long)r->ticks,
+                        (unsigned long)hz, 2), 8, 0);
+                line_character(&row_text, ' ');
+                line_text(&row_text, interval_valid ?
+                    fixed(field[0], (unsigned long)r->delta,
+                        (unsigned long)hz, 2) : "-", 7, 0);
+            } else line_text(&row_text, "       ?       ?", 0, 0);
+            line_character(&row_text, ' ');
+            line_text(&row_text, r->command, 0, 0);
+            line_finish(&row_text);
             putrow(y++, line, 0);
             shown++;
         }

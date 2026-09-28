@@ -13,7 +13,7 @@ top: top.o screen.o
 	cp top top.debug
 	strip top
 
-top.o: top.c screen.h ../pdp11_unistd.h
+top.o: top.c screen.h format.h ../pdp11_unistd.h
 	$(CC) $(CFLAGS) -c top.c
 
 screen.o: screen.c screen.h

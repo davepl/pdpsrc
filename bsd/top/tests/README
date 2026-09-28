@@ -1,51 +1,49 @@
-Host tests
-==========
+Formatting and renderer regression tests
+=======================================
 
-Run on macOS or another modern host with a C compiler:
+On a modern development host, run from bsd/top:
+    tests/run.sh
 
-    sh tests/run.sh
+The suite includes the real screen.c against a fake tty/termcap terminal;
+it checks visible cells, attributes, bounded allocation and restoration.
+Two hundred deterministic randomized frames compare the visible terminal
+with the requested contents. Focused checks cover unchanged frames with no
+output or flush, changed spans, prompts, resize extremes and startup failures.
+It extracts fixed(), header_text() and the process-row block from top.c,
+and includes the actual format.h. No copied implementation is substituted.
 
-The harness includes the actual screen.c and substitutes only terminal
-and allocation interfaces.  Its fake terminal interprets cursor moves,
-clearing and standout into a visible character/attribute grid.  Two hundred
-deterministic randomized frames verify final screen contents independently
-of the production cache algorithm.  Focused assertions verify that an
-unchanged frame emits no bytes or flush call, an explicit clear still emits
-its terminal operation, and a one-character update stays small.
+The typed helper tests exhaust all 65,536 signed16 values on the host and
+check padding, string precision and buffer guards. The row test compares
+128 full rows with the former printf layout. The fixed-point test contains
+88 literal golden results for rounding, carries, zero/exact values and
+32-bit boundaries. The header test changes time, users, load values, query
+success/failure and width while checking that each call still samples.
 
-Other cases cover unknown/unsupported terminals, sanitization, shortening
-and disappearing rows, reverse-video changes, prompt-only updates, huge
-and tiny window sizes, allocation/mode-setting failures, and restoration
-of the caller's original terminal flags across repeated resizes.
+For an optional larger arithmetic check on a host with Python 3 and cc:
+    python3 tests/fixed-oracle.py
+It compares the actual fixed() with an independent 64-bit oracle across
+274,630 power-of-two residue, word-range and 32-bit boundary cases. This
+supplements the native tests; host long arithmetic can be wider than 32 bits.
 
-These tests require no terminal, kernel-memory permissions, or additional
-libraries.  They do not emulate the PDP-11 ABI or replace native builds,
-live kernel-statistics checks, real terminal tests, or performance timings.
+On native 2.11BSD, run from bsd/top:
+    /bin/sh tests/native-format.sh
 
-The script also extracts the actual fixed() formatter from top.c into a
-temporary header and tests 29 hand-specified decimal results.  These cover
-zero, half-up rounding on both sides of a boundary, carries into the integer
-part, 60/100 Hz CPU counters, 16 clicks per KiB, 1024 bytes per KiB, and the
-largest unsigned 32-bit counters.  Guards verify the 24-byte field budget.
-The fixture contains expected strings, not another formatter implementation.
+That runner uses simple sed extraction and native cc -O -i in a newly made
+private /tmp directory. It checks 23 signed16 boundaries, all precision and
+buffer cases, the 128 process rows, and all 88 fixed-point golden cases.
+It does not change tty settings or read kernel memory. Initialized test
+arrays are static because the native compiler rejects automatic aggregate
+initialization. Native printf ignores a negative dynamic width; the test
+oracle spells left alignment as an explicit '-' flag with a positive width,
+which preserves the intended semantics on both native and modern libc.
+Each group prints a success message; the final marker is:
+    all native top formatting tests passed
 
-Host unsigned long can be wider than the PDP-11's 32 bits.  Test inputs are
-therefore explicitly limited to 0xffffffff and scales used by native callers;
-the host tests alone cannot prove absence of every native integer overflow.
+The smaller /bin/sh tests/native-fixed.sh remains available for only the
+88 numeric goldens. Both native runners keep an explicit failure status
+until all checks pass: this old shell can reset $? before an EXIT trap.
+Cleanup removes only each runner's own temporary files. Native
+execution is required to check the target's 16-bit int, 32-bit long and libc.
 
-Native formatter regression
----------------------------
-On 2.11BSD, run from bsd/top:
-
-    /bin/sh tests/native-fixed.sh
-
-The working directory must be bsd/top so the script can find its sources.
-This runs the same 29 golden cases with the actual native compiler, integer
-widths and libc.  It extracts fixed() from top.c, compiles with cc -O -i,
-and runs the test.  The script uses original Bourne shell syntax and creates
-a private /tmp/top-fixed.PID directory; cleanup removes only its generated
-files.  It leaves the source tree and installed programs unchanged and
-returns a nonzero status if extraction, compilation or testing fails.
-
-Both host and native runs matter.  Native boundary cases caught a libc
-unsigned-division corner case that a host with wider integers did not show.
+The bounded live-process workload is documented in README.workload.
+The performance observer and repeatable commands are documented in bench/.
