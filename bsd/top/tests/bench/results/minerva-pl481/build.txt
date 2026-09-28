@@ -1,0 +1,23 @@
+Measured 2026-09-28 on minerva, 2.11BSD PL481
+Kernel: hz=60 nproc=122
+ABI bytes: int=2 long=4 proc=66 user=862 user_prefix=772 BUFSIZ=1024
+Build: cc -O; cc -i -o top top.o screen.o -ltermcap; strip top
+Source base: 1d6d2b6564b19a368607f5ba0f2d8177a1ca4ffc (codex/bsd-build-world)
+Candidates run as root in native 80x24 TERM=vt100 PTY.
+Five interleaved 1000-request -s1 runs per program; five 3-second -s1 startup runs.
+size: text data bss
+reference: 35328 3550 6684
+previous pdpsrc: 33856 4366 7696
+candidate: 30080 4164 5560
+
+SHA-256 (binary copies fetched using FTP binary transfer):
+2d3c22567c5ae060c57ce7ad2e91a99c4d392503fb856c296491e96dce89792e  /usr/ucb/top (38894 bytes)
+5868aab141062595fa03e4cf10989cae5c57163add6f4f960bbb285228997d68  previous pdpsrc, unstripped (53772 bytes)
+3fe94c436078345407d7dfb3ea0634c44577a79c67d3ec8b899b0c8e50b0ea51  previous pdpsrc, stripped copy (38238 bytes)
+adc5ada4901fed1c3e8fc0aadf041d161e23af4ee601a267ff7b45e8be65ea7f  candidate (34260 bytes)
+
+SHA-256 (candidate build inputs):
+9878af8072bdd794955799385286c7547e88b9eab8d7208ee464f0aa2914cb43  top.c
+762f7580eecb78dff30b16d9dfa89d8684e0eaf9024da92448673f9f20c8b497  screen.c
+1ff813c744a1c774f84eb0793f017ed87a06d33d1fbdb217f358b6517d279dcd  screen.h
+4393b5d4e6a5d9d9b42a60906a76d42cf54748df172b40ad664805fe7a79fb1f  Makefile

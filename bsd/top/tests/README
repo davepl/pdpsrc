@@ -1,0 +1,51 @@
+Host tests
+==========
+
+Run on macOS or another modern host with a C compiler:
+
+    sh tests/run.sh
+
+The harness includes the actual screen.c and substitutes only terminal
+and allocation interfaces.  Its fake terminal interprets cursor moves,
+clearing and standout into a visible character/attribute grid.  Two hundred
+deterministic randomized frames verify final screen contents independently
+of the production cache algorithm.  Focused assertions verify that an
+unchanged frame emits no bytes or flush call, an explicit clear still emits
+its terminal operation, and a one-character update stays small.
+
+Other cases cover unknown/unsupported terminals, sanitization, shortening
+and disappearing rows, reverse-video changes, prompt-only updates, huge
+and tiny window sizes, allocation/mode-setting failures, and restoration
+of the caller's original terminal flags across repeated resizes.
+
+These tests require no terminal, kernel-memory permissions, or additional
+libraries.  They do not emulate the PDP-11 ABI or replace native builds,
+live kernel-statistics checks, real terminal tests, or performance timings.
+
+The script also extracts the actual fixed() formatter from top.c into a
+temporary header and tests 29 hand-specified decimal results.  These cover
+zero, half-up rounding on both sides of a boundary, carries into the integer
+part, 60/100 Hz CPU counters, 16 clicks per KiB, 1024 bytes per KiB, and the
+largest unsigned 32-bit counters.  Guards verify the 24-byte field budget.
+The fixture contains expected strings, not another formatter implementation.
+
+Host unsigned long can be wider than the PDP-11's 32 bits.  Test inputs are
+therefore explicitly limited to 0xffffffff and scales used by native callers;
+the host tests alone cannot prove absence of every native integer overflow.
+
+Native formatter regression
+---------------------------
+On 2.11BSD, run from bsd/top:
+
+    /bin/sh tests/native-fixed.sh
+
+The working directory must be bsd/top so the script can find its sources.
+This runs the same 29 golden cases with the actual native compiler, integer
+widths and libc.  It extracts fixed() from top.c, compiles with cc -O -i,
+and runs the test.  The script uses original Bourne shell syntax and creates
+a private /tmp/top-fixed.PID directory; cleanup removes only its generated
+files.  It leaves the source tree and installed programs unchanged and
+returns a nonzero status if extraction, compilation or testing fails.
+
+Both host and native runs matter.  Native boundary cases caught a libc
+unsigned-division corner case that a host with wider integers did not show.
