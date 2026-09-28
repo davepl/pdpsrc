@@ -1,0 +1,17 @@
+cc -O -c top.c
+cc -O -c screen.c
+cc -i -o top top.o screen.o -ltermcap
+cp top top.debug
+strip top
+typed-row native tests passed: signed16 boundaries, padding, precision, bounds
+typed full-row tests passed: 128 exact printf comparisons
+fixed-point tests passed: 88 golden cases and buffer guards
+all native top formatting tests passed
+text	data	bss	dec	hex
+30464	4114	5902	40480	9e20	final/top
+30464	4114	5902	40480	9e20	cursor/top
+-rwxr-x--x  1 root        34594 Sep 28 15:36 cursor/top
+-rwxr-x--x  1 root        34594 Sep 28 15:26 final/top
+completed-cursor-trial-1
+completed-cursor-trial-2
+completed-cursor-trial-3

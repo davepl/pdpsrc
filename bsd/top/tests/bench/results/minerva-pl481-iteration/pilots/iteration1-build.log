@@ -1,0 +1,17 @@
+top.c:
+screen-rowcache.c:
+top-fixed16.c:
+screen.c:
+top-fixed16.c:
+screen-rowcache.c:
+top.c:
+screen-dirtyspans.c:
+text	data	bss	dec	hex
+30080	4164	5560	39804	9b7c	top-pr13
+30080	4164	5610	39854	9bae	top-rowcache
+30144	4164	5560	39868	9bbc	top-fixed16
+30144	4164	5610	39918	9bee	top-combined
+30400	4164	5562	40126	9cbe	top-spans
+completed-trial-1
+completed-trial-2
+completed-trial-3

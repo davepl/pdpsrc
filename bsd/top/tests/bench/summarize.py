@@ -43,19 +43,17 @@ def main(paths):
             row["startup_ms"] = row["startup_us"] / 1000
             row["cpu_ms"] = (row["user_us"] + row["system_us"]) / 1000
             row["cpu_percent"] = row["cpu_ms"] * 100000 / row["wall_us"]
-            # Includes startup and teardown CPU. A render is not necessarily
-            # every internal sample when curses has no visible differences.
+            # Includes startup and teardown CPU. Visible output bursts cannot
+            # serve as a sampling count: unchanged displays may emit nothing.
             if requested:
                 row["cpu_ms_per_forced_refresh"] = row["cpu_ms"] / requested
-            else:
-                row["cpu_ms_per_render"] = row["cpu_ms"] / row["rendered_frames"]
             groups[name, path, requested].append(row)
 
     out = csv.writer(sys.stdout, lineterminator="\n")
     out.writerow(("configuration", "binary", "forced_requested", "runs", "startup_ms_min",
                   "startup_ms_median", "startup_ms_max", "cpu_ms_median",
-                  "cpu_percent_median", "rendered_frames_median",
-                  "cpu_ms_per_render_median", "data_stack_bytes_max",
+                  "cpu_percent_median", "observed_output_bursts_median",
+                  "data_stack_bytes_max",
                   "output_bytes_median", "cpu_ms_per_forced_refresh_median"))
     def med(rows, key):
         return round(statistics.median(r[key] for r in rows), 3)
@@ -66,7 +64,6 @@ def main(paths):
                       max(r["startup_ms"] for r in rows),
                       med(rows, "cpu_ms"), med(rows, "cpu_percent"),
                       med(rows, "rendered_frames"),
-                      "" if requested else med(rows, "cpu_ms_per_render"),
                       max(r["data_stack_bytes"] for r in rows),
                       med(rows, "output_bytes"),
                       med(rows, "cpu_ms_per_forced_refresh") if requested else ""))

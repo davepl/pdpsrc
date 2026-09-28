@@ -88,8 +88,8 @@ NUL bytes; their presence is normal.
 A curses refresh with no visible change may emit no output, and unusually
 fragmented output may defeat a quiet-gap detector. Therefore `rendered_frames`
 counts visible bursts, not guaranteed internal samples. Prefer total CPU over
-a fixed number of requested updates for the primary comparison. A CPU-per-render ratio
-can be informative, but includes startup/exit and must retain these caveats.
+a fixed number of requested updates for the primary comparison. The summary
+labels these counts as observed output bursts and does not divide CPU by them.
 
 ## Fixed-request mode for costs below clock resolution
 
@@ -194,9 +194,9 @@ python3 summarize.py forced-3000.log default-startup.log > summary.csv
 
 Keep each interval and workload in its own input file. The script groups by
 input file, executable path, and forced request count. It reports startup
-minimum/median/maximum, median CPU, observed memory maximum, and visible
-render counts. Fixed-request groups use CPU per forced request instead of
-CPU per visible render. It flags
+minimum/median/maximum, median CPU, observed memory maximum, and
+observed output-burst counts. Fixed-request groups additionally report CPU
+per forced request. Output bursts are never used as a CPU denominator. It flags
 failed measurements on stderr and exits unsuccessfully if any were excluded.
 Keep raw logs next to any published summary so others can check the analysis.
 
