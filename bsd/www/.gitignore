@@ -1,6 +1,8 @@
 /webtop
 /webtop-cgi
 /visit-counter
+/visit-proxy
+/visit-total-proxy
 /server/httpd
 /backups/
 /dist/

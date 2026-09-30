@@ -1,114 +1,145 @@
-# Public website cache
+# PDP proxy, automatic failover and shared counter
 
-`varnish.vcl` is the complete Varnish configuration deployed on `caddy`
-(`192.168.1.45`). Varnish 7.1 listens on `127.0.0.1:6081`; Caddy forwards
-the public `pdp1173.com` site to it. Its origin is `192.168.1.26:80`.
-This configuration belongs on the Linux proxy, not on the PDP.
+Caddy on `192.168.1.45` forwards the three PDP hostnames to Varnish on
+`127.0.0.1:6081`. The router's public port 80 must point to `.45`.
+The saved VCL prefers **192.168.1.29**, falls back to **192.168.1.26**, and
+returns to `.29` when its health checks recover. Caddy's other sites are separate.
 
-The router's public TCP port 80 must forward to **192.168.1.45:80**, so
-visitors cannot bypass the proxy by reaching `.26` directly. The operator
-corrected that rule on the UDM Pro during the September 20 diagnosis.
-Merge `Caddyfile.pdp` into caddy's existing configuration to route
-`pdp1173.com`, `www.pdp1173.com`, and the legacy `davepl.dyndns.org` hostname
-through Varnish. Accepted hostnames share a canonical cache key, so their TOP
-requests share the same snapshot. Do not replace caddy's unrelated site blocks.
+## Select a mode
 
-## Homepage query strings and cookies
-
-The PDP's preserved HTTP server includes a request's query string in its
-filesystem lookup. Requests such as `/?fbclid=...` therefore fail, and its
-incomplete HTTP error headers cause Varnish to report `HTC eof` and return
-503. Tracking values also create distinct cache keys unless normalized.
-
-Before hashing, Varnish maps `/`, `/?...`, `/index.html`, and
-`/index.html?...` to `/`. The homepage is static and uses no query parameters
-or server-side personalization, so all its query parameters and request
-cookies are ignored. Cookies remain in the browser: client-side visitor
-deduplication still works. Authorization retains the built-in cache bypass.
-Other paths and CGI query strings retain their existing behavior, with the
-exact public TOP endpoint treated separately below. If personalized or query-dependent homepage
-content is introduced, this normalization must be revisited.
-
-The origin server itself is unchanged. Query strings on other origin paths
-and malformed origin error responses are not fixed by this homepage rule.
-
-## Shared public TOP snapshot
-
-The exact `/cgi-bin/webtop` endpoint is the same public system snapshot for
-every viewer. Request cookies are ignored for this endpoint, and successful
-responses without Set-Cookie are cached **inside Varnish for five seconds**.
-Authorization still bypasses the cache. CGI URLs with query strings retain
-their previous bypass behavior.
-
-The origin's `Cache-Control: no-store` remains on the delivered response, so
-browsers and downstream caches do not add another caching layer. This endpoint
-is an explicit exception to Varnish's ordinary no-store handling. Its grace
-period is only 15 seconds, and failed background refreshes cannot replace the
-last working frame. Varnish adds its object age to `X-Snapshot-Age`, allowing
-the existing browser display to show the actual age of a cached frame.
-
-`/cgi-bin/visit` is never included in this rule: increments remain uncached.
-This shared cache bounds normal TOP fetches to roughly one per five seconds
-per host/cache key, instead of one per viewer. It complements the explicit
-inetd startup rate documented in [`README.inetd.md`](README.inetd.md).
-
-## Validate and deploy without losing the cache
-
-Run `python3 tests/varnish.py` on a Linux machine with Varnish and
-`varnishtest` installed. It uses an isolated fake origin; it does not contact
-the PDP. It tests the actual VCL, including cache hits across tracking URLs
-and returning-visitor cookies, shared TOP responses, snapshot age, expiry,
-failed refreshes, uncached counter increments, CGI query bypass, authorization,
-and guards for unsupported methods and unrelated hosts.
-
-Back up `/etc/varnish/default.vcl` and record `varnishadm vcl.list` first.
-Copy the candidate into `/etc/varnish/default.vcl.candidate`, then run:
+From the Mac, using the existing SSH key:
 
 ```
-varnishadm vcl.load pdp_candidate /etc/varnish/default.vcl.candidate
-varnishadm vcl.use pdp_candidate
-mv /etc/varnish/default.vcl.candidate /etc/varnish/default.vcl
+ssh root@192.168.1.45 pdp-backend status
+ssh root@192.168.1.45 pdp-backend auto
+ssh root@192.168.1.45 pdp-backend 26
+ssh root@192.168.1.45 pdp-backend 29
 ```
 
-Use a new VCL name for each deployment. Loading validates the candidate
-before activation. Keep the previous VCL available for rollback and restore
-its configuration file if reverting. This procedure preserves cached pages;
-restarting Varnish would empty the in-memory cache. The service has
-`PrivateTmp=true`, so a candidate in an ordinary SSH session's `/tmp` is not
-visible to its compiler. Place the candidate under `/etc/varnish` instead.
+`auto` is the normal setting. `26` and `29` force that machine and disable
+fallback. Add `--check` to check health without changing the mode. The helper
+backs up, validates, warms probes, activates, and atomically saves the VCL;
+it rolls back a failed activation. No Caddy/Varnish restart or counter copy
+is needed. Homepage/image caches survive. Retired VCLs are discarded to stop
+unused probes; previous configuration files remain in `/root/pdp-varnish-backups`.
 
-Successful static responses default to a five-minute TTL with 24-hour grace.
-Existing restrictions such as private/no-store responses remain enforced
-except for the explicit public TOP rule above.
-Grace permits a previously cached homepage to remain available during an
-origin outage; it cannot supply uncached pages or fresh CGI results. TOP may
-briefly retain its last frame, with its advancing age visible to the viewer.
+The tiny static `/health.txt` is fetched once every ten seconds per PDP.
+Two successes in the last three probes are required; timeout is three seconds.
+Detection/recovery therefore takes roughly 10–25 seconds. Probes test HTTP,
+not the sampler. Each origin is limited to two concurrent ordinary backend
+connections; probes are additional. Backend connect timeout is two seconds,
+and first-byte/between-byte timeouts are eight seconds.
 
-## September 20 deployment
+A failed foreground GET/HEAD for static content or the exact snapshot endpoint
+may retry once on the other healthy PDP in automatic mode. Other CGI calls,
+especially visitor increments, are never retried. This protects against a
+failure between probes without blindly repeating state-changing requests.
 
-Activated `pdp_tracking_20260921` at approximately 2026-09-21 00:54 UTC.
-The previous `boot` VCL remains available; its file is backed up at
-`/root/pdp-varnish-backups/default.before-tracking-20260921.vcl` on caddy.
-The exact reported Facebook URL changed from 503 to 200, using the existing
-cached homepage. Plain, tracked-with-cookie, and tracked `/index.html`
-responses were byte-identical. The origin's HTTP port was refusing
-connections during final verification, so these were cached grace responses.
+## Cache and identity
 
-## TOP traffic reduction (September 20, later that evening)
+Successful static pages default to five minutes of freshness and 24 hours of
+grace. A cached homepage can survive both PDPs being down. Uncached content
+cannot. Homepage aliases, Facebook query strings, and cookies normalize to the
+same cache key. Authorization still bypasses caching; other paths retain their
+query strings and cookie behavior.
 
-Activated `pdp_top_20260921` at approximately 2026-09-21 01:17 UTC, without
-restarting Varnish or evicting the homepage. The previous VCL is
-`pdp_tracking_20260921`; its file is preserved at
-`/root/pdp-varnish-backups/default.before-top-20260921.vcl` on caddy.
-Only the exact TOP cache entry was invalidated to remove the earlier
-uncacheable response marker. Both fake-origin test scenarios passed on the
-deployed Varnish 7.1.1 runtime, including expiry and failed background refresh.
+The exact `/cgi-bin/webtop` snapshot is cached for five seconds with 15 seconds
+of grace, separately per selected PDP. Its response identifies the actual
+backend with `X-PDP-Node`; the TMOG-11 panel displays that identity. A foreground
+retry's frame is not stored under the other PDP's key. Failed background
+refreshes preserve the last good frame. `X-Snapshot-Age` includes proxy age,
+and browsers/downstream caches receive `Cache-Control: no-store`.
 
-The subsequent `pdp_alias_20260921` VCL is the active version, adding the
-DynDNS alias and a shared hostname cache key. Caddy's PDP site block includes
-that alias too. Rollback files on caddy are
-`/root/pdp-varnish-backups/default.before-alias-20260921.vcl` and
-`/root/pdp-varnish-backups/Caddyfile.before-pdp-alias-20260921`.
-Both public hostname homepages were verified byte-for-byte after activation.
-At that point the PDP was still intermittently unreachable on the LAN; see
-`VERIFICATION.md` for the distinction between cached availability and live TOP.
+## Shared visitor total
+
+`pdp-visitors.service` runs `proxy/visitor-service.py` as the dedicated
+`pdp-visitors` user, bound only to `127.0.0.1:6083`. Durable state is
+`/var/lib/pdp-visitors/visitors.sqlite` (plus SQLite WAL files while active).
+Varnish routes these exact paths directly to it, always uncached:
+
+- `/cgi-bin/visit`: GET increments once; HEAD reads only.
+- `/cgi-bin/visit-total` and `/visits.txt`: read only.
+
+Each PDP's native `visit-proxy.c` helpers forward to `.45:80` with the public
+Host header, so direct LAN pages share this same total. They do not retry.
+The current HTML reads `/cgi-bin/visit-total`; the old native `/visits.txt`
+symlink and local totals remain as historical rollback state, not live counters.
+Public `/visits.txt` is served by the central service.
+
+Browser session deduplication remains unchanged: refreshes and snapshot polling
+do not increment. This is an approximate session count, not unique people or
+fraud-resistant analytics. No visitor identifiers are stored by the service.
+If the proxy/counter fails, neither PDP silently starts a divergent local count.
+
+## Restore the Linux service
+
+Install `proxy/visitor-service.py` as root-owned mode 755 at
+`/usr/local/libexec/pdp-visitors.py`, the unit at
+`/etc/systemd/system/pdp-visitors.service`, and `config/pdp-backend.py` at
+`/usr/local/sbin/pdp-backend` (mode 755). Use Python 3 and Varnish 7.1 or later.
+Create a system user/group `pdp-visitors`, with no login, and its mode-700
+state directory owned by that user. Restore a database backup with mode 600
+and the same ownership before starting the service. Then:
+
+```
+systemctl daemon-reload
+systemctl enable --now pdp-visitors
+curl http://127.0.0.1:6083/visits.txt
+```
+
+For an actual first migration only, initialize an absent database with the
+current authoritative count using `runuser -u pdp-visitors --
+/usr/local/libexec/pdp-visitors.py init NUMBER`. Never initialize over existing
+state; the tool refuses. To preserve concurrent visits during a migration,
+seed from snapshot S, activate counter routing, allow old requests to drain,
+read final old total F, then apply the delta once:
+
+```
+runuser -u pdp-visitors -- /usr/local/libexec/pdp-visitors.py adjust UNIQUE-MIGRATION-NAME DELTA
+```
+
+The adjustment is additive and idempotent, so visits already counted by the
+new service are retained. Do not add the two PDPs' historical totals together.
+Only install native forwarding CGIs **after** central routing is live, to avoid
+a forwarding loop. Native `install.sh` verifies the read route first.
+
+## Preserve and restore runtime state
+
+Take an online consistent SQLite backup on caddy, then copy it off the machine:
+
+```
+runuser -u pdp-visitors -- /usr/local/libexec/pdp-visitors.py backup /var/lib/pdp-visitors/backup-YYYYMMDD.sqlite
+```
+
+Run backups as the service user so SQLite sidecar files retain its ownership.
+Use a new filename; overwriting is refused. For restoration, stop
+`pdp-visitors`, archive the existing database and WAL/SHM files together, install
+the backup as `visitors.sqlite` with `pdp-visitors` ownership and mode 600, and
+restart. Do not leave stale WAL/SHM files beside a restored database. Git stores
+code and configuration, not changing visitor totals. Normal host backups must
+include the proxy state as well as both PDP disks.
+
+## Validate and activate VCL without emptying caches
+
+On a modern Linux host with Varnish/varnishtest:
+
+```
+python3 tests/shared-counter.py
+python3 tests/varnish.py
+python3 tests/failover.py
+```
+
+The tests use local fake origins, never the physical PDPs. They cover cache
+behavior, real health probes, failover/recovery, both-down grace, origin-specific
+frames, retries, manual modes, and durable/concurrent visitor accounting.
+
+Back up `/etc/varnish/default.vcl`, record `varnishadm vcl.list`, and copy the
+candidate under `/etc/varnish` (the service has a private `/tmp`). Load it with a
+unique name, wait for `varnishadm backend.list` to show the PDPs healthy, then
+activate with `varnishadm vcl.use NAME` and atomically replace the saved file.
+Keep the previous VCL until live verification succeeds, then discard inactive
+configurations so they do not keep probing. On failure use the old VCL and
+restore its file. Avoid a restart that would empty the cache.
+
+When changing homepage content, publish it to both PDPs before banning the
+single normalized `/` cache object. Counter paths must never be cached.

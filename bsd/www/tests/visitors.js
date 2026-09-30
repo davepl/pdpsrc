@@ -61,7 +61,7 @@ async function visit({reload = false, cookies = true, storage = true,
     const scripts = [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)];
     assert.equal(scripts.length, 1);
     source = scripts[0][1];
-    const increment = '/cgi-bin/visit', read = '/visits.txt';
+    const increment = '/cgi-bin/visit', read = '/cgi-bin/visit-total';
     const jar = {}, session = {};
     assert.equal(await visit({jar, session}), increment);
     assert.equal(await visit({jar, session, reload: true}), read);

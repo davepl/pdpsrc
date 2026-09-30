@@ -1,0 +1,23 @@
+[Unit]
+Description=PDP-AI public chat bridge
+After=network-online.target llama-coding.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/pdp-ai
+ExecStart=/usr/bin/python3 %h/.local/share/pdp-ai/server.py
+Environment=PDP_AI_BIND=192.168.0.107
+Environment=PYTHONDONTWRITEBYTECODE=1
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+UMask=0077
+MemoryMax=128M
+TasksMax=64
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target

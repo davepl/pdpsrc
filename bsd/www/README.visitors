@@ -1,39 +1,43 @@
-PDP-11 visitor counter — installed 2026-09-19
+PDP-11 shared visitor counter — updated 2026-09-21
 
-Display: VISITORS: n replaces THE MACHINE in the top masthead.
-Count: approximate browser sessions since installation, not unique people.
+Display: VISITORS: n in the masthead.
+Count: approximate browser sessions, not unique people.
 One increment per browser-session cookie, with sessionStorage as fallback.
-Reload navigation never increments. TOP refreshes never call the counter.
-Cookies/session storage blocked: read only. No identity or IP list is stored.
+Reloads and TMOG-11 snapshot refreshes never increment. Blocked storage: read only.
 Different browsers and hostnames can count separately. JavaScript is needed.
-The session marker is reserved before the request to avoid double counting an
-interrupted response. Failed first visits can therefore be missed. Simultaneous
-first loads in different tabs may race. This is a lightweight visit estimate.
+The marker is reserved before sending the request: interrupted visits may be
+missed. Simultaneous first loads in different tabs may race. No identity/IP
+list is stored. Direct calls can increment: this is not fraud-resistant analytics.
 
-Paths:
-  /usr/src/local/webtop/visit-counter.c  K&R, integer-only source
-  /home/www/cgi-bin/visit               non-setuid, root-owned executable 755
-  /home/www-visits/                     www-owned private directory, 700
-  /home/www-visits/total                www-owned persistent count, 600
-  /home/www-visits/lock                 www-owned stable flock file, 600
-  /home/www-visits/total.new            temporary atomic replacement
-  /home/www/visits.txt                  symlink to private total; httpd is www
-  /usr/src/local/webtop/index.before-visitors.html  homepage backup
+The authoritative total is now on caddy (192.168.1.45), independent of the
+selected PDP. Source/configuration and restore steps: config/README.varnish.md.
 
-Build on 2.11BSD:
-  cd /usr/src/local/webtop
-  cc -O -o visit-counter visit-counter.c
+Linux:
+  /usr/local/libexec/pdp-visitors.py          Python standard-library service
+  /etc/systemd/system/pdp-visitors.service   starts on boot
+  /var/lib/pdp-visitors/visitors.sqlite       persistent SQLite total
+  127.0.0.1:6083                             loopback only
 
-Updates use flock, fsync, and rename. An eight-second alarm bounds the complete
-CGI lifetime including lock waits and writes. Missing/corrupt/overflowed totals
-return 503; they are never silently reset. The static total is fixed-width
-(10 decimal digits + newline) to keep Content-Length stable during increments.
-The display removes leading zeroes and uses thousands separators.
+PDP (both .26 and .29):
+  /usr/src/local/webtop/visit-proxy.c         integer-only native source
+  /home/www/cgi-bin/visit                    forwards one increment to caddy
+  /home/www/cgi-bin/visit-total              forwards a read to caddy
 
-Back up /home/www-visits/total with the system. Do not reset it on redeployment.
-Use a graceful shutdown for normal filesystem durability. This does not claim
-a guarantee against arbitrary power loss or disk/filesystem damage.
+Build with make visit-proxy visit-total-proxy. Install only after the proxy
+routes counters centrally. Both native helpers use fixed .45:80 and public
+Host header; ten-second lifetime, no input and no retry. They run unprivileged.
+The existing httpd and inetd need no changes.
 
-The existing httpd, inetd, network settings, and TOP refresh rate are unchanged.
-A caller can increment by requesting the CGI directly; this is not a fraud-
-resistant analytics system. No ongoing counter polling or separate daemon.
+Public /visits.txt and /cgi-bin/visit-total are read-only; GET /cgi-bin/visit
+increments, HEAD does not. All bypass caches. Transactions serialize updates;
+SQLite synchronous=FULL commits durable state. Missing/corrupt state returns
+503 instead of resetting to zero. Initialization refuses an existing file.
+The fixed-width response contains ten digits and a newline; the page formats it.
+
+The old /home/www-visits/total and /home/www/visits.txt symlink on each PDP are
+retained as rollback archives; they are no longer the live count. The old
+visit-counter.c remains available for historical restoration.
+
+Back up the live database using the service's backup command and copy it off
+caddy. Never reset the total during website deployment. Git stores sources,
+not future counter updates. See config/README.varnish.md for backup/restore.
