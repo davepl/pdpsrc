@@ -4,7 +4,7 @@
 # This old shell exits on false if-tests under set -e. Check commands explicitly.
 umask 022 || exit 1
 id | grep 'uid=0(' >/dev/null || exit 1
-for file in webtop webtop-cgi visit-proxy visit-total-proxy site/index.html site/index.previous.html site/pdp11.jpg site/pdp1183-web.jpg site/tmog-banner-v2.jpg site/health.txt
+for file in webtop webtop-cgi visit-proxy visit-total-proxy site/index.html site/index.previous.html site/pdp11.jpg site/pdp1183-web.jpg site/tmog-banner-v2.jpg site/health.txt site/pdp-ai.html site/gary-green-v1.jpg site/unix-gary-apple-touch-icon-v2.png site/unix-gary-favicon-v2.png site/unix-gary-preview-v1.jpg
 do
     test -s "$file" || exit 1
 done
@@ -62,7 +62,7 @@ chown root /home/www/cgi-bin/visit-total.new || exit 1
 chmod 755 /home/www/cgi-bin/visit-total.new || exit 1
 mv /home/www/cgi-bin/visit-total.new /home/www/cgi-bin/visit-total || exit 1
 
-for file in pdp11.jpg pdp1183-web.jpg tmog-banner-v2.jpg index.previous.html health.txt
+for file in pdp11.jpg pdp1183-web.jpg tmog-banner-v2.jpg index.previous.html health.txt gary-green-v1.jpg unix-gary-apple-touch-icon-v2.png unix-gary-favicon-v2.png unix-gary-preview-v1.jpg pdp-ai.html
 do
     cp "site/$file" "/home/www/$file.new" || exit 1
     chown root "/home/www/$file.new" || exit 1
