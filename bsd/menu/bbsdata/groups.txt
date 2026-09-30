@@ -1,0 +1,2 @@
+Main Group|The main messaging area|
+Bug Reports|For bugs and suggestions related to PDP-BBS|

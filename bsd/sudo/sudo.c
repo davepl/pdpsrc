@@ -32,7 +32,7 @@ char *progname;
     exit(1);
 }
 
-int main(argc, argv[])
+int main(argc, argv)
 int argc;
 char *argv[];
 {

@@ -1,3 +1,5 @@
+
+
 #include <stdio.h>
 
 char* getMessage(void)
@@ -12,4 +14,5 @@ int main(void)
     puts(getMessage());
     return 0;
 }
+
 

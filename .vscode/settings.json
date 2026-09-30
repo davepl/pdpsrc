@@ -1,5 +1,10 @@
 {
     "files.associations": {
-        "stdio.h": "c"
+        "stdio.h": "c",
+        "time.h": "c",
+        "unistd.h": "c",
+        "file.h": "c",
+        "stdint.h": "c",
+        "panel_state.h": "c"
     }
 }

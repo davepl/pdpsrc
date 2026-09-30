@@ -1,0 +1,191 @@
+# PDP-11 cached webtop website
+
+This is the website for Dave's Mentec PDP-11/83 collection, served by 2.11BSD.
+The original red-and-gold layout has been restored, with the amber TOP display
+above the main content and **VISITORS: n** in the masthead. A responsive TMOG
+banner immediately below TOP links to `https://tmog.org/`. Its 1440×480 JPEG
+is 167,696 bytes; the original PNG is preserved in `archive/`.
+There is no public telnet/guest invitation. The HTML is minified to 15,234 bytes. The restored
+640×360 photograph is 101,511 bytes, below the requested 105,000-byte limit,
+and loads lazily. Lossless JPEG optimization preserved its decoded pixels.
+Both previous designs and the untouched original photograph are retained in
+[`archive/`](archive/README.md). All source and assets needed for restoration
+are here. The current deployment is at `192.168.1.26`; earlier records refer
+to the physical machine at `192.168.1.29`.
+
+## Edit and minify the homepage
+
+Edit `site/index.source.html` on a modern Mac/Linux development machine,
+then build the committed `site/index.html`:
+
+```
+npm ci --ignore-scripts
+npm run build
+npm test
+```
+
+The pinned minifier compresses HTML, inline CSS, and inline JavaScript;
+the counter checks run against both source and generated output. Commit
+both HTML files and preserve the images in `site/`. The native installer and uploader use the
+prebuilt `site/index.html`; no Node.js or minifier runs on the PDP.
+
+For a homepage/image update on an already installed system, run
+`python3 deploy-page.py 192.168.1.26`. It prompts for the existing FTP
+password, saves the previous page (and any replaced images) outside the document
+root, and updates the on-machine source and design archives. It publishes the
+images before atomically publishing the prepared page, all with mode 644.
+It checks the page and images over FTP and HTTP. It does not rebuild programs or
+touch the visitor total, sampler, or HTTP server. `--password-stdin` is
+available for a credential supplied securely by an existing automation.
+
+## Restore from this repository
+
+From a modern Mac/Linux machine with Python 3, in this directory:
+
+```
+python3 deploy.py 192.168.1.26
+```
+
+The uploader prompts for the existing root FTP password; it is never stored
+in the repository or command line. FTP is the machine's existing LAN access.
+It uploads one uncompressed source archive and prints the following commands
+to run at the PDP's root console (or an authenticated LAN telnet session):
+
+```
+test -d /usr/src/local/webtop || mkdir -p /usr/src/local/webtop
+cd /usr/src/local/webtop
+tar xf /tmp/webtop-source.tar
+make clean && make && make install
+rm /tmp/webtop-source.tar
+```
+
+Compile on the PDP with its native headers and `/unix` symbols. `webtop`
+requires `cc -O -i` for separate instruction/data space. The programs have
+no curses or floating-point dependency. Do not substitute a Mac executable.
+`make install` first makes a dated runtime backup, installs the two CGI
+programs and the privileged sampler, warms the cache, then atomically
+publishes the homepage. It preserves any existing visitor total. The scripts
+use the native shell and utilities: no `set -e`, `set --`, formatted `date`,
+or assumption that `mkdir -p` succeeds for an existing directory.
+Source archives normalize ownership to root:wheel and readable file modes,
+instead of importing the development Mac's numeric user and group IDs.
+
+The restore assumes the original `/usr/libexec/httpd` is working with
+`/home/www` as document root and inetd running HTTP as `www` (uid 80).
+It does not change the kernel, networking, accounts, httpd, or inetd.
+The sampler requires the existing root-owned sticky `/tmp` (mode 1777).
+See `README.webtop` for implementation details and `README.visitors` for
+the counter's approximate session semantics and limitations.
+
+## Files that must survive a restore
+
+| Purpose | Location on the PDP | Preserved here |
+| --- | --- | --- |
+| Sources and build/install steps | `/usr/src/local/webtop` | This directory |
+| Homepage, photograph, TMOG banner, previous page | `/home/www` | `site/` |
+| Privileged sampler, root mode 4711 | `/usr/local/libexec/webtop` | Rebuild `webtop.c` |
+| Ordinary CGI executables, root mode 755 | `/home/www/cgi-bin/webtop`, `/home/www/cgi-bin/visit` | Rebuild the other two C files |
+| **Persistent visitor total** | `/home/www-visits/total` | Runtime backup, not Git |
+| Visitor lock, www mode 600 | `/home/www-visits/lock` | Created once by installer |
+| Static count URL | `/home/www/visits.txt` | Installer creates symlink to total |
+| Regenerable TOP cache and lock | `/tmp/webtop.*` | No backup needed |
+| Original HTTP server | `/usr/libexec/httpd` | Exact deployed source in `server/` |
+| HTTP service wiring | `/etc/inetd.conf`, `/etc/services` | Relevant entries in `config/` |
+| inetd startup rate | `/etc/rc` | Merge `config/rc.inetd`; see `config/README.inetd.md` |
+
+The `server/` version is the original server from this physical PDP, including
+its `/home/www/` root and unusual CGI behavior. The sibling `../httpd` is a
+different version with a different root. Do not accidentally replace the
+running server with that version. If `/usr/libexec/httpd` itself is lost,
+build the preserved `server/` version on the PDP and follow its Makefile's
+install target as root. Preserve the existing `www` account and writable
+`/usr/adm/httpd.log`; merge the two HTTP configuration entries if needed.
+Reload inetd only if its configuration was changed.
+
+The `.26` host also requires the explicit inetd startup rate preserved in
+[`config/README.inetd.md`](config/README.inetd.md). Its implicit default was
+disabling HTTP under ordinary TOP polling. The website installer does not
+change `/etc/rc`; merge that documented startup command when restoring.
+
+### First installation on a different 2.11BSD host
+
+The September 20 deployment to `192.168.1.26` needed these additional steps:
+that patch-481 host had no `www` account, and its existing server used
+`/var/www` with inetd running it as `nobody`. Back up the existing runtime
+with `sh backup.sh` first, and separately archive `/var/www` if present;
+the regular backup script covers `/home/www`, not another server's root.
+
+Check that the `www` name and uid 80 are unused, group `staff` has gid 10,
+and `/bin/false` exists before creating the locked service account. On the
+tested native system the account tool is `/bin/chpass`:
+
+```
+/bin/chpass -a 'www:*:80:10::0:0:Web server:/home/www:/bin/false'
+id www
+```
+
+Wait for the password database rebuild to finish if `id` does not yet find
+the account. Preserve an existing `www` account instead of recreating it.
+Build and install the website normally, then build `server/`. Publish its
+binary by installing to `/usr/libexec/httpd.webtop` with `install -s -m 755`
+and renaming it to `/usr/libexec/httpd`; this avoids overwriting an executable
+that an existing request is still using. Ensure `/usr/adm/httpd.log` exists,
+is owned by `www:staff`, and has mode 644, as in the server Makefile.
+
+Merge `config/inetd.http` into the existing HTTP entry, preserving other
+services, and confirm `http 80/tcp` exists in `/etc/services`. Reload the
+actual running inetd with SIGHUP. Verify the homepage, both CGI programs,
+static counter reads, and browser reload behavior before taking and copying
+off a new runtime backup. No kernel or operating-system upgrade is required
+for this installation.
+
+## Preserve runtime state off the PDP
+
+```
+cd /usr/src/local/webtop
+make backup
+```
+
+This prints a private dated directory under `backups/`, containing
+`runtime.tar` and the kernel identification. Copy that directory to another
+machine before replacing a disk image. The archive includes the website,
+HTTP/helper binaries, inetd/services files, and the private visitor count.
+Backup paths are relative to `/`, so inspect the archive before restoring
+selected files as root. Restore the total with owner `www`, mode 600, in a
+`www`-owned mode-700 `/home/www-visits` directory, before running the installer.
+The installer starts at zero only when that directory is entirely absent;
+it refuses to silently recreate a missing total in an existing directory.
+
+Git preserves source and assets, not future counter updates or the complete
+2.11BSD operating system/kernel/disk image. Keep normal system/disk backups
+as well. Never commit passwords, private runtime archives, or a mutable total.
+
+## Check after restoration
+
+On the PDP, `/usr/local/libexec/webtop` should print one TOP frame. On the LAN,
+open `http://192.168.1.26/`; verify the amber frame and top-right visitor count,
+then refresh and confirm the count does not increment. `/cgi-bin/webtop`
+returns plain text and an `X-Snapshot-Age` header. Requests inside five seconds
+share one frame. Hidden tabs stop polling; the page has a Pause button.
+
+The old network stack has previously lost connectivity under public load.
+The sampler cache reduces sampling work but does not remove inetd's process
+per request or fix the network driver. Use a few serial checks, not a load
+test against the physical machine. The historical concurrency test is
+recorded in `VERIFICATION.md`.
+
+The public site now uses Varnish on `caddy` (`192.168.1.45`). Its preserved
+configuration and cache-preserving deployment instructions are in
+[`config/README.varnish.md`](config/README.varnish.md). Homepage tracking
+queries such as Facebook's `fbclid` share the ordinary homepage cache entry.
+This proxy configuration is separate from the native PDP installation.
+
+For the browser's refresh/session-count logic, run on a modern host:
+
+```
+node tests/visitors.js
+```
+
+To disable sampling, `chmod 700 /usr/local/libexec/webtop`. To restore the
+preinstallation homepage, copy `/home/www/index.html.bak` over `index.html`
+and make it mode 644. The dated runtime backup preserves later versions too.

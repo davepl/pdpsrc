@@ -18,10 +18,57 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <time.h>
+#include <sys/ioctl.h>
+
+#if defined(__NetBSD__) || defined(__APPLE__) || defined(__linux__)
+#define USE_DELAY 1
+#include <unistd.h>
+#else
+#define USE_DELAY 0
+#endif
+
+/* Default fallback values if terminal size detection fails */
+#define DEFAULT_WIDTH 80
+#define DEFAULT_HEIGHT 24
 
 #define MAX_TRAILS 16
-#define SCREEN_WIDTH 80
-#define SCREEN_HEIGHT 24
+
+/* Global variables for screen dimensions */
+int SCREEN_WIDTH = DEFAULT_WIDTH;
+int SCREEN_HEIGHT = DEFAULT_HEIGHT;
+
+/* Function to get terminal size */
+void get_terminal_size()
+{
+#ifdef TIOCGWINSZ
+    struct winsize ws;
+    
+    /* Try to get window size using ioctl */
+    if (ioctl(0, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0 && ws.ws_row > 0) {
+        SCREEN_WIDTH = ws.ws_col;
+        SCREEN_HEIGHT = ws.ws_row;
+        return;
+    }
+#endif
+    
+    /* Fallback: try environment variables */
+    {
+        char *cols_env = getenv("COLUMNS");
+        char *lines_env = getenv("LINES");
+        
+        if (cols_env != NULL) {
+            int cols = atoi(cols_env);
+            if (cols > 0) SCREEN_WIDTH = cols;
+        }
+        
+        if (lines_env != NULL) {
+            int lines = atoi(lines_env);
+            if (lines > 0) SCREEN_HEIGHT = lines;
+        }
+    }
+    
+    /* If all else fails, use the defaults already set */
+}
 
 
 #define SELECT_MATRIX_SOFTFONT "\033( M"
@@ -54,7 +101,7 @@ void loadMatrixSoftfont()
     ** memory using a Down-Line-Loading DRCS (DECDLD) control string. The font is built using Sixels.
     ** Font design by Philippe Majerus, January 2025
     */
-    const char* softfont[] = {
+    static const char* softfont[] = {
         // DECDLD parameters
         "\033P1;1;2{ M",
         // Characters sixels:
@@ -106,7 +153,7 @@ void loadMatrixSoftfont()
         /* N */ "]_\?\?CCC\?/\?\?@AAAA\?"     "\033\\"
         // Other characters are not defined in this softfont
     };
-    
+
     for (i=0;i<sizeof(softfont)/sizeof(softfont[0]);i++)
     {
         printf("%s", softfont[i]);
@@ -120,9 +167,11 @@ int signum;
     /* Ensure we don't leave the Matrix softfont selected */
     printf(UNSELECT_SOFTFONT);
     /* Show the cursor again */
-    printf("\033[?25h");
-    /* Reset scrolling region to the entire screen (1..24 or as needed) */
-    printf("\033[1;24r");
+    puts("\033[?25h");
+    /* Reset scrolling region to the entire screen */
+    puts("\033[r");
+    /* Move cursor to bottom of screen */
+    printf("\033[%d;1H", SCREEN_HEIGHT);
     /* Optionally clear screen or any other cleanup */
     fflush(stdout);
 
@@ -166,22 +215,9 @@ void update_trails()
             if (trails[i].rows_drawn < trails[i].length) 
             {
                 printf("\033[1;%dH", trails[i].column + 1);
-                c = (rand() % (94+46));
-                if (c < 94)
+                /* Preserve main's Katakana-only rain, selecting once. */
+                c = (rand() % 46) + '!';
                 {
-                    // Normal ASCII character
-                    c += '!';
-                    if (softfontCharsetSelected)
-                    {
-                        printf(UNSELECT_SOFTFONT);
-                        softfontCharsetSelected = 0;
-                    }
-                    putchar(c);
-                }
-                else
-                {
-                    // Mirrored Katakana character
-                    c = c - 94 + '!';
                     if (!softfontCharsetSelected)
                     {
                         printf(SELECT_MATRIX_SOFTFONT);
@@ -209,27 +245,38 @@ int main()
     int trail_length = 8; /* Configurable length of the trail */
     int spawn_rate = 1;   /* Configurable spawn rate */
 
-    /* Seed the random generator */
-    srand(time((long *)0));
+    puts("Starting!");
 
+    /* Seed the random generator */
+    srand(time((time_t *)0));
+
+    /* Get the terminal size first */
+    get_terminal_size();
+
+    if (SCREEN_HEIGHT - 10 > trail_length)
+        trail_length = SCREEN_HEIGHT - 10;
+        
     /* Install signal handlers */
     signal(SIGINT, restore_on_exit);
     signal(SIGTERM, restore_on_exit);
 
     /* Hide the cursor */
-    printf("\033[?25l");
+    puts("\033[?25l");
 
-    /* Set scrolling region to full screen */
-    printf("\033[1;24r");
+    /* Set scrolling region to full screen using detected size */
+    printf("\033[1;%dr", SCREEN_HEIGHT);
 
     /* Load Matrix softfont */
     loadMatrixSoftfont();
 
     /* Clear screen */
-    printf("\033[2J");
+    puts("\033[2J");
 
     /* Initialize trails */
     initialize_trails();
+
+    /* Get the terminal size */
+    get_terminal_size();
 
     for (;;) {
         /* Start a new trail periodically */
@@ -241,12 +288,15 @@ int main()
         update_trails();
 
         /* Reset cursor to top-left (optional) */
-        printf("\033[1;1H");
+        puts("\033[1;1H");
 
         /* Flush output */
         fflush(stdout);
 
         /* Small delay */
+#if USE_DELAY
+        usleep(50000); /* 50ms delay on NetBSD */
+#endif
 
         trail_timer++;
     }

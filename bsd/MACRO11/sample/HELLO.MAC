@@ -1,0 +1,14 @@
+        .TITLE  HELLO
+        .PSECT  CODE,RO,I
+        .GLOBL  _MAIN
+        .GLOBL  _PUTS
+
+_MAIN:  MOV     #MSG, -(SP)
+        JSR     PC, _PUTS
+        TST     (SP)+
+        CLR     R0
+        RTS     PC
+
+MSG:    .ASCIZ  /Hello, world/
+        .EVEN
+        .END    _MAIN

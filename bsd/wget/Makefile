@@ -12,7 +12,11 @@ CFLAGS  = -O   # or -O2 if your system supports it; or just -g
 all: wget
 
 wget: wget.c
-	$(CC) $(CFLAGS) wget.c -o wget $(LIBS)
+	@if [ "`uname -m`" = "pdp11" ]; then \
+		$(CC) $(CFLAGS) wget.c -o wget $(LIBS); \
+	else \
+		$(CC) $(CFLAGS) -Wno-deprecated-non-prototype wget.c -o wget $(LIBS); \
+	fi
 
 clean:
 	rm -f wget

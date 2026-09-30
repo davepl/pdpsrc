@@ -18,13 +18,27 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <time.h>
+#include <sys/ioctl.h>
+
+#if defined(__NetBSD__) || defined(__APPLE__) || defined(__linux__)
+#define USE_DELAY 1
+#include <unistd.h>
+#else
+#define USE_DELAY 0
+#endif
+
+/* Default fallback values if terminal size detection fails */
+#define DEFAULT_WIDTH 80
+#define DEFAULT_HEIGHT 24
 
 #define NUM_STARS 20
-#define SCREEN_ROWS 24
-#define SCREEN_COLS 80
 #define STAR_CHAR '*'
 #define SPACE_CHAR ' '
 #define DELAY_COUNT 20000 /* Approximate delay loop count */
+
+/* Global variables for screen dimensions */
+int SCREEN_ROWS = DEFAULT_HEIGHT;
+int SCREEN_COLS = DEFAULT_WIDTH;
 
 struct Star {
     int row;
@@ -40,6 +54,7 @@ void handle_signal();
 int random_coord();
 void draw_star();
 void delay();
+void get_terminal_size();
 
 /* Cleanup function to reset terminal before exiting */
 void cleanup() {
@@ -82,10 +97,46 @@ void delay()
     }
 }
 
+/* Function to get terminal size */
+void get_terminal_size()
+{
+#ifdef TIOCGWINSZ
+    struct winsize ws;
+    
+    /* Try to get window size using ioctl */
+    if (ioctl(0, TIOCGWINSZ, &ws) == 0 && ws.ws_col > 0 && ws.ws_row > 0) {
+        SCREEN_COLS = ws.ws_col;
+        SCREEN_ROWS = ws.ws_row;
+        return;
+    }
+#endif
+    
+    /* Fallback: try environment variables */
+    {
+        char *cols_env = getenv("COLUMNS");
+        char *lines_env = getenv("LINES");
+        
+        if (cols_env != NULL) {
+            int cols = atoi(cols_env);
+            if (cols > 0) SCREEN_COLS = cols;
+        }
+        
+        if (lines_env != NULL) {
+            int lines = atoi(lines_env);
+            if (lines > 0) SCREEN_ROWS = lines;
+        }
+    }
+    
+    /* If all else fails, use the defaults already set */
+}
+
 /* Main function */
 int main()
 {
     int i;
+
+    /* Get terminal dimensions */
+    get_terminal_size();
 
     /* Setup signal handlers */
     signal(SIGINT, handle_signal);
@@ -98,6 +149,9 @@ int main()
 
     /* Seed the random number generator */
     srand(time(0));
+
+    /* Get the terminal size */
+    get_terminal_size();
 
     /* Initialize stars with random positions and draw them */
     for (i = 0; i < NUM_STARS; i++) {
@@ -120,7 +174,9 @@ int main()
             draw_star(stars[i].row, stars[i].col, STAR_CHAR);
 
             /* Delay after moving each star */
-            /* usleep(30000); */
+#if USE_DELAY
+            usleep(30000); /* 30ms delay on NetBSD */
+#endif
         }
     }
 

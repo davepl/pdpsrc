@@ -1,0 +1,291 @@
+;; -*- mode: clojure -*-
+;; ATTN11 Q8 Fixed-Point Prototype before porting to PDP-11 assembly
+;; Q8 forward, Q15 backward, Q16 weight accumulators
+
+(use nn)
+(use optim)
+
+;; -- Helpers --
+
+(defn dims [a b]
+  (cons a (cons b (quote []))))
+
+(defn flip [x]
+  (let [n (first (shape x))
+        items (map (fn [i] (int (get x i)))
+                   (range n))]
+    (tensor (reduce (fn [acc v] (cons v acc))
+                    (quote [])
+                    items))))
+
+;; -- Q8 Fixed-Point Primitives --
+
+(defn clamp16 [x] (clamp x -32768 32767))
+(defn clamp32 [x] (clamp x -2147483648 2147483647))
+
+(defn q8  [f] (clamp16 (int (+ (* f 256.0) 0.5))))
+(defn q16 [f] (clamp32 (int (+ (* f 65536.0) 0.5))))
+
+;; Q8 multiply: (a*b) >> 8
+(defn q8-mul [a b] (clamp16 (ash (* a b) -8)))
+
+;; Q8 division: (a << 8) / b, truncate toward zero
+(defn q8-div [a b]
+  (if (= b 0)
+    (if (>= a 0) 32767 -32768)
+    (clamp16 (int (/ (float (ash a 8)) (float b))))))
+
+;; -- Matrix Operations --
+;; mvmul: 32-bit accumulation, single shift at end (like VDOT)
+;; mat[M,N] @ vin[N] -> vout[M], then >>8 and clamp
+
+(defn mvmul [mat vin]
+  (clamp16 (ash (@ mat vin) -8)))
+
+;; vtmul: mat^T * vin with per-product rounding
+;; mat[rows,cols], vin[rows] -> vout[cols]
+;; Accumulate shifted products along axis 0
+;; Each product shifted before summing
+
+(defn vtmul [mat vin]
+  (let [products (* mat (reshape vin (dims (first (shape mat)) 1)))]
+    (clamp16 (sum (ash products -8) :axis 0))))
+
+;; -- Exp LUT --
+
+(defn mk-exptbl []
+  (tensor (map (fn [i]
+                 (maximum 0 (int (+ (* (exp (/ (* -1.0 i) 32.0)) 256.0) 0.5))))
+               (range 256))))
+
+;; -- Q8 Softmax (LUT-based) --
+
+(defn q8-softmax [lut vec]
+  (let [mx   (int (max vec))
+        neg  (- mx vec)
+        idx  (clamp (ash neg -3) 0 255)
+        exps ((vmap (fn [i] (get lut (int i)))) idx)
+        s    (int (sum exps))]
+    (if (= s 0)
+      (zeros (shape vec))
+      ((vmap (fn [e] (q8-div (int e) s))) exps))))
+
+;; -- Model Init (Q16 weights) --
+
+(defn init-model [seed d s v]
+  (let [sc-d (sqrt (/ 2.0 (* 2.0 (float d))))
+        sc-v (sqrt (/ 2.0 (+ (float d) (float v))))]
+    {:tok-emb (q16 (* (random-normal (random-key seed)       (dims v d)) sc-v))
+     :pos-emb (q16 (* (random-normal (random-key (+ seed 1)) (dims s d)) sc-d))
+     :Wq      (q16 (* (random-normal (random-key (+ seed 2)) (dims d d)) sc-d))
+     :Wk      (q16 (* (random-normal (random-key (+ seed 3)) (dims d d)) sc-d))
+     :Wv      (q16 (* (random-normal (random-key (+ seed 4)) (dims d d)) sc-d))
+     :Wout    (q16 (* (random-normal (random-key (+ seed 5)) (dims d v)) sc-v))
+     :sqrt-shift (int (/ (log (float d)) (log 4.0)))
+     :lut (mk-exptbl)}))
+
+;; Convert Q16 weights to Q8 for forward pass
+(defn to-q8 [w] (clamp16 (ash w -8)))
+
+;; -- Forward Pass (Q8) --
+
+(defn forward [model tokens]
+  (let [tok8 (to-q8 (get model :tok-emb))
+        pos8 (to-q8 (get model :pos-emb))
+        Wq   (to-q8 (get model :Wq))
+        Wk   (to-q8 (get model :Wk))
+        Wv   (to-q8 (get model :Wv))
+        Wout (to-q8 (get model :Wout))
+        lut  (get model :lut)
+        V    (second (shape Wout))
+        ss   (get model :sqrt-shift)
+
+        ;; Embedding
+        X (clamp16 (+ (@ (one-hot tokens V) tok8) pos8))
+
+        ;; Q, K, V projections (vtmul: per-product rounding)
+        Q  ((vmap (fn [xi] (vtmul Wq xi))) X)
+        K  ((vmap (fn [xi] (vtmul Wk xi))) X)
+        Vm ((vmap (fn [xi] (vtmul Wv xi))) X)
+
+        ;; Attention scores: Q.K^T >> sqrt_shift
+        Sc (ash (clamp16 (ash (@ Q (transpose K)) -8)) (- 0 ss))
+
+        ;; Softmax per row
+        A ((vmap (fn [row] (q8-softmax lut row))) Sc)
+
+        ;; Weighted sum: O = A @ Vm (vtmul per row)
+        O ((vmap (fn [ai] (vtmul Vm ai))) A)
+
+        ;; Residual
+        Y (clamp16 (+ O X))
+
+        ;; Output projection
+        logits ((vmap (fn [yi] (vtmul Wout yi))) Y)]
+
+    {:logits logits :tokens tokens
+     :X X :Q Q :K K :Vm Vm
+     :Sc Sc :A A :O O :Y Y
+     :Wq Wq :Wk Wk :Wv Wv :Wout Wout :lut lut
+     :sqrt-shift ss}))
+
+;; -- Backward Pass (Q15 gradients) --
+;; Q8 * Q15 = Q23, >>8 -> Q15. Same shift as forward.
+
+(defn backward [cache targets]
+  (let [X    (get cache :X)
+        Q    (get cache :Q)
+        K    (get cache :K)
+        Vm   (get cache :Vm)
+        A    (get cache :A)
+        Y    (get cache :Y)
+        Wq   (get cache :Wq)
+        Wk   (get cache :Wk)
+        Wv   (get cache :Wv)
+        Wout (get cache :Wout)
+        lut  (get cache :lut)
+        tokens (get cache :tokens)
+        S    (first (shape X))
+        D    (second (shape X))
+        V    (second (shape Wout))
+        ss   (get cache :sqrt-shift)
+
+        ;; dLogits = softmax(logits) - one_hot, then <<7 to Q15
+        sm    ((vmap (fn [row] (q8-softmax lut row))) (get cache :logits))
+        dL    (clamp16 (ash (- sm (int (* (one-hot targets V) 256))) 7))
+
+        ;; dWout = Y^T @ dL (Q8 * Q15 -> Q23, >>8 -> Q15)
+        dWout (clamp16 (ash (@ (transpose Y) dL) -8))
+
+        ;; dY = dL @ Wout^T (Q15 * Q8 -> Q23, >>8 -> Q15)
+        dY (clamp16 (ash (@ dL (transpose Wout)) -8))
+
+        ;; dO = dY (residual)
+        dO dY
+
+        ;; Backward O = A @ Vm
+        ;; dA = dO @ Vm^T (Q15 * Q8 -> Q23, >>8 -> Q15)
+        dA  (clamp16 (ash (@ dO (transpose Vm)) -8))
+        ;; dVm = A^T @ dO (Q8 * Q15 -> Q23, >>8 -> Q15)
+        dVm (clamp16 (ash (@ (transpose A) dO) -8))
+
+        ;; Backward softmax: dSc = A * (dA - A·dA)
+        ;; A is Q8, dA is Q15 -> mixed precision
+        dot-ad (reshape (clamp16 (ash (sum (* A dA) :axis -1) -8))
+                        (dims S 1))
+        dSc-pre (clamp16 (ash (* A (- dA dot-ad)) -8))
+        ;; Backward scaling
+        dSc (ash dSc-pre (- 0 ss))
+
+        ;; Backward Q.K^T
+        dQ (clamp16 (ash (@ dSc K) -8))
+        dK (clamp16 (ash (@ (transpose dSc) Q) -8))
+
+        ;; Backward projections: dX accumulates from residual + Q + K + V
+        dX-q (clamp16 (ash (@ dQ (transpose Wq)) -8))
+        dX-k (clamp16 (ash (@ dK (transpose Wk)) -8))
+        dX-v (clamp16 (ash (@ dVm (transpose Wv)) -8))
+        dX   (clamp16 (+ dY dX-q dX-k dX-v))
+
+        ;; Embedding gradients
+        d-tok (clamp16 (ash (@ (transpose (one-hot tokens V)) dX) -8))
+        d-pos dX
+
+        ;; Weight gradients (Q8 * Q15 -> Q23, >>8 -> Q15)
+        dWq (clamp16 (ash (@ (transpose X) dQ) -8))
+        dWk (clamp16 (ash (@ (transpose X) dK) -8))
+        dWv (clamp16 (ash (@ (transpose X) dVm) -8))]
+
+    {:tok-emb d-tok  :pos-emb d-pos
+     :Wq dWq  :Wk dWk  :Wv dWv  :Wout dWout}))
+
+;; -- SGD Update (Q16 weights, Q15 gradients) --
+;; w_q16 -= grad_q15 >> (lr_shift - 1)
+
+(defn sgd-update [model grads lr-shift]
+  (let [sh (- 1 lr-shift)
+        updated (tree-map (fn [w g] (clamp32 (- w (ash g sh))))
+                          (dissoc model '[:sqrt-shift :lut])
+                          grads)]
+    (merge model updated)))
+
+;; -- Loss (float, for monitoring) --
+
+(defn cross-entropy-float [logits targets v]
+  (let [log-p (log-softmax (/ (float logits) 256.0) :axis -1)
+        mask  (one-hot targets v)]
+    (* -1.0 (mean (sum (* mask log-p) :axis -1)))))
+
+;; -- Training Loop --
+
+(defn train [d s v steps lr-shift seed]
+  (print "ATTN11 Q8 Prototype: d={} seq={} lr_shift={} steps={}" d s lr-shift steps)
+  (print "  Q8 forward, Q15 backward, Q16 weight accumulators\n")
+
+  (let [final
+        (reduce
+          (fn [state step]
+            (let [model (get state :model)
+                  key   (get state :key)
+                  hit   (get state :hit)
+                  tot   (get state :tot)
+                  k-pair (random-split key)
+                  k1    (first k-pair)
+                  k2    (second k-pair)
+
+                  inp (random-randint k1 (cons s (quote [])) 0 v)
+                  tgt (flip inp)
+
+                  cache  (forward model inp)
+                  grads  (backward cache tgt)
+                  model2 (sgd-update model grads lr-shift)
+
+                  pred    (argmax (get cache :logits) :axis -1)
+                  correct (int (sum (== pred tgt)))
+                  hit2    (+ hit correct)
+                  tot2    (+ tot s)
+                  report? (= (mod step 100) 0)]
+
+              (if report?
+                (let [loss (cross-entropy-float (get cache :logits) tgt v)
+                      acc  (/ (float hit2) (float tot2))]
+                  (print "step {:6d}  loss={:.3f}  acc={:.3f}"
+                         (int step) loss acc))
+                nil)
+
+              {:model model2
+               :key   k2
+               :hit   (if report? 0 hit2)
+               :tot   (if report? 0 tot2)}))
+
+          {:model (init-model seed d s v)
+           :key   (random-key (+ seed 100))
+           :hit 0  :tot 0}
+
+          (range 1 (+ steps 1)))]
+
+    ;; Final evaluation
+    (print "\n--- Final test (20 samples) ---")
+    (let [results
+          (map
+            (fn [i]
+              (let [k     (random-key (+ seed 1000 i))
+                    inp   (random-randint k (cons s (quote [])) 0 v)
+                    tgt   (flip inp)
+                    cache (forward (get final :model) inp)
+                    pred  (argmax (get cache :logits) :axis -1)
+                    ok    (= pred tgt)]
+                (print (str "  " inp " -> " pred
+                            (if ok "  OK" "  FAIL")))
+                ok))
+            (range 20))
+
+          n-ok (reduce (fn [n ok] (if ok (+ n 1) n))
+                       0 results)]
+
+      (print "\nSequence accuracy: {}/20 ({}%)"
+             n-ok (int (* 5 n-ok))))))
+
+;; -- Run --
+
+(train 16 8 10 500 4 42)

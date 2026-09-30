@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDP-11/83 Home Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #222;
+            color: #eee;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        header {
+            background-color: #444;
+            width: 100%;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+            color: #1abc9c;
+        }
+
+        main {
+            padding: 20px;
+            max-width: 800px;
+            text-align: center;
+        }
+
+        section {
+            margin-bottom: 20px;
+        }
+
+        section h2 {
+            margin-bottom: 10px;
+            font-size: 1.8rem;
+            color: #1abc9c;
+        }
+
+        section p {
+            line-height: 1.6;
+            font-size: 1.1rem;
+        }
+
+        .specs {
+            background-color: #333;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .specs ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .specs ul li {
+            text-align: left;
+            margin: 10px 0;
+        }
+
+        footer {
+            margin-top: 20px;
+            background-color: #444;
+            width: 100%;
+            padding: 10px;
+            text-align: center;
+        }
+
+        footer p {
+            margin: 0;
+            font-size: 0.9rem;
+            color: #aaa;
+        }
+
+        footer a {
+            color: #1abc9c;
+            text-decoration: none;
+        }
+
+        .inventory {
+            margin-top: 20px;
+            background: #2b2b2b;
+            border-radius: 12px;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+            overflow: hidden;
+        }
+
+        .inventory table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .inventory thead {
+            background: linear-gradient(90deg, #1abc9c, #129b81);
+        }
+
+        .inventory th {
+            text-align: left;
+            padding: 14px 16px;
+            letter-spacing: 0.5px;
+            color: #0f1a17;
+            font-weight: 700;
+        }
+
+        .inventory td {
+            padding: 12px 16px;
+            border-top: 1px solid #3a3a3a;
+        }
+
+        .inventory tbody tr:nth-child(odd) {
+            background-color: #262626;
+        }
+
+        .inventory tbody tr:nth-child(even) {
+            background-color: #2e2e2e;
+        }
+
+        .inventory tbody tr:hover {
+            background-color: rgba(26, 188, 156, 0.15);
+            transition: background-color 120ms ease-in;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>PDP-11/83</h1>
+    </header>
+
+    <main>
+        <section>
+            <h2>Overview</h2>
+            <p>Welcome to the home page of my PDP-11/83, a powerful minicomputer of its time, running a custom BSD kernel tailored to support its rich hardware configuration.</p>
+            <p>If you can read this, it's being served live by a custom web server running on the PDP-11</p>
+        </section>
+
+        <section>
+            <h2>System Photo</h2>
+            <div class="specs">
+                <img src="pdp1183.jpg" alt="PDP-11/83"/>
+            </div>
+        </section>
+
+        <section>
+            <h2>System Inventory and Specs</h2>
+            <div class="inventory">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Component</th>
+                            <th>Role</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>M8190</td>
+                            <td>CPU 18MHz + FPU</td>
+                        </tr>
+                        <tr>
+                            <td>M8367</td>
+                            <td>2M PMI RAM</td>
+                        </tr>
+                        <tr>
+                            <td>M8637</td>
+                            <td>2M PMI RAM</td>
+                        </tr>
+                        <tr>
+                            <td>M3104</td>
+                            <td>8 Port Serial MUX</td>
+                        </tr>
+                        <tr>
+                            <td>M7555 RQDX3</td>
+                            <td>Disc controller</td>
+                        </tr>
+                        <tr>
+                            <td>Emulex UC07</td>
+                            <td>Disc controller</td>
+                        </tr>
+                        <tr>
+                            <td>Emulex UC07</td>
+                            <td>Tape controller</td>
+                        </tr>
+                        <tr>
+                            <td>M7504</td>
+                            <td>Ethernet controller</td>
+                        </tr>
+                        <tr>
+                            <td>M7165</td>
+                            <td>KDA50 controller</td>
+                        </tr>
+                        <tr>
+                            <td>M7164</td>
+                            <td>KDA50 controller</td>
+                        </tr>
+                        <tr>
+                            <td>M8061</td>
+                            <td>RL11 disc controller</td>
+                        </tr>
+                        <tr>
+                            <td>M9404</td>
+                            <td>Bus source</td>
+                        </tr>
+                        <tr>
+                            <td>M9405-YB</td>
+                            <td>Bus target</td>
+                        </tr>
+                        <tr>
+                            <td>RA82</td>
+                            <td>Hard drive</td>
+                        </tr>
+                        <tr>
+                            <td>RA92</td>
+                            <td>Hard drive</td>
+                        </tr>
+                        <tr>
+                            <td>RA92</td>
+                            <td>Hard drive</td>
+                        </tr>
+                        <tr>
+                            <td>RX50</td>
+                            <td>Floppy drive</td>
+                        </tr>
+                        <tr>
+                            <td>TKZ50</td>
+                            <td>DLT drive</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section>
+            <h2>About the Custom BSD Kernel</h2>
+            <p>The kernel has been optimized to utilize the full capabilities of the PDP-11/83 hardware, including enhanced storage management and multi-device support, ensuring stability and performance for all connected devices.  The kernel and system are built from Patch Level 495.</p>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2024 PDP-11/83 Page</p>
+    </footer>
+</body>
+</html>

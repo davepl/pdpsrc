@@ -1,0 +1,16 @@
+#ifndef SCREENS_H
+#define SCREENS_H
+
+enum screen_id {
+    SCREEN_LOGIN,
+    SCREEN_MAIN,
+    SCREEN_GROUP_LIST,
+    SCREEN_POST_INDEX,
+    SCREEN_POST_VIEW,
+    SCREEN_COMPOSE,
+    SCREEN_ADDRESS_BOOK,
+    SCREEN_SETUP,
+    SCREEN_HELP
+};
+
+#endif

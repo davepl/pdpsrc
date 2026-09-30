@@ -1,0 +1,206 @@
+;; -*- mode: clojure -*-
+;; Architecture: d_model=16, seq_len=8, vocab=10, 1216 parameters
+
+(use nn)
+(use optim)
+
+;; -- Helpers --
+
+;; Build a 2-element shape from runtime values
+(defn dims [a b]
+  (cons a (cons b (quote []))))
+
+;; Reverse a 1D integer tensor
+(defn flip [x]
+  (let [n (first (shape x))
+        items (map (fn [i] (int (get x i)))
+                   (range n))]
+    (tensor (reduce (fn [acc v] (cons v acc))
+                    (quote [])
+                    items))))
+
+;; -- Model initialization --
+;; Xavier-ish: scale = sqrt(2 / (fan_in + fan_out))
+
+(defn init-model [seed d s v]
+  (let [sc-d (sqrt (/ 2.0 (* 2.0 (float d))))
+        sc-v (sqrt (/ 2.0 (+ (float d) (float v))))]
+    {:tok-emb (* (random-normal (random-key seed)       (dims v d)) sc-v)
+     :pos-emb (* (random-normal (random-key (+ seed 1)) (dims s d)) sc-d)
+     :Wq      (* (random-normal (random-key (+ seed 2)) (dims d d)) sc-d)
+     :Wk      (* (random-normal (random-key (+ seed 3)) (dims d d)) sc-d)
+     :Wv      (* (random-normal (random-key (+ seed 4)) (dims d d)) sc-d)
+     :Wout    (* (random-normal (random-key (+ seed 5)) (dims d v)) sc-v)}))
+
+;; -- Forward pass --
+;; tokens [S] → {:logits [S,V], :X, :Q, :K, :Vm, :A, :Y, ...}
+
+(defn forward [model tokens]
+  (let [tok-emb (get model :tok-emb)
+        pos-emb (get model :pos-emb)
+        Wq   (get model :Wq)
+        Wk   (get model :Wk)
+        Wv   (get model :Wv)
+        Wout (get model :Wout)
+        V     (second (shape Wout))
+        scale (/ 1.0 (sqrt (float (second (shape Wq)))))
+
+        ;; Embedding: one-hot gather + positional encoding
+        X (-> (one-hot tokens V)
+              (@ tok-emb)
+              (+ pos-emb))
+
+        ;; Q, K, V projections
+        Q  (@ X Wq)
+        K  (@ X Wk)
+        Vm (@ X Wv)
+
+        ;; Self-attention
+        Sc (-> (@ Q (transpose K)) (* scale))
+        A  (softmax Sc :axis -1)
+        O  (@ A Vm)
+
+        ;; Residual connection + output projection
+        Y      (+ O X)
+        logits (@ Y Wout)]
+
+    {:logits logits :tokens tokens
+     :X X :Q Q :K K :Vm Vm
+     :Sc Sc :A A :O O :Y Y}))
+
+;; -- Backward pass --
+;; Returns gradient dict with same keys as model.
+
+(defn backward [model cache targets]
+  (let [Wq     (get model :Wq)
+        Wk     (get model :Wk)
+        Wv     (get model :Wv)
+        Wout   (get model :Wout)
+        X      (get cache :X)
+        Q      (get cache :Q)
+        K      (get cache :K)
+        Vm     (get cache :Vm)
+        A      (get cache :A)
+        Y      (get cache :Y)
+        tokens (get cache :tokens)
+        logits (get cache :logits)
+        S      (first (shape X))
+        V      (second (shape Wout))
+        scale  (/ 1.0 (sqrt (float (second (shape Wq)))))
+
+        ;; Cross-entropy gradient: softmax(logits) - one_hot(targets)
+        dL (- (softmax logits :axis -1)
+              (one-hot targets V))
+
+        ;; Output projection
+        dWout (@ (transpose Y) dL)
+        dY    (@ dL (transpose Wout))
+
+        ;; Attention: O = A @ Vm
+        dA  (@ dY (transpose Vm))
+        dVm (@ (transpose A) dY)
+
+        ;; Softmax backward: dSc = A ⊙ (dA - sum(A⊙dA, axis=-1))
+        dot-ad (reshape (sum (* A dA) :axis -1)
+                        (dims S 1))
+        dSc    (* (* A (- dA dot-ad)) scale)
+
+        ;; Scores: Sc = Q @ K^T
+        dQ (@ dSc K)
+        dK (@ (transpose dSc) Q)
+
+        ;; Projections + residual
+        dX (+ dY
+              (@ dQ (transpose Wq))
+              (@ dK (transpose Wk))
+              (@ dVm (transpose Wv)))
+
+        ;; Weight gradients
+        dWq (@ (transpose X) dQ)
+        dWk (@ (transpose X) dK)
+        dWv (@ (transpose X) dVm)
+
+        ;; Embedding gradients
+        d-tok (@ (transpose (one-hot tokens V)) dX)
+        d-pos dX]
+
+    {:tok-emb d-tok  :pos-emb d-pos
+     :Wq dWq  :Wk dWk  :Wv dWv  :Wout dWout}))
+
+;; -- Training loop --
+
+(defn train [d s v steps lr seed]
+  (print "ATTN/11 Float Prototype: d={} seq={} lr={} steps={}\n"
+         d s lr steps)
+
+  (let [final
+          (reduce
+          (fn [state step]
+            (let [model  (get state :model)
+                  key    (get state :key)
+                  hit    (get state :hit)
+                  tot    (get state :tot)
+                  k-pair (random-split key)
+                  k1     (first k-pair)
+                  k2     (second k-pair)
+
+                  ;; Random digits → reversed
+                  inp (random-randint k1 (cons s (quote [])) 0 v)
+                  tgt (flip inp)
+
+                  ;; Forward → backward → update
+                  cache  (forward model inp)
+                  grads  (backward model cache tgt)
+                  model2 (sgd-step model grads lr)
+
+                  ;; Track accuracy
+                  pred    (argmax (get cache :logits) :axis -1)
+                  correct (int (sum (== pred tgt)))
+                  hit2    (+ hit correct)
+                  tot2    (+ tot s)
+                  report? (= (mod step 100) 0)]
+
+              (if report?
+                (let [loss (cross-entropy-loss (get cache :logits) tgt)
+                      acc  (/ (float hit2) (float tot2))]
+                  (print "step {:6d}  loss={:.3f}  acc={:.3f}"
+                         (int step) loss acc))
+                nil)
+
+              {:model model2
+                 :key   k2
+                 :hit   (if report? 0 hit2)
+                 :tot   (if report? 0 tot2)}))
+
+          {:model (init-model seed d s v)
+           :key   (random-key (+ seed 100))
+           :hit 0
+           :tot 0}
+
+          (range 1 (+ steps 1)))]
+
+    ;; Final evaluation
+    (print "\n--- Final test (20 samples) ---")
+    (let [results
+          (map
+            (fn [i]
+              (let [k     (random-key (+ seed 1000 i))
+                    inp   (random-randint k (cons s (quote [])) 0 v)
+                    tgt   (flip inp)
+                    cache (forward (get final :model) inp)
+                    pred  (argmax (get cache :logits) :axis -1)
+                    ok    (= pred tgt)]
+                (print (str "  " inp " -> " pred
+                            (if ok "  OK" "  FAIL")))
+                ok))
+            (range 20))
+
+          n-ok (reduce (fn [n ok] (if ok (+ n 1) n))
+                       0 results)]
+
+      (print "\nSequence accuracy: {}/20 ({}%)"
+             n-ok (int (* 5 n-ok))))))
+
+;; -- Run with hyper-parameters --
+
+(train 16 8 10 1200 0.01 42)

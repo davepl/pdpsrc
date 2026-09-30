@@ -1,0 +1,4 @@
+        .TITLE  TINY
+        .PSECT  CODE,RO,I
+START:  HALT
+        .END    START

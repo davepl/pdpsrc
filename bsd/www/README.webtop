@@ -1,0 +1,110 @@
+WEBTOP ON MENTEC -- installed 2026-09-19
+
+The homepage and the live top frame are served by the real PDP-11/83.
+No kernel, inetd configuration, httpd binary, or login accounts were changed.
+
+FILES
+  /usr/src/local/webtop/webtop.c       privileged sampler source
+  /usr/src/local/webtop/webtop-cgi.c   fixed unprivileged CGI launcher
+  /usr/local/libexec/webtop           root-owned sampler, mode 4711
+  /home/www/cgi-bin/webtop            root-owned CGI launcher, mode 755
+  /home/www/index.html                homepage (about 14 KB)
+  /home/www/index.html.bak            exact original homepage backup
+  /home/www/index.previous.html       viewable copy of the old homepage
+  /home/www/pdp11.jpg.bak             original photograph backup
+  /tmp/webtop.cache                   root-owned frame, mode 644
+  /tmp/webtop.cache.new               exclusive temporary output
+  /tmp/webtop.lock                    root-owned persistent flock file, 600
+
+BUILD (on this machine)
+  cd /usr/src/local/webtop
+  cc -O -i -o webtop webtop.c
+  cc -O -o webtop-cgi webtop-cgi.c
+
+The -i flag gives code and data separate PDP-11 address spaces.
+No curses or extra libraries. All sampler arithmetic/formatting is integer.
+Kernel sampling follows /usr/src/ucb/top/top.c (Digby Tarvin and later
+contributors); the local /unix symbols and native headers are used.
+The native sysctl returns a byte count on success, not necessarily zero.
+
+INSTALL / UPDATE (root)
+  cp webtop /usr/local/libexec/webtop.new
+  chown root /usr/local/libexec/webtop.new
+  chmod 4711 /usr/local/libexec/webtop.new
+  mv /usr/local/libexec/webtop.new /usr/local/libexec/webtop
+  cp webtop-cgi /home/www/cgi-bin/webtop.new
+  chown root /home/www/cgi-bin/webtop.new
+  chmod 755 /home/www/cgi-bin/webtop.new
+  mv /home/www/cgi-bin/webtop.new /home/www/cgi-bin/webtop
+
+HTTP
+  Existing server: /usr/libexec/httpd
+  Existing source: /home/user/src/httpd/httpd.c
+  Existing inetd service user: www (uid 80)
+  Document root: /home/www
+  Endpoint: /cgi-bin/webtop
+
+This httpd refuses setuid CGI binaries and passes no CGI environment.
+The ordinary launcher execs one fixed setuid helper outside the document
+root, with no user arguments and a fixed minimal environment. The helper
+writes the full HTTP/1.0 status line and LF-separated headers expected by
+this server. It does not read a query string or request body. This server
+includes query strings in its filesystem lookup, so use the exact URL.
+
+SAMPLING / CACHE
+A new frame uses two samples one second apart. It shows up to 22 processes,
+sorted by interval CPU time, then total CPU time. Commands are short names
+from u_comm, never process arguments or environment. Process user-area
+reads are checked against u_procp, PID, process state, address, and SLOAD.
+User data races are marked [unavailable]. Uptime and clock use UTC.
+RAM, swap and per-process memory use KiB. TIME and DTIME use seconds.
+The process arrays are capped at 36,000 bytes total and 256 slots; a cap
+notice is displayed if applicable. Map buffers are capped at 4,096 bytes.
+
+All callers, including CLI, share the cache. Frames younger than five
+seconds are reused. Exactly one stale request holds an exclusive nonblocking
+flock; other requests receive the previous complete frame. New frames are
+written to an exclusively created file, then atomically renamed. There is
+no daemon and no work when nobody requests a snapshot.
+
+Unlike an expiring O_EXCL lock, flock releases automatically on exit,
+crash, or the 12-second sampler timeout. The lock FILE intentionally remains;
+do not delete it while requests are active. Failed attempts are throttled
+for five seconds as well. A root-owned sticky /tmp and regular, root-owned,
+single-link cache/lock files are required. Symlinks and writable impostor
+files are rejected. The setuid helper clears its environment, disables core
+dumps, uses only fixed paths, and never launches a shell or another program.
+
+The page requests the same-origin endpoint no faster than once per five
+seconds, avoids overlapping requests, pauses in hidden tabs, and provides
+a Pause button. An error leaves the previous snapshot visible. The age
+includes the server-reported cache age. Responses are marked no-store.
+
+TEST
+  /usr/local/libexec/webtop
+  /usr/local/libexec/webtop | wc
+  From the LAN: http://192.168.1.29/
+  From the LAN: http://192.168.1.29/cgi-bin/webtop
+
+DISABLE LIVE SAMPLING (root)
+  chmod 700 /usr/local/libexec/webtop
+The webpage retains the old frame or displays its connection error.
+
+RESTORE THE PREVIOUS HOMEPAGE (root)
+  cp -p /home/www/index.html.bak /home/www/index.html
+  chmod 644 /home/www/index.html
+  chmod 700 /usr/local/libexec/webtop
+No inetd restart is needed.
+
+PUBLIC NETWORK / GUEST NOTE
+At installation, pdp1173.com resolved to Cloudflare and HTTP returned 404;
+its public telnet port timed out. The LAN HTTP and authenticated root FTP
+and telnet connections worked. There was no guest entry in /etc/passwd,
+and a passwordless guest login was rejected before deployment. Public
+gateway/DNS and guest accounts were left as found. The previous homepage
+claimed 4 MB; this running kernel reports 3,145,728 bytes (3 MiB). The new
+page uses measured RAM in the live listing rather than repeating 4 MB.
+
+VISITOR COUNTER (2026-09-19)
+The masthead now displays VISITORS: n in place of THE MACHINE.
+See README.visitors for counter paths, session semantics and persistence.

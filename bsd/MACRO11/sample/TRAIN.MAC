@@ -1,0 +1,541 @@
+        .TITLE  TRAIN - ATTN11 Transformer Training
+        .IDENT  /V1.0/
+;
+; TRAIN.MAC - Train a 1-layer, 1-head transformer to reverse
+;             an 8-digit sequence. "Paper Tape is All You Need."
+;
+; Q8 forward, Q15 backward, Q16 weight accumulators.
+; PDP-11/34 bare metal with EIS.
+;
+; Memory map:
+;   001000  Code start
+;   ~010000 Data (weights, workspace, gradients)
+;   ~034000 Stack top
+;
+
+; === Constants ===
+D.MODL  = 16.                   ; d_model
+SEQ.LN  = 8.                    ; sequence length
+VOCAB   = 10.                   ; vocabulary size (digits 0-9)
+SQRTSH  = 2.                    ; sqrt(d) shift (sqrt(16)=4, >>2)
+NSTEP   = 350.                  ; training steps
+RPRT    = 50.                   ; report every N steps
+NTEST   = 10.                   ; final test samples
+
+; Size constants (words)
+DM2     = D.MODL*2              ; d_model in bytes
+SS2     = SEQ.LN*2              ; seq_len in bytes
+VV2     = VOCAB*2               ; vocab in bytes
+
+; Learning rate shifts: (emb=4, attn=1, out=6)
+LR.EMB  = 4.
+LR.ATN  = 1.
+LR.OUT  = 6.
+
+        .ASECT
+        . = 1000
+
+; --- Jump over subroutines ---
+        JMP     MAIN
+
+; --- Include libraries ---
+        .INCLUDE <nn11/FXMATH.MAC>
+        .INCLUDE <nn11/VECOP.MAC>
+        .INCLUDE <nn11/MATOP.MAC>
+        .INCLUDE <nn11/ACTFN.MAC>
+        .INCLUDE <nn11/LAYER.MAC>
+        .INCLUDE <IO.MAC>
+
+; --- Include model modules ---
+        .INCLUDE <model/FORWRD.MAC>
+        .INCLUDE <model/BKWRD.MAC>
+        .INCLUDE <model/UPDAT.MAC>
+
+; ============================================================
+; MAIN - Training entry point
+; ============================================================
+
+MAIN:   MOV     #STACK, SP
+
+        ; Banner
+        MOV     #S.BNR, R0
+        JSR     PC, PUTS
+        JSR     PC, NEWLN
+        MOV     #S.BN2, R0
+        JSR     PC, PUTS
+        JSR     PC, NEWLN
+        JSR     PC, NEWLN
+        MOV     #S.TRN, R0
+        JSR     PC, PUTS
+        JSR     PC, NEWLN
+
+        ; Initialize weights
+        JSR     PC, INITW
+
+        ; Training loop
+        MOV     #1, TR.STP
+        CLR     TR.HIT
+        CLR     TR.TOT
+
+TR.LP:  ; --- One training step ---
+        JSR     PC, GENSM           ; generate sample -> TOKENS, TARGET
+        JSR     PC, CVT16           ; convert Q16 weights -> Q8
+        JSR     PC, FORWRD          ; forward pass
+        JSR     PC, BKWRD           ; backward pass
+        JSR     PC, UPDAT           ; weight update
+
+        ; Count correct predictions
+        JSR     PC, COUNT
+
+        ; Report every RPRT steps
+        CLR     R0
+        MOV     TR.STP, R1
+        DIV     #RPRT, R0           ; R0=quot, R1 = step % RPRT
+        TST     R1
+        BNE     TR.NR
+        JSR     PC, REPORT
+TR.NR:  INC     TR.STP
+        CMP     TR.STP, #NSTEP+1
+        BLO     TR.LP
+
+        ; Final test
+        JSR     PC, NEWLN
+        MOV     #S.TST, R0
+        JSR     PC, PUTS
+        JSR     PC, NEWLN
+        JSR     PC, TEST
+        HALT
+
+; Training state
+TR.STP: .WORD   0                   ; current step
+TR.HIT: .WORD   0                   ; correct predictions
+TR.TOT: .WORD   0                   ; total predictions
+
+; ============================================================
+; GENSM - Generate random sample (digit reversal)
+; ============================================================
+
+GENSM:  MOV     #TOKENS, R2
+        MOV     #SEQ.LN, R3
+GS.LP:  JSR     PC, RAND
+        ; R0 = random 15-bit value
+        ; digit = R0 mod 10
+        MOV     R0, R1
+        CLR     R0
+        DIV     #10., R0            ; R1 = remainder
+        MOV     R1, (R2)+
+        SOB     R3, GS.LP
+        ; Reverse into TARGET
+        MOV     #SEQ.LN-1, R3       ; source index (last)
+        MOV     #TARGET, R2
+        MOV     #SEQ.LN, R4
+GS.RV:  MOV     R3, R0
+        ASL     R0                  ; byte offset
+        ADD     #TOKENS, R0
+        MOV     (R0), (R2)+
+        DEC     R3
+        SOB     R4, GS.RV
+        RTS     PC
+
+; ============================================================
+; COUNT - Count correct predictions from logits
+; ============================================================
+
+COUNT:  MOV     #LOGITS, CN.LP
+        MOV     #TARGET, CN.TP
+        MOV     #SEQ.LN, CN.CNT
+CN.LOP: MOV     CN.LP, R0
+        MOV     #VOCAB, R1
+        JSR     PC, VMAX            ; R0=max, R1=argmax
+        MOV     CN.TP, R2
+        CMP     R1, (R2)            ; compare with target
+        BNE     CN.NO
+        INC     TR.HIT
+CN.NO:  INC     TR.TOT
+        ADD     #VV2, CN.LP         ; next logits row
+        ADD     #2, CN.TP           ; next target
+        DEC     CN.CNT
+        BNE     CN.LOP
+        RTS     PC
+CN.LP:  .WORD   0
+CN.TP:  .WORD   0
+CN.CNT: .WORD   0
+
+; ============================================================
+; CLOSS - Compute cross-entropy loss for current sample
+; Returns R0 = average per-position loss (Q8)
+; Uses DL as temp buffer
+; ============================================================
+
+CLOSS:  CLR     CL.SMH
+        CLR     CL.SML
+        MOV     #SEQ.LN, CL.CNT
+        CLR     CL.I
+CL.LP:  ; Copy logits[i] to DL
+        MOV     CL.I, R0
+        MUL     #VV2, R0
+        ADD     #LOGITS, R1
+        MOV     R1, R2              ; R2 = &logits[i]
+        MOV     #DL, R3
+        MOV     #VOCAB, R4
+CL.CP:  MOV     (R2)+, (R3)+
+        SOB     R4, CL.CP
+        ; Softmax(DL) in-place
+        MOV     #DL, R0
+        MOV     #VOCAB, R1
+        JSR     PC, SFTMX
+        ; Look up -ln(softmax[target[i]])
+        MOV     CL.I, R0
+        ASL     R0
+        ADD     #TARGET, R0
+        MOV     (R0), R0            ; target digit
+        ASL     R0
+        ADD     #DL, R0
+        MOV     (R0), R0            ; softmax value [0,256] Q8
+        CMP     R0, #256.
+        BHIS    CL.ZR               ; p=1.0 -> loss=0
+        ASL     R0                  ; word offset
+        ADD     #LOGTBL, R0
+        MOV     (R0), R0            ; -ln(p) in Q12
+        ADD     R0, CL.SML          ; 32-bit accumulate
+        ADC     CL.SMH
+CL.ZR:  INC     CL.I
+        DEC     CL.CNT
+        BNE     CL.LP
+        ; Average: 32-bit sum / 8 (ASHC #-3)
+        MOV     CL.SMH, R0
+        MOV     CL.SML, R1
+        ASHC    #-3., R0            ; R0:R1 >>= 3
+        MOV     R1, R0              ; result fits 16 bits (Q12)
+        RTS     PC
+
+CL.SMH: .WORD   0
+CL.SML: .WORD   0
+CL.I:   .WORD   0
+CL.CNT: .WORD   0
+
+; ============================================================
+; PUTLSS - Print R0 as Q12 fixed-point "i.dddd"
+; Input: R0 = Q12 value (positive)
+; Clobbers: R0-R3
+; ============================================================
+
+PUTLSS: MOV     R0, R2              ; save
+        ASH     #-12., R0           ; integer part
+        JSR     PC, PUTDEC
+        MOV     #'., R0
+        JSR     PC, PUTC
+        ; fraction: (low 12 bits) * 10000 / 4096
+        MOV     R2, R0
+        BIC     #170000, R0         ; keep low 12 bits
+        MUL     #10000., R0         ; R0:R1 = frac * 10000
+        ASHC    #-12., R0           ; / 4096, result in R1
+        MOV     R1, R2              ; R2 = decimal (0-9999)
+        ; digit 1 (thousands)
+        CLR     R0
+        MOV     R2, R1
+        DIV     #1000., R0
+        MOV     R1, R2
+        ADD     #'0, R0
+        JSR     PC, PUTC
+        ; digit 2 (hundreds)
+        CLR     R0
+        MOV     R2, R1
+        DIV     #100., R0
+        MOV     R1, R2
+        ADD     #'0, R0
+        JSR     PC, PUTC
+        ; digit 3 (tens)
+        CLR     R0
+        MOV     R2, R1
+        DIV     #10., R0
+        MOV     R1, R2
+        ADD     #'0, R0
+        JSR     PC, PUTC
+        ; digit 4 (ones)
+        MOV     R2, R0
+        ADD     #'0, R0
+        JSR     PC, PUTC
+        RTS     PC
+
+; ============================================================
+; REPORT - Print step, loss, accuracy
+; ============================================================
+
+REPORT: MOV     #S.STP, R0
+        JSR     PC, PUTS
+        ; Print step with padding to 4 digits
+        MOV     TR.STP, R0
+        CMP     R0, #1000.
+        BHIS    RP.NP
+        JSR     PC, PUTSPC
+        CMP     R0, #100.
+        BHIS    RP.NP
+        JSR     PC, PUTSPC
+RP.NP:  MOV     TR.STP, R0
+        JSR     PC, PUTDEC
+        ; Loss
+        MOV     #S.LSS, R0
+        JSR     PC, PUTS
+        JSR     PC, CLOSS           ; R0 = loss Q12
+        JSR     PC, PUTLSS
+        MOV     #S.ACC, R0
+        JSR     PC, PUTS
+        ; acc = hit * 1000 / tot  -> print as 0.xxx
+        MOV     TR.HIT, R0
+        MUL     #1000., R0          ; R0:R1 = hit*1000
+        DIV     TR.TOT, R0          ; R0 = permille (0-1000)
+        MOV     R0, R2              ; save permille
+        ; Print "0." or "1."
+        CMP     R2, #1000.
+        BLO     RP.Z
+        MOV     #'1, R0
+        JSR     PC, PUTC
+        MOV     #'., R0
+        JSR     PC, PUTC
+        MOV     #S.ZZZ, R0
+        JSR     PC, PUTS
+        BR      RP.DN
+RP.Z:   MOV     #'0, R0
+        JSR     PC, PUTC
+        MOV     #'., R0
+        JSR     PC, PUTC
+        ; Print 3 digits with leading zeros
+        MOV     R2, R1
+        CLR     R0
+        DIV     #100., R0           ; R0=hundreds, R1=rest
+        MOV     R1, R2
+        ADD     #'0, R0
+        JSR     PC, PUTC
+        MOV     R2, R1
+        CLR     R0
+        DIV     #10., R0
+        MOV     R1, R2
+        ADD     #'0, R0
+        JSR     PC, PUTC
+        MOV     R2, R0
+        ADD     #'0, R0
+        JSR     PC, PUTC
+RP.DN:  JSR     PC, NEWLN
+        ; Reset counters
+        CLR     TR.HIT
+        CLR     TR.TOT
+        RTS     PC
+
+; ============================================================
+; TEST - Final test: 20 samples
+; ============================================================
+
+TEST:   CLR     TE.SOK
+        MOV     #NTEST, TE.CNT
+TE.LP:  JSR     PC, GENSM
+        JSR     PC, CVT16
+        JSR     PC, FORWRD
+        ; Store predictions in TE.PRD
+        MOV     #LOGITS, TE.LG
+        MOV     #TE.PRD, TE.PP
+        MOV     #SEQ.LN, TE.POS
+TE.GP:  MOV     TE.LG, R0
+        MOV     #VOCAB, R1
+        JSR     PC, VMAX            ; R1 = argmax
+        MOV     TE.PP, R2
+        MOV     R1, (R2)+
+        MOV     R2, TE.PP
+        ADD     #VV2, TE.LG
+        DEC     TE.POS
+        BNE     TE.GP
+        ; Print: " i i i i i i i i -> p p p p p p p p  OK/FAIL"
+        ; Print input tokens
+        JSR     PC, PUTSPC
+        MOV     #TOKENS, R3
+        MOV     #SEQ.LN, R4
+TE.PT:  MOV     (R3)+, R0
+        ADD     #'0, R0
+        JSR     PC, PUTC
+        JSR     PC, PUTSPC
+        SOB     R4, TE.PT
+        MOV     #S.DSH, R0
+        JSR     PC, PUTS
+        ; Print predictions
+        MOV     #TE.PRD, R3
+        MOV     #SEQ.LN, R4
+TE.PP2: MOV     (R3)+, R0
+        ADD     #'0, R0
+        JSR     PC, PUTC
+        JSR     PC, PUTSPC
+        SOB     R4, TE.PP2
+        ; Check if all correct
+        MOV     #1, TE.ALL
+        MOV     #TARGET, R3
+        MOV     #TE.PRD, R2
+        MOV     #SEQ.LN, R4
+TE.CMP: CMP     (R3)+, (R2)+
+        BEQ     TE.EQ
+        CLR     TE.ALL
+TE.EQ:  SOB     R4, TE.CMP
+        TST     TE.ALL
+        BEQ     TE.FL
+        INC     TE.SOK
+        MOV     #S.OK, R0
+        JSR     PC, PUTS
+        BR      TE.NX
+TE.FL:  MOV     #S.FAIL, R0
+        JSR     PC, PUTS
+TE.NX:  JSR     PC, NEWLN
+        DEC     TE.CNT
+        BNE     TE.LP
+        ; Print score
+        JSR     PC, NEWLN
+        MOV     #S.SCR, R0
+        JSR     PC, PUTS
+        MOV     TE.SOK, R0
+        CMP     R0, #10.
+        BHIS    TE.NP
+        JSR     PC, PUTSPC
+TE.NP:  JSR     PC, PUTDEC
+        MOV     #S.OF, R0
+        JSR     PC, PUTS
+        MOV     #NTEST, R0
+        JSR     PC, PUTDEC
+        JSR     PC, NEWLN
+        RTS     PC
+
+TE.SOK: .WORD   0
+TE.CNT: .WORD   0
+TE.POS: .WORD   0
+TE.ALL: .WORD   0
+TE.LG:  .WORD   0
+TE.PP:  .WORD   0
+TE.PRD: .BLKW   SEQ.LN              ; predicted digits
+
+; ============================================================
+; Strings
+; ============================================================
+
+        .EVEN
+S.BNR:  .ASCII  "ATTN/11 - PAPER TAPE IS ALL YOU NEED"
+        .BYTE   0
+S.BN2:  .ASCII  "D=16 SEQ=8 V=10 PARAMS=1216 Q8/Q15/Q16"
+        .BYTE   0
+S.TRN:  .ASCII  "TRAINING..."
+        .BYTE   0
+        .EVEN
+S.STP:  .ASCII  " STEP "
+        .BYTE   0
+S.LSS:  .ASCII  " LOSS="
+        .BYTE   0
+S.ACC:  .ASCII  " ACC="
+        .BYTE   0
+S.ZZZ:  .ASCII  "000"
+        .BYTE   0
+S.TST:  .BYTE   0
+        .EVEN
+S.DSH:  .ASCII  "-> "
+        .BYTE   0
+S.OK:   .ASCII  " OK"
+        .BYTE   0
+S.FAIL: .ASCII  " FAIL"
+        .BYTE   0
+        .EVEN
+S.SCR:  .ASCII  " ACCURACY  "
+        .BYTE   0
+S.OF:   .ASCII  "/"
+        .BYTE   0
+        .EVEN
+
+; ============================================================
+; DATA SECTION
+; ============================================================
+
+; --- Log table: LOGTBL[x] = -ln(x/256)*4096 Q12, x=0..256 ---
+LOGTBL: .WORD   22713., 22713., 19874., 18213., 17035., 16121., 15374., 14743.
+        .WORD   14196., 13713., 13282., 12891., 12535., 12207., 11903., 11621.
+        .WORD   11357., 11108., 10874., 10653., 10443., 10243., 10052., 9870.
+        .WORD   9696., 9529., 9368., 9213., 9064., 8921., 8782., 8647.
+        .WORD   8517., 8391., 8269., 8150., 8035., 7923., 7813., 7707.
+        .WORD   7603., 7502., 7404., 7307., 7213., 7121., 7031., 6943.
+        .WORD   6857., 6772., 6689., 6608., 6529., 6451., 6374., 6299.
+        .WORD   6225., 6153., 6081., 6011., 5943., 5875., 5808., 5743.
+        .WORD   5678., 5615., 5552., 5491., 5430., 5370., 5311., 5253.
+        .WORD   5196., 5139., 5084., 5029., 4974., 4921., 4868., 4816.
+        .WORD   4764., 4713., 4663., 4613., 4564., 4516., 4468., 4421.
+        .WORD   4374., 4328., 4282., 4237., 4192., 4148., 4104., 4060.
+        .WORD   4017., 3975., 3933., 3891., 3850., 3810., 3769., 3729.
+        .WORD   3690., 3650., 3612., 3573., 3535., 3497., 3460., 3423.
+        .WORD   3386., 3350., 3314., 3278., 3242., 3207., 3172., 3138.
+        .WORD   3103., 3069., 3036., 3002., 2969., 2936., 2904., 2871.
+        .WORD   2839., 2807., 2776., 2744., 2713., 2682., 2651., 2621.
+        .WORD   2591., 2561., 2531., 2501., 2472., 2443., 2414., 2385.
+        .WORD   2357., 2328., 2300., 2272., 2244., 2217., 2189., 2162.
+        .WORD   2135., 2108., 2082., 2055., 2029., 2003., 1977., 1951.
+        .WORD   1925., 1900., 1874., 1849., 1824., 1799., 1774., 1750.
+        .WORD   1725., 1701., 1677., 1653., 1629., 1605., 1582., 1558.
+        .WORD   1535., 1512., 1488., 1466., 1443., 1420., 1397., 1375.
+        .WORD   1353., 1330., 1308., 1286., 1265., 1243., 1221., 1200.
+        .WORD   1178., 1157., 1136., 1115., 1094., 1073., 1052., 1032.
+        .WORD   1011., 991., 970., 950., 930., 910., 890., 870.
+        .WORD   850., 831., 811., 792., 772., 753., 734., 715.
+        .WORD   696., 677., 658., 639., 621., 602., 584., 565.
+        .WORD   547., 529., 511., 492., 474., 457., 439., 421.
+        .WORD   403., 386., 368., 351., 333., 316., 299., 281.
+        .WORD   264., 247., 230., 213., 197., 180., 163., 147.
+        .WORD   130., 114., 97., 81., 65., 48., 32., 16.
+        .WORD   0.
+
+; --- Training data ---
+TOKENS: .BLKW   SEQ.LN              ; input tokens
+TARGET: .BLKW   SEQ.LN              ; target (reversed)
+
+; --- Q16 weight accumulators (32-bit per weight) ---
+; High words
+TKEH:   .BLKW   10.*16.             ; tok_emb hi (160)
+PSEH:   .BLKW   8.*16.              ; pos_emb hi (128)
+WQH:    .BLKW   16.*16.             ; Wq hi (256)
+WKH:    .BLKW   16.*16.             ; Wk hi
+WVH:    .BLKW   16.*16.             ; Wv hi
+WOTH:   .BLKW   16.*10.             ; Wout hi (160)
+; Low words
+TKEL:   .BLKW   10.*16.
+PSEL:   .BLKW   8.*16.
+WQL:    .BLKW   16.*16.
+WKL:    .BLKW   16.*16.
+WVL:    .BLKW   16.*16.
+WOTL:   .BLKW   16.*10.
+
+; --- Q8 weight copies (for forward/backward) ---
+TKEQ8:  .BLKW   10.*16.
+PSEQ8:  .BLKW   8.*16.
+WQQ8:   .BLKW   16.*16.
+WKQ8:   .BLKW   16.*16.
+WVQ8:   .BLKW   16.*16.
+WOTQ8:  .BLKW   16.*10.
+
+; --- Gradient accumulators (Q15, 16-bit) ---
+DTKE:   .BLKW   10.*16.
+DPSE:   .BLKW   8.*16.
+DWQ:    .BLKW   16.*16.
+DWK:    .BLKW   16.*16.
+DWV:    .BLKW   16.*16.
+DWOUT:  .BLKW   16.*10.
+
+; --- Forward cache ---
+XX:     .BLKW   8.*16.              ; embeddings (input to attention)
+YY:     .BLKW   8.*16.              ; attention output (Y = O + X)
+LOGITS: .BLKW   8.*10.              ; output logits
+WORK:   .BLKW   <3.*8.*16.>+<8.*8.> ; ATTN workspace: Q|K|V|S
+
+; --- Backward workspace ---
+DL:     .BLKW   10.                 ; dLogits (one position, Q15)
+DY:     .BLKW   8.*16.              ; dY (Q15)
+DA:     .BLKW   8.*8.               ; dA (Q15), reused as dSc
+DQQ:    .BLKW   8.*16.              ; dQ (Q15)
+DKK:    .BLKW   8.*16.              ; dK (Q15)
+DVV:    .BLKW   8.*16.              ; dV (Q15)
+DXX:    .BLKW   8.*16.              ; dX (Q15)
+DTMP:   .BLKW   16.                 ; temp vector (d_model)
+
+; --- Stack ---
+        .BLKW   256.                ; stack space
+STACK:                              ; stack grows downward
+
+        .END    MAIN

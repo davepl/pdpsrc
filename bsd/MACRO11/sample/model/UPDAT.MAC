@@ -1,0 +1,177 @@
+;
+; UPDAT.MAC - Weight initialization, SGD update, gradient zeroing
+;
+
+; ============================================================
+; RAND - 15-bit LCG pseudo-random number generator
+; Output: R0 = random value [0, 32767]
+; ============================================================
+
+RAND:   MOV     RN.SED, R0
+        MUL     #25173., R0         ; R0:R1 = seed * 25173
+        ADD     #13849., R1
+        BIC     #100000, R1         ; keep 15 bits
+        MOV     R1, RN.SED
+        MOV     R1, R0
+        RTS     PC
+
+RN.SED: .WORD   887.                ; seed
+
+; ============================================================
+; INITW - Initialize weights with random Q16 values
+; ============================================================
+
+INITW:  ; tok_emb (10 x 16 = 160 words)
+        MOV     #TKEH, R4
+        MOV     #TKEL, R5
+        MOV     #10.*16., R3
+        JSR     PC, IN.FIL
+        ; pos_emb (8 x 16 = 128)
+        MOV     #PSEH, R4
+        MOV     #PSEL, R5
+        MOV     #8.*16., R3
+        JSR     PC, IN.FIL
+        ; Wq (16 x 16 = 256)
+        MOV     #WQH, R4
+        MOV     #WQL, R5
+        MOV     #16.*16., R3
+        JSR     PC, IN.FIL
+        ; Wk
+        MOV     #WKH, R4
+        MOV     #WKL, R5
+        MOV     #16.*16., R3
+        JSR     PC, IN.FIL
+        ; Wv
+        MOV     #WVH, R4
+        MOV     #WVL, R5
+        MOV     #16.*16., R3
+        JSR     PC, IN.FIL
+        ; Wout (16 x 10 = 160)
+        MOV     #WOTH, R4
+        MOV     #WOTL, R5
+        MOV     #16.*10., R3
+        JSR     PC, IN.FIL
+        RTS     PC
+
+; IN.FIL: Fill R3 words of Q16 weights at R4(hi)/R5(lo)
+; Random Q8 in [-128,127], convert to Q16
+IN.FIL: JSR     PC, RAND
+        ; R0 = [0, 32767]
+        BIC     #177400, R0         ; keep 8 bits [0, 255]
+        SUB     #128., R0           ; [-128, 127] in Q8
+        ; Convert Q8 -> Q16 (32-bit): Q16 = Q8 << 8
+        MOV     R0, R1              ; R1 = Q8 value (low word)
+        ASH     #-15., R0           ; R0 = sign extension
+        ASHC    #8., R0             ; R0:R1 <<= 8 -> Q16
+        MOV     R0, (R4)+           ; store high
+        MOV     R1, (R5)+           ; store low
+        SOB     R3, IN.FIL
+        RTS     PC
+
+; ============================================================
+; UPDAT - SGD weight update with Q16 accumulators
+; ============================================================
+
+UPDAT:
+        ; For each weight group: w_q16 -= grad_q15 >> (lr_shift - 1)
+        ; Then zero gradients
+
+        ; tok_emb: lr_shift = LR.EMB (4)
+        MOV     #TKEH, R2
+        MOV     #TKEL, R3
+        MOV     #DTKE, R4
+        MOV     #10.*16., R1
+        MOV     #LR.EMB, R0
+        JSR     PC, UP.DO
+        ; pos_emb
+        MOV     #PSEH, R2
+        MOV     #PSEL, R3
+        MOV     #DPSE, R4
+        MOV     #8.*16., R1
+        MOV     #LR.EMB, R0
+        JSR     PC, UP.DO
+        ; Wq: lr_shift = LR.ATN (1)
+        MOV     #WQH, R2
+        MOV     #WQL, R3
+        MOV     #DWQ, R4
+        MOV     #16.*16., R1
+        MOV     #LR.ATN, R0
+        JSR     PC, UP.DO
+        ; Wk
+        MOV     #WKH, R2
+        MOV     #WKL, R3
+        MOV     #DWK, R4
+        MOV     #16.*16., R1
+        MOV     #LR.ATN, R0
+        JSR     PC, UP.DO
+        ; Wv
+        MOV     #WVH, R2
+        MOV     #WVL, R3
+        MOV     #DWV, R4
+        MOV     #16.*16., R1
+        MOV     #LR.ATN, R0
+        JSR     PC, UP.DO
+        ; Wout: lr_shift = LR.OUT (6)
+        MOV     #WOTH, R2
+        MOV     #WOTL, R3
+        MOV     #DWOUT, R4
+        MOV     #16.*10., R1
+        MOV     #LR.OUT, R0
+        JSR     PC, UP.DO
+
+        ; Gradients already zeroed by UP.DO (CLR after read)
+        RTS     PC
+
+; UP.DO: Update R1 weights. R2=hi, R3=lo, R4=grad, R0=lr_shift
+;   w_q16 -= grad_q15 >> (shift-1)
+;   Uses ADD of negated delta to avoid PDP-11 SUB carry issues
+UP.DO:  MOV     R5, -(SP)
+        MOV     R0, UP.SHF
+        DEC     UP.SHF              ; shift-1
+        NEG     UP.SHF              ; negate for ASH (right shift)
+        MOV     R1, R5              ; R5 = counter
+UP.DLP: MOV     (R4), R0            ; R0 = grad (Q15)
+        CLR     (R4)+               ; zero grad after reading
+        ASH     UP.SHF, R0          ; R0 = delta = grad >> (shift-1)
+        NEG     R0                  ; R0 = -delta
+        ; Add sign-extended -delta to whi:wlo
+        ; lo: ADD -delta to wlo
+        ADD     R0, (R3)
+        ; hi: add carry + sign extension
+        ADC     (R2)                ; whi += carry from low add
+        TST     R0                  ; test -delta
+        BPL     UP.NX               ; >= 0: sign ext is 0, done
+        DEC     (R2)                ; < 0: sign ext is -1, add -1 to hi
+UP.NX:  ADD     #2, R2              ; advance hi ptr
+        ADD     #2, R3              ; advance lo ptr
+        SOB     R5, UP.DLP
+        MOV     (SP)+, R5
+        RTS     PC
+
+UP.SHF: .WORD   0
+
+; ============================================================
+; ZEROG - Zero all gradient arrays
+; ============================================================
+
+ZEROG:  MOV     #DTKE, R0
+        MOV     #10.*16., R1
+        JSR     PC, VCLR
+        MOV     #DPSE, R0
+        MOV     #8.*16., R1
+        JSR     PC, VCLR
+        MOV     #DWQ, R0
+        MOV     #16.*16., R1
+        JSR     PC, VCLR
+        MOV     #DWK, R0
+        MOV     #16.*16., R1
+        JSR     PC, VCLR
+        MOV     #DWV, R0
+        MOV     #16.*16., R1
+        JSR     PC, VCLR
+        MOV     #DWOUT, R0
+        MOV     #16.*10., R1
+        JSR     PC, VCLR
+        RTS     PC
+
+; end of UPDAT.MAC

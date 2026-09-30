@@ -3,11 +3,11 @@
  */
 
 #include <stdio.h>
-#include <unistd.h>
+#include <string.h>
 
 void twrite(char *s)
 {
-    write(1, s, strlen(s));
+    printf("%s", s);
 }
 
 /* Test with just one simple character - a checkerboard pattern */
@@ -32,14 +32,14 @@ int main()
 
     /* Move to center of screen and display our character */
     twrite("\033[12;40H");  /* Move to row 12, column 40 */
-    write(1, "!", 1);       /* Display the test character */
+    putchar('!');       /* Display the test character */
 
     /* Display a normal character next to it for comparison */
-    write(1, "X", 1);
+    putchar('X');
 
     /* Move down and add description */
     twrite("\033[14;35H");
-    write(1, "Custom char vs normal char", 25);
+    printf("Custom char vs normal char");
 
     return 0;
 }

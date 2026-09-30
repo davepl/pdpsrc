@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDP-11/83 — Modern Overview</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0f0c11;
+            --panel: #17131b;
+            --panel-2: #1f1a24;
+            --accent: #c21d3c; /* DEC-inspired deep red */
+            --accent-2: #f0c44c;
+            --muted: #9da0b3;
+            --text: #f6f6f6;
+            --glow: 0 10px 40px rgba(194, 29, 60, 0.35);
+            --radius: 16px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Space Grotesk', 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+            background: radial-gradient(circle at 20% 20%, rgba(194, 29, 60, 0.12), transparent 30%),
+                        radial-gradient(circle at 80% 10%, rgba(240, 196, 76, 0.12), transparent 25%),
+                        var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        header {
+            padding: 28px 24px 10px;
+            position: sticky;
+            top: 0;
+            backdrop-filter: blur(12px);
+            background: linear-gradient(180deg, rgba(15, 12, 17, 0.92), rgba(15, 12, 17, 0.65));
+            z-index: 10;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .nav {
+            max-width: 1080px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        .nav-title {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            letter-spacing: 0.02em;
+        }
+
+        .nav-title h1 {
+            margin: 0;
+            font-size: 1.6rem;
+            font-weight: 700;
+        }
+
+        .nav-title span {
+            font-size: 0.95rem;
+            color: var(--muted);
+        }
+
+        main {
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 16px 24px 72px;
+            display: grid;
+            gap: 28px;
+        }
+
+        .hero {
+            display: grid;
+            gap: 20px;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            align-items: center;
+            background: linear-gradient(135deg, rgba(26, 21, 31, 0.9), rgba(18, 14, 22, 0.9));
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: var(--radius);
+            box-shadow: var(--glow);
+            padding: 26px;
+        }
+
+        .hero-text h2 {
+            margin: 0 0 10px;
+            font-size: 2rem;
+            letter-spacing: 0.01em;
+        }
+
+        .hero-text p {
+            margin: 0 0 14px;
+            color: var(--muted);
+            font-size: 1.02rem;
+        }
+
+        .tagline {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: rgba(194, 29, 60, 0.12);
+            border: 1px solid rgba(194, 29, 60, 0.35);
+            border-radius: 999px;
+            color: #f9dce3;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            font-size: 0.78rem;
+        }
+
+        .hero-image {
+            position: relative;
+            overflow: hidden;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .hero-image img {
+            width: 100%;
+            display: block;
+            filter: saturate(1.05);
+        }
+
+        .hero-image::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(180deg, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0.55) 100%);
+            pointer-events: none;
+        }
+
+        .quick-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+        }
+
+        .card {
+            background: linear-gradient(180deg, var(--panel), var(--panel-2));
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: var(--radius);
+            padding: 18px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
+        }
+
+        .card h3 {
+            margin: 0 0 8px;
+            font-size: 1.1rem;
+            letter-spacing: 0.01em;
+        }
+
+        .stat {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .muted {
+            color: var(--muted);
+        }
+
+        .list {
+            list-style: none;
+            padding: 0;
+            margin: 10px 0 0;
+        }
+
+        .list li {
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .section-title {
+            margin: 0 0 10px;
+            font-size: 1.4rem;
+            letter-spacing: 0.01em;
+        }
+
+        .two-col {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 18px;
+        }
+
+        .badge-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .badge {
+            padding: 6px 10px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            color: #f0f0f0;
+            font-weight: 600;
+            letter-spacing: 0.01em;
+            font-size: 0.9rem;
+        }
+
+        .inventory {
+            margin-top: 6px;
+            background: linear-gradient(180deg, #1a151e, #131018);
+            border-radius: var(--radius);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+            overflow: hidden;
+        }
+
+        .inventory table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .inventory thead {
+            background: linear-gradient(90deg, rgba(194, 29, 60, 0.9), rgba(240, 196, 76, 0.8));
+        }
+
+        .inventory th {
+            text-align: left;
+            padding: 14px 16px;
+            letter-spacing: 0.5px;
+            color: #0f0c11;
+            font-weight: 700;
+        }
+
+        .inventory td {
+            padding: 12px 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .inventory tbody tr:nth-child(odd) {
+            background-color: rgba(255, 255, 255, 0.03);
+        }
+
+        .inventory tbody tr:nth-child(even) {
+            background-color: rgba(255, 255, 255, 0.01);
+        }
+
+        .inventory tbody tr:hover {
+            background-color: rgba(194, 29, 60, 0.16);
+            transition: background-color 120ms ease-in;
+        }
+
+        .hit-counter {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 14px;
+            background: rgba(194, 29, 60, 0.1);
+            border: 1px solid rgba(194, 29, 60, 0.3);
+            border-radius: 12px;
+            color: #f9dce3;
+            font-weight: 600;
+        }
+
+        .hit-counter .count {
+            font-size: 1.5rem;
+            line-height: 1;
+        }
+
+        footer {
+            max-width: 1080px;
+            margin: 0 auto;
+            padding: 24px;
+            color: var(--muted);
+            font-size: 0.95rem;
+            text-align: center;
+        }
+
+        @media (max-width: 640px) {
+            header {
+                position: sticky;
+            }
+
+            .hero-text h2 {
+                font-size: 1.6rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="nav">
+            <div class="nav-title">
+                <h1>PDP-11/83</h1>
+                <span>J-11 QBus | DECstyle</span>
+            </div>
+            <div class="badge">Running custom BSD build</div>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="hero-text">
+                <div class="tagline">Digital DNA • 1980s engineering</div>
+                <h2>J-11 power with modern polish</h2>
+                <p>A restored PDP-11/83 with mixed DEC and Emulex controllers, served live via a custom BSD kernel tuned for reliable storage, serial I/O, and Ethernet on vintage silicon.</p>
+                <div class="badge-row">
+                    <span class="badge">Q-bus System</span>
+                    <span class="badge">18 MHz J-11 + FPU</span>
+                    <span class="badge">4 MB parity RAM</span>
+                    <span class="badge">RQDX3 • UC07 • KDA50</span>
+                </div>
+                <div class="hit-counter" aria-live="polite">
+                    <span>Visits from this browser:</span>
+                    <span class="count" id="visit-count">—</span>
+                </div>
+            </div>
+            <div class="hero-image">
+                <img src="pdp1183.jpg" alt="PDP-11/83 front panel and drives">
+            </div>
+        </section>
+
+        <section>
+            <center>
+                <p>If you can read this, it's being served live by a real PDP-11!</p>
+            </center>
+        </section>
+        <section class="quick-grid">
+            <div class="card">
+                <h3>CPU Complex</h3>
+                <div class="stat">M8190 J-11</div>
+                <p class="muted">18 MHz bipolar bit-slice CPU with onboard FPP (FIS) and cache assist logic.</p>
+            </div>
+            <div class="card">
+                <h3>Memory</h3>
+                <div class="stat">4 MB</div>
+                <p class="muted">M8367 + M8637 MSV11-J parity memory, 22-bit addressing, interleaved banks.</p>
+            </div>
+            <div class="card">
+                <h3>Bus + Timing</h3>
+                <div class="stat">Q22</div>
+                <p class="muted">Q-bus backplane with adapters for mass storage; dual KDA50 pathing.</p>
+            </div>
+            <div class="card">
+                <h3>Kernel</h3>
+                <div class="stat">BSD</div>
+                <p class="muted">Custom BSD kernel with tuned device drivers, Ethernet stack, and fast interrupt path.</p>
+            </div>
+        </section>
+
+        <section class="two-col">
+            <div class="card">
+                <h3 class="section-title">Controller Stack</h3>
+                <ul class="list">
+                    <li>M7555 RQDX3 for MFM disks and dual RX50</li>
+                    <li>Emulex UC07 SCSI bridging disk + tape to Q-bus</li>
+                    <li>M8061 RL11 for dual RL02 drives (via MV11)</li>
+                    <li>M7504 DEQNA Ethernet controller</li>
+                    <li>M7165/M7164 KDA50 pair for RA8x/RA9x MSCP</li>
+                    <li>M3104 DHV11-style serial mux for console and TTY lines</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3 class="section-title">Storage & Media</h3>
+                <ul class="list">
+                    <li>RA82 + dual RA92 on MSCP via KDA50</li>
+                    <li>MFM hard disk on RQDX3 for bootstrap and swap</li>
+                    <li>RX50 dual floppies for field media</li>
+                    <li>RL02 pair on RL11 for legacy images</li>
+                    <li>TKZ50 DLT via UC07 for backups</li>
+                    <li>Termcap, swap, and paging tuned for 4 MB window</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="two-col">
+            <div class="card">
+                <h3 class="section-title">Networking & Services</h3>
+                <ul class="list">
+                    <li>DEQNA Ethernet with tuned BSD if_qe driver</li>
+                    <li>rsh/telnet for console access; TTY served by M3104</li>
+                    <li>NFS exports from MSCP volumes; UUCP dial-in possible</li>
+                    <li>Custom HTTP server (this page) built for low IRQ latency</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3 class="section-title">Architecture Notes</h3>
+                <ul class="list">
+                    <li>FIS-enabled J-11 implements full PDP-11 ISA with EIS</li>
+                    <li>22-bit memory management, SPL-aware drivers</li>
+                    <li>MSCP storage for uniform disk/tape presentation</li>
+                    <li>Console ODT present; boot via DL offline and netboot capable</li>
+                    <li>Backplane wiring balanced for DMA (KDA50 + DEQNA)</li>
+                </ul>
+            </div>
+        </section>
+
+        <section class="card">
+            <h3 class="section-title">System Inventory</h3>
+            <p class="muted">Current board and device lineup as installed.</p>
+            <div class="inventory">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Component</th>
+                            <th>Role</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>M8190</td>
+                            <td>CPU</td>
+                        </tr>
+                        <tr>
+                            <td>M8367</td>
+                            <td>RAM</td>
+                        </tr>
+                        <tr>
+                            <td>M8637</td>
+                            <td>RAM</td>
+                        </tr>
+                        <tr>
+                            <td>M3104</td>
+                            <td>Serial multiplexer</td>
+                        </tr>
+                        <tr>
+                            <td>M7555 RQDX3</td>
+                            <td>Disc controller</td>
+                        </tr>
+                        <tr>
+                            <td>Emulex UC07</td>
+                            <td>Disc controller</td>
+                        </tr>
+                        <tr>
+                            <td>Emulex UC07</td>
+                            <td>Tape controller</td>
+                        </tr>
+                        <tr>
+                            <td>M7504</td>
+                            <td>Ethernet controller</td>
+                        </tr>
+                        <tr>
+                            <td>M7165</td>
+                            <td>KDA50 controller</td>
+                        </tr>
+                        <tr>
+                            <td>M7164</td>
+                            <td>KDA50 controller</td>
+                        </tr>
+                        <tr>
+                            <td>M8061</td>
+                            <td>RL11 disc controller</td>
+                        </tr>
+                        <tr>
+                            <td>M9404</td>
+                            <td>Bus source</td>
+                        </tr>
+                        <tr>
+                            <td>M9405-YB</td>
+                            <td>Bus target</td>
+                        </tr>
+                        <tr>
+                            <td>RA82</td>
+                            <td>Hard drive</td>
+                        </tr>
+                        <tr>
+                            <td>RA92</td>
+                            <td>Hard drive</td>
+                        </tr>
+                        <tr>
+                            <td>RA92</td>
+                            <td>Hard drive</td>
+                        </tr>
+                        <tr>
+                            <td>RX50</td>
+                            <td>Floppy drive</td>
+                        </tr>
+                        <tr>
+                            <td>TKZ50</td>
+                            <td>DLT drive</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="two-col">
+            <div class="card">
+                <h3 class="section-title">Reliability & Tuning</h3>
+                <ul class="list">
+                    <li>Interrupt affinities balanced between storage and network</li>
+                    <li>RL02 serviced with elevator seeking to minimize latency</li>
+                    <li>Serial lines debounced for mechanical terminals</li>
+                    <li>Thermal headroom tracked via PSU airflow monitoring</li>
+                </ul>
+            </div>
+            <div class="card">
+                <h3 class="section-title">Boot & Maintenance</h3>
+                <ul class="list">
+                    <li>Primary boot: MSCP disk (RA82)</li>
+                    <li>Alt boot: RQDX3 MFM volume; fallback RX50</li>
+                    <li>Backup rotation to TKZ50; periodic RL02 imaging</li>
+                    <li>Console ODT scripts for fast diagnostics</li>
+                </ul>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div>Built and served on the PDP-11/83 • DECstyle never sleeps.</div>
+    </footer>
+
+    <script>
+        (function () {
+            var el = document.getElementById('visit-count');
+            if (!el) return;
+
+            var count = 0;
+            try {
+                var stored = localStorage.getItem('pdpVisitCount');
+                count = stored ? parseInt(stored, 10) || 0 : 0;
+                count += 1;
+                localStorage.setItem('pdpVisitCount', String(count));
+            } catch (err) {
+                count = 'n/a';
+            }
+
+            el.textContent = count;
+        })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,309 @@
+;
+; LAYER.MAC - Neural network layer operations for NN11
+; Part of NN11: Neural Network library for PDP-11
+;
+; Includes:
+;   EMBED  - Token + position embedding lookup
+;   PROJ   - Output projection (Y -> logits via VTMUL)
+;
+; Requires: FXMATH.MAC, VECOP.MAC, MATOP.MAC, ACTFN.MAC
+;
+
+; ============================================================
+; EMBED - Token + position embedding lookup
+;
+; For each position i in the sequence:
+;   output[i] = token_embed[tokens[i]] + pos_embed[i]
+;
+; Call:   JSR  R5, EMBED
+;         .WORD tokens   ; ptr to token ID array (seq_len words)
+;         .WORD tkemb    ; ptr to token embed table (vocab x d_model)
+;         .WORD psemb    ; ptr to pos embed table (seq_len x d_model)
+;         .WORD xout     ; ptr to output (seq_len x d_model)
+;         .WORD seq_len
+;         .WORD d_model
+;
+; Clobbers: R0-R4
+; ============================================================
+
+        .GLOBL  EMBED
+
+EMBED:  MOV     (R5)+, EM.TOK
+        MOV     (R5)+, EM.TKE
+        MOV     (R5)+, EM.PSE
+        MOV     (R5)+, EM.OUT
+        MOV     (R5)+, EM.SEQ
+        MOV     (R5)+, EM.DIM
+        MOV     R3, -(SP)
+        MOV     R4, -(SP)
+        ; Row size in bytes
+        MOV     EM.DIM, R0
+        ASL     R0
+        MOV     R0, EM.RSZ      ; d_model * 2
+        MOV     EM.TOK, R3       ; R3 = token ID ptr (advances)
+        MOV     EM.PSE, R4       ; R4 = pos embed ptr (advances)
+10$:    ; --- one position ---
+        MOV     (R3)+, R0        ; R0 = token ID
+        MUL     EM.RSZ, R0       ; R0:R1 = tok_id * row_size
+        ADD     EM.TKE, R1       ; R1 = &tkemb[tok_id][0]
+        MOV     EM.OUT, R2       ; R2 = output ptr
+        MOV     EM.DIM, -(SP)    ; column counter
+20$:    MOV     (R1)+, (R2)      ; out[j] = tkemb[tok][j]
+        ADD     (R4)+, (R2)+     ; out[j] += psemb[pos][j]
+        DEC     (SP)
+        BNE     20$
+        TST     (SP)+
+        ADD     EM.RSZ, EM.OUT   ; advance output to next row
+        DEC     EM.SEQ
+        BNE     10$
+        MOV     (SP)+, R4
+        MOV     (SP)+, R3
+        RTS     R5
+
+; EMBED private storage
+EM.TOK: .WORD   0
+EM.TKE: .WORD   0
+EM.PSE: .WORD   0
+EM.OUT: .WORD   0
+EM.SEQ: .WORD   0
+EM.DIM: .WORD   0
+EM.RSZ: .WORD   0
+
+; ============================================================
+; PROJ - Output projection: logits[i] = Y[i] . Wout
+;
+; For each position, projects d_model -> vocab via VTMUL.
+; Uses self-modifying code to patch VTMUL inline params.
+;
+; Call:   JSR  R5, PROJ
+;         .WORD yin      ; ptr to input (seq_len x d_model)
+;         .WORD wout     ; ptr to weight matrix (d_model x vocab)
+;         .WORD logits   ; ptr to output (seq_len x vocab)
+;         .WORD seq_len
+;         .WORD d_model
+;         .WORD vocab
+;
+; Clobbers: R0-R4
+; ============================================================
+
+        .GLOBL  PROJ
+
+PROJ:   MOV     (R5)+, PJ.YIN
+        MOV     (R5)+, PJ.WOT
+        MOV     (R5)+, PJ.LOG
+        MOV     (R5)+, PJ.SEQ
+        MOV     (R5)+, PJ.DIM
+        MOV     (R5)+, PJ.VOC
+        ; Compute row sizes
+        MOV     PJ.DIM, R0
+        ASL     R0
+        MOV     R0, PJ.YSZ       ; input row = d_model * 2
+        MOV     PJ.VOC, R0
+        ASL     R0
+        MOV     R0, PJ.LSZ       ; output row = vocab * 2
+PJ.LP:  ; Patch VTMUL param block (self-modifying code)
+        MOV     PJ.WOT, PJ.P1
+        MOV     PJ.YIN, PJ.P2
+        MOV     PJ.LOG, PJ.P3
+        MOV     PJ.DIM, PJ.P4
+        MOV     PJ.VOC, PJ.P5
+        ; Call VTMUL: logits[i] = Wout^T * Y[i]
+        JSR     R5, VTMUL
+PJ.P1:  .WORD   0                ; mat = Wout
+PJ.P2:  .WORD   0                ; vin = Y[i]
+PJ.P3:  .WORD   0                ; vout = logits[i]
+PJ.P4:  .WORD   0                ; rows = d_model
+PJ.P5:  .WORD   0                ; cols = vocab
+        ; Advance pointers
+        ADD     PJ.YSZ, PJ.YIN
+        ADD     PJ.LSZ, PJ.LOG
+        DEC     PJ.SEQ
+        BNE     PJ.LP
+        RTS     R5
+
+; PROJ private storage
+PJ.YIN: .WORD   0
+PJ.WOT: .WORD   0
+PJ.LOG: .WORD   0
+PJ.SEQ: .WORD   0
+PJ.DIM: .WORD   0
+PJ.VOC: .WORD   0
+PJ.YSZ: .WORD   0
+PJ.LSZ: .WORD   0
+
+; ============================================================
+; ATTN - Self-attention forward pass
+;
+; 1. Q=X.Wq, K=X.Wk, V=X.Wv   (linear projections)
+; 2. S[i][j] = Q[i].K[j] / sqrt(d)  (scores)
+; 3. A[i] = softmax(S[i])       (per-row)
+; 4. O[i] = sum_j A[i][j]*V[j]  (weighted sum)
+; 5. Y[i] = O[i] + X[i]         (residual)
+;
+; Call:   JSR  R5, ATTN
+;         .WORD xin, wq, wk, wv, yout, work
+;         .WORD seq_len, d_model, sqrtsh
+;
+; work >= 3*seq*dim + seq*seq words
+; sqrtsh = ASR shifts for 1/sqrt(d) (1 for d=4, 2 for d=16)
+; Clobbers: R0-R5
+; ============================================================
+
+        .GLOBL  ATTN
+
+ATTN:   MOV     (R5)+, AT.XIN
+        MOV     (R5)+, AT.WQ
+        MOV     (R5)+, AT.WK
+        MOV     (R5)+, AT.WV
+        MOV     (R5)+, AT.YOT
+        MOV     (R5)+, AT.WRK
+        MOV     (R5)+, AT.SEQ
+        MOV     (R5)+, AT.DIM
+        MOV     (R5)+, AT.SHF
+        MOV     R5, -(SP)       ; save R5 (SFTMX clobbers it)
+        ; Compute sizes
+        MOV     AT.DIM, R0
+        ASL     R0
+        MOV     R0, AT.RSZ      ; d_model * 2
+        MOV     AT.SEQ, R0
+        ASL     R0
+        MOV     R0, AT.SSZ      ; seq_len * 2
+        ; Workspace: Q | K | V | S
+        MOV     AT.WRK, AT.QQ
+        MOV     AT.SEQ, R0
+        MUL     AT.RSZ, R0      ; R1 = seq * dim * 2
+        MOV     AT.QQ, R2
+        ADD     R1, R2
+        MOV     R2, AT.KK
+        ADD     R1, R2
+        MOV     R2, AT.VV
+        ADD     R1, R2
+        MOV     R2, AT.SS
+        ; Negate shift for ASH
+        NEG     AT.SHF
+
+        ; --- Step 1: Q = X . Wq ---
+        MOV     AT.XIN, AT.BI
+        MOV     AT.WQ, AT.BW
+        MOV     AT.QQ, AT.BO
+        JSR     PC, AT.BPR
+        ; --- Step 2: K = X . Wk ---
+        MOV     AT.XIN, AT.BI
+        MOV     AT.WK, AT.BW
+        MOV     AT.KK, AT.BO
+        JSR     PC, AT.BPR
+        ; --- Step 3: V = X . Wv ---
+        MOV     AT.XIN, AT.BI
+        MOV     AT.WV, AT.BW
+        MOV     AT.VV, AT.BO
+        JSR     PC, AT.BPR
+
+        ; --- Step 4: S[i][j] = Q[i].K[j] / sqrt(d) ---
+        MOV     AT.QQ, AT.QI
+        MOV     AT.SS, AT.SI
+        MOV     AT.SEQ, AT.OC
+AT.S1:  MOV     AT.KK, AT.KJ
+        MOV     AT.SEQ, AT.IC
+AT.S2:  MOV     AT.QI, R0
+        MOV     AT.KJ, R1
+        MOV     AT.DIM, R2
+        JSR     PC, VDOT
+        ASH     AT.SHF, R0     ; /= sqrt(d)
+        MOV     AT.SI, R1
+        MOV     R0, (R1)+
+        MOV     R1, AT.SI
+        ADD     AT.RSZ, AT.KJ
+        DEC     AT.IC
+        BNE     AT.S2
+        ADD     AT.RSZ, AT.QI
+        DEC     AT.OC
+        BNE     AT.S1
+
+        ; --- Step 5: softmax per row ---
+        MOV     AT.SS, AT.SI
+        MOV     AT.SEQ, AT.OC
+AT.S3:  MOV     AT.SI, R0
+        MOV     AT.SEQ, R1
+        JSR     PC, SFTMX
+        ADD     AT.SSZ, AT.SI
+        DEC     AT.OC
+        BNE     AT.S3
+
+        ; --- Step 6: Y[i] = V^T . S[i] ---
+        MOV     AT.SS, AT.SI
+        MOV     AT.YOT, AT.YI
+        MOV     AT.SEQ, AT.OC
+AT.S4:  MOV     AT.VV, AT.T1
+        MOV     AT.SI, AT.T2
+        MOV     AT.YI, AT.T3
+        MOV     AT.SEQ, AT.T4
+        MOV     AT.DIM, AT.T5
+        JSR     R5, VTMUL
+AT.T1:  .WORD   0
+AT.T2:  .WORD   0
+AT.T3:  .WORD   0
+AT.T4:  .WORD   0
+AT.T5:  .WORD   0
+        ADD     AT.SSZ, AT.SI
+        ADD     AT.RSZ, AT.YI
+        DEC     AT.OC
+        BNE     AT.S4
+
+        ; --- Step 7: Y += X (residual) ---
+        MOV     AT.YOT, R0
+        MOV     AT.XIN, R1
+        MOV     AT.SEQ, R2
+        MUL     AT.DIM, R2      ; R2:R3 = total elems
+AT.S5:  ADD     (R1)+, (R0)+
+        SOB     R3, AT.S5
+
+        MOV     (SP)+, R5
+        RTS     R5
+
+; --- AT.BPR: batch project out[i] = W^T . in[i] ---
+AT.BPR: MOV     AT.SEQ, AT.BC
+AT.BL:  MOV     AT.BW, AT.V1
+        MOV     AT.BI, AT.V2
+        MOV     AT.BO, AT.V3
+        MOV     AT.DIM, AT.V4
+        MOV     AT.DIM, AT.V5
+        JSR     R5, VTMUL
+AT.V1:  .WORD   0
+AT.V2:  .WORD   0
+AT.V3:  .WORD   0
+AT.V4:  .WORD   0
+AT.V5:  .WORD   0
+        ADD     AT.RSZ, AT.BI
+        ADD     AT.RSZ, AT.BO
+        DEC     AT.BC
+        BNE     AT.BL
+        RTS     PC
+
+; ATTN private storage
+AT.XIN: .WORD   0
+AT.WQ:  .WORD   0
+AT.WK:  .WORD   0
+AT.WV:  .WORD   0
+AT.YOT: .WORD   0
+AT.WRK: .WORD   0
+AT.SEQ: .WORD   0
+AT.DIM: .WORD   0
+AT.SHF: .WORD   0
+AT.RSZ: .WORD   0
+AT.SSZ: .WORD   0
+AT.QQ:  .WORD   0
+AT.KK:  .WORD   0
+AT.VV:  .WORD   0
+AT.SS:  .WORD   0
+AT.QI:  .WORD   0
+AT.KJ:  .WORD   0
+AT.SI:  .WORD   0
+AT.YI:  .WORD   0
+AT.OC:  .WORD   0
+AT.IC:  .WORD   0
+AT.BW:  .WORD   0
+AT.BI:  .WORD   0
+AT.BO:  .WORD   0
+AT.BC:  .WORD   0
+
+; end of LAYER.MAC
