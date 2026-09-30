@@ -2,12 +2,12 @@
 # Uses K&R C compiler
 
 CC = cc
-CFLAGS = -O
+CFLAGS = -O -D__pdp11__
 LDFLAGS = 
 LIBS = 
 
 # Targets
-all: client paneldump symboltest memtest endiantest clocktest allcounters memdiag
+all: client paneldump symboltest memtest endiantest clocktest allcounters memdiag udptest
 
 client: client.o wait_for_panel.o
 	$(CC) $(CFLAGS) -o client client.o wait_for_panel.o $(LDFLAGS) $(LIBS)
@@ -32,6 +32,9 @@ allcounters: allcounters.o
 
 memdiag: memdiag.o
 	$(CC) $(CFLAGS) -o memdiag memdiag.o $(LDFLAGS) $(LIBS)
+
+udptest: udptest.c
+	$(CC) $(CFLAGS) -o udptest udptest.c $(LDFLAGS) $(LIBS)
 
 # Compile source files
 client.o: client.c panel_state.h ../../common.c ../../panel_packet.h
@@ -63,6 +66,6 @@ memdiag.o: memdiag.c
 
 # Clean up
 clean:
-	rm -f client.o wait_for_panel.o paneldump.o symboltest.o memtest.o endiantest.o clocktest.o allcounters.o memdiag.o client paneldump symboltest memtest endiantest clocktest allcounters memdiag
+	rm -f client.o wait_for_panel.o paneldump.o symboltest.o memtest.o endiantest.o clocktest.o allcounters.o memdiag.o client paneldump symboltest memtest endiantest clocktest allcounters memdiag udptest
 
 .PHONY: all clean

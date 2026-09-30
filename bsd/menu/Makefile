@@ -71,7 +71,7 @@ auth.o: auth.c
 		echo "Building auth.c for modern system..."; \
 		${CC} ${CFLAGS} -Wno-deprecated-non-prototype -Wno-deprecated-declarations -Wno-pointer-sign -Wno-parentheses -Wno-incompatible-pointer-types -Wno-format -c -o $@ auth.c; \
 	fi
-msgs.o: msgs.c
+msgs.o: msgs.c ../pdp11_unistd.h
 	@if [ "`uname -m`" = "pdp11" ]; then \
 		echo "Building msgs.c for PDP-11..."; \
 		${CC} ${PDP11_CFLAGS} -DLEGACY_CURSES -D__pdp11__ -c -o $@ msgs.c; \

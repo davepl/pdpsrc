@@ -1,3 +1,4 @@
+MAKE=make
 CC=cc
 CPPFLAGS=
 CFLAGS=-O
@@ -8,6 +9,7 @@ SMALLCPP=-DSMALL_MEMORY
 
 MACRO11_OBJS= \
 	macro11.o \
+	command.o \
 	assemble.o \
 	assemble_globals.o \
 	assemble_aux.o \
@@ -49,7 +51,7 @@ macro11: ${MACRO11_OBJS}
 
 macro11.ovl: ${MACRO11_OBJS}
 	${CC} -i ${LDFLAGS} -o macro11 \
-		macro11.o assemble_globals.o listing.o stream2.o util.o rad50.o \
+		macro11.o command.o assemble_globals.o listing.o stream2.o util.o rad50.o \
 		-Z assemble.o assemble_aux.o object.o \
 		-Z parse.o symbols.o extree.o macros.o rept_irpc.o mlb.o \
 		-Y ${LIBM} -lovc
@@ -74,12 +76,17 @@ portcheck:
 	${MAKE} CC="${CC}" CPPFLAGS="${CPPFLAGS}" CFLAGS="${CFLAGS} ${PORTCHECK_CFLAGS}" LDFLAGS="${LDFLAGS}" all
 
 clean:
-	rm -f ${MACRO11_OBJS} ${DUMPOBJ_OBJS} ${OBJ2BIN_OBJS} ${OBJ2BSD_OBJS} macro11 dumpobj obj2bin obj2bsd
+	rm -f ${MACRO11_OBJS} ${DUMPOBJ_OBJS} ${OBJ2BIN_OBJS} ${OBJ2BSD_OBJS} macro11 dumpobj obj2bin obj2bsd test.obj test.lst
 
 .c.o:
 	${CC} ${SMALLCPP} ${CPPFLAGS} ${CFLAGS} -c $<
 
-macro11.o: macro11.c macro11.h rad50.h object.h stream2.h mlb.h util.h
+command.o: command.c command.h macro11.h util.h assemble_globals.h listing.h object.h symbols.h ../../tools/cpp ../../tools/c1
+	case "`uname -m`" in \
+	pdp11) ${CC} -tp1 -B../../tools/ ${SMALLCPP} ${CPPFLAGS} ${CFLAGS} -c command.c ;; \
+	*) ${CC} ${SMALLCPP} ${CPPFLAGS} ${CFLAGS} -c command.c ;; \
+	esac
+macro11.o: macro11.c command.h macro11.h rad50.h object.h stream2.h mlb.h util.h
 assemble.o: assemble.c assemble.h assemble_globals.h assemble_aux.h util.h mlb.h object.h listing.h parse.h symbols.h extree.h macros.h rept_irpc.h rad50.h
 	${CC} ${SMALLCPP} ${CPPFLAGS} -c assemble.c
 assemble_globals.o: assemble_globals.c assemble_globals.h object.h

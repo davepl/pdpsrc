@@ -6,28 +6,32 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+#include "../pdp11_unistd.h"
 #include <errno.h>
 #include <signal.h>
-#include <stdint.h>
+
+#define SERVER_PORT 4000
 
 /* Include common packet header and panel type definitions */
 #include "panel_packet.h"
+#define COMMON_HEADERS_INCLUDED
 #include "common.c"
 
 /* Include platform-specific panel definitions */
 #include "arch/211BSD/panel_state.h"
-#include "arch/NetBSDx64/panel_state.h"
 #include "arch/NetBSDVAX/panel_state.h"
+#ifndef PANEL_NATIVE_PDP
+#include "arch/NetBSDx64/panel_state.h"
 #include "arch/macOS/panel_state.h"
 #include "arch/LinuxX64/panel_state.h"
-
-#define SERVER_PORT 4000
+#endif
 
 /* Global variables for signal handling */
 static int server_sockfd = -1;
@@ -37,24 +41,26 @@ int create_udp_server_socket(void);
 void handle_udp_clients(int sockfd);
 void signal_handler(int sig);
 void setup_signal_handlers(void);
-void format_binary(uint32_t value, int bits, char *buffer);
-void format_binary64(uint64_t value, int bits, char *buffer);
+void format_binary(unsigned long value, int bits, char *buffer);
 void display_pdp_panel(struct pdp_panel_state *panel);
-void display_netbsdx64_panel(struct netbsdx64_panel_state *panel);
 void display_vax_panel(struct vax_panel_state *panel);
+#ifndef PANEL_NATIVE_PDP
+void format_binary64(uint64_t value, int bits, char *buffer);
+void display_netbsdx64_panel(struct netbsdx64_panel_state *panel);
 void display_macos_panel(struct macos_panel_state *panel);
 void display_linuxx64_panel(struct linuxx64_panel_state *panel);
-const char* get_panel_type_name(uint32_t flags);
+#endif
+const char* get_panel_type_name(unsigned long flags);
 
 /* Function prototypes */
 int create_udp_server_socket(void);
 void handle_udp_clients(int sockfd);
 void signal_handler(int sig);
 void setup_signal_handlers(void);
-void format_binary(uint32_t value, int bits, char *buffer);
+void format_binary(unsigned long value, int bits, char *buffer);
 
 /* Format a value as binary string using O for 1 and . for 0 */
-void format_binary(uint32_t value, int bits, char *buffer)
+void format_binary(unsigned long value, int bits, char *buffer)
 {
     int i;
     for (i = bits - 1; i >= 0; i--) {
@@ -64,9 +70,11 @@ void format_binary(uint32_t value, int bits, char *buffer)
 }
 
 /* Get panel type name from flags */
-const char* get_panel_type_name(uint32_t flags)
+const char* get_panel_type_name(unsigned long flags)
 {
-    switch (flags) {
+    if (flags > PANEL_LINUXX64)
+        return "Unknown";
+    switch ((int)flags) {
         case PANEL_PDP1170: return "PDP-11/70";
         case PANEL_VAX: return "VAX";
         case PANEL_NETBSDX64: return "NetBSD x64";
@@ -92,6 +100,7 @@ void display_pdp_panel(struct pdp_panel_state *panel)
            addr_bin, data_bin, psw_bin, mmr0_bin, mmr3_bin);
 }
 
+#ifndef PANEL_NATIVE_PDP
 /* Display NetBSD x64 panel data */
 void display_netbsdx64_panel(struct netbsdx64_panel_state *panel)
 {
@@ -186,30 +195,27 @@ void display_linuxx64_panel(struct linuxx64_panel_state *panel)
     #undef PRINT_REG
 }
 
+#endif
+
 /* Display NetBSD VAX panel data */
 void display_vax_panel(struct vax_panel_state *panel)
 {
-    char addr_bin[33], data_bin[17], psw_bin[17], mmr0_bin[17], mmr3_bin[17];
-    
-    /* Format each field as binary */
-    format_binary(panel->ps_address, 32, addr_bin);  /* 32-bit address */
-    format_binary(panel->ps_data, 16, data_bin);
-    format_binary(panel->ps_psw, 16, psw_bin);
-    format_binary(panel->ps_mmr0, 16, mmr0_bin);
-    format_binary(panel->ps_mmr3, 16, mmr3_bin);
-    
-    printf("VAX: ADDR: %s, DATA: %s, PSW: %s, MMR0: %s, MMR3: %s\n",
-           addr_bin, data_bin, psw_bin, mmr0_bin, mmr3_bin);
+    char addr_bin[33], data_bin[33];
+
+    format_binary(panel->ps_address, 32, addr_bin);
+    format_binary(panel->ps_data, 32, data_bin);
+    printf("VAX: ADDR: %s, DATA: %s\n", addr_bin, data_bin);
 }
 
+#ifndef PANEL_NATIVE_PDP
 /* Display macOS panel data */
 void display_macos_panel(struct macos_panel_state *panel)
 {
     char pc_bin[33], sp_bin[33], cpu_bin[8], mem_bin[8];
     
     /* Format key values as binary (show lower 32 bits for readability) */
-    format_binary((uint32_t)(panel->pc & 0xFFFFFFFF), 32, pc_bin);
-    format_binary((uint32_t)(panel->sp & 0xFFFFFFFF), 32, sp_bin);
+    format_binary((unsigned long)(panel->pc & 0xFFFFFFFF), 32, pc_bin);
+    format_binary((unsigned long)(panel->sp & 0xFFFFFFFF), 32, sp_bin);
     format_binary(panel->cpu_usage, 7, cpu_bin);  /* 0-100 fits in 7 bits */
     format_binary(panel->memory_usage, 7, mem_bin);
     
@@ -217,6 +223,8 @@ void display_macos_panel(struct macos_panel_state *panel)
            pc_bin, sp_bin, cpu_bin, mem_bin, 
            panel->load_average / 100.0, panel->thread_count);
 }
+
+#endif
 
 int main(int argc, char *argv[])
 {
@@ -291,7 +299,12 @@ void handle_udp_clients(int sockfd)
     int bytes_received;
     int frame_count = 0;
     struct sockaddr_in client_addr;
+#ifdef PANEL_NATIVE_PDP
+    int client_addr_len;
+#else
     socklen_t client_addr_len;
+#endif
+    unsigned expected_packet_size;
     
     printf("Receiving UDP panel data with header protocol:\n");
     printf("Header size: %d bytes (2 bytes count + 4 bytes flags)\n", 
@@ -325,7 +338,7 @@ void handle_udp_clients(int sockfd)
         memcpy(&header, buffer, sizeof(header));
         
         /* Calculate expected total packet size */
-        int expected_packet_size = sizeof(header) + header.pp_byte_count;
+        expected_packet_size = sizeof(header) + header.pp_byte_count;
         if (bytes_received != expected_packet_size) {
             printf("[Packet size mismatch: got %d bytes, expected %d from %s:%d]\n",
                    bytes_received, expected_packet_size,
@@ -334,7 +347,8 @@ void handle_udp_clients(int sockfd)
         }
         
         /* Process based on panel type */
-        switch (header.pp_byte_flags) {
+        switch (header.pp_byte_flags <= PANEL_LINUXX64 ?
+                (int)header.pp_byte_flags : 0) {
             case PANEL_PDP1170: {
                 struct pdp_panel_packet *packet = (struct pdp_panel_packet *)buffer;
                 printf("[%s] ", get_panel_type_name(header.pp_byte_flags));
@@ -349,6 +363,7 @@ void handle_udp_clients(int sockfd)
                 break;
             }
             
+#ifndef PANEL_NATIVE_PDP
             case PANEL_NETBSDX64: {
                 struct netbsdx64_panel_packet *packet = (struct netbsdx64_panel_packet *)buffer;
                 printf("[%s] ", get_panel_type_name(header.pp_byte_flags));
@@ -370,8 +385,9 @@ void handle_udp_clients(int sockfd)
                 break;
             }
             
+#endif
             default:
-                printf("[Unknown panel type: 0x%08lx, %d bytes from %s:%d]\n",
+                printf("[Unsupported panel type: 0x%08lx, %d bytes from %s:%d]\n",
                        (unsigned long)header.pp_byte_flags, header.pp_byte_count,
                        inet_ntoa(client_addr.sin_addr), ntohs(client_addr.sin_port));
                 break;

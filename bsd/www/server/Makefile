@@ -15,6 +15,8 @@ LOGFILE=	/usr/adm/httpd.log
 
 all:	${PROGRAM}
 
+${OBJS}: ${SRCS} ../../pdp11_unistd.h
+
 ${PROGRAM}:	${OBJS}
 	${CC} ${CFLAGS} -o $@ ${OBJS} ${LIBS}
 

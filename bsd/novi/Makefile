@@ -22,8 +22,8 @@ test_terminal.o: test_terminal.c terminal.h pdp11_compat.h
 	$(CC) $(CFLAGS) -c test_terminal.c
 
 novi: $(OBJS)
-	case "`uname -s`" in \
-	2.11BSD) $(CC) -i $(LDFLAGS) -o novi $(OBJS) ;; \
+	case "`uname -m`" in \
+	pdp11) $(CC) -i $(LDFLAGS) -o novi $(OBJS) ;; \
 	*) $(CC) $(LDFLAGS) -o novi $(OBJS) ;; \
 	esac
 

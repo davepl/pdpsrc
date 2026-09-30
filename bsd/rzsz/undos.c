@@ -56,22 +56,27 @@ char ID[] =
 
 
 #include <stdio.h>
-#include <unistd.h>
+#include "../pdp11_unistd.h"
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <errno.h>
+#if !defined(pdp11) && !defined(__pdp11__)
 #include <utime.h>
+#endif
 
 #define LL 10240
 #define SUB 032
 
 
-#if 0
+#if defined(pdp11) || defined(__pdp11__)
+/* 2.11BSD provides utime(2), but no <utime.h>. */
 struct    utimbuf	   {
 	time_t	   actime;	/* access time */
 	time_t	   modtime;	/* modification time	*/
 };
+extern int utime();
 #endif
 
 void usage(), xperror(), chngfmt();
@@ -306,15 +311,10 @@ void
 xperror(s)
 char *s;
 {
-	register char *p;
-	extern int sys_nerr;
-	extern char *sys_errlist[];
-	extern errno;
+	int saved_errno;
 
-	if (errno >= sys_nerr)
-		p = "Gloryovsky: a New Error!";
-	else
-		p = sys_errlist[errno];
-	fprintf(stderr, "%s: %s: %s\n", Progname, s, p);
+	saved_errno = errno;
+	fprintf(stderr, "%s: ", Progname);
+	errno = saved_errno;
+	perror(s);
 }
-

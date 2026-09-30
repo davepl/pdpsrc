@@ -15,8 +15,8 @@
 #include <sys/select.h>
 #include <unistd.h>
 #else
-int select(int, void *, void *, void *, struct timeval *);
-unsigned int sleep(unsigned int);
+int select();
+unsigned int sleep();
 #endif
 
 #define MAX_GOSUB 64
@@ -57,48 +57,50 @@ static char *pc_pos = NULL;
 
 static int running = 1;
 
-static char *read_file_line(FILE *fp);
-static char *dup_string(const char *s);
-static char *trim_left(char *s);
-static void add_line(struct line **head, struct line *ln);
-static int finalize_program(struct line *head, struct program *out);
-static int compare_line(const void *a, const void *b);
-static void free_program(struct program *p);
-static void reset_state(void);
-static void run_program(void);
-static char *execute_statement(struct line *ln, char *pos);
-static double parse_expression(char **p);
-static double parse_relational(char **p);
-static double parse_term(char **p);
-static double parse_factor(char **p);
-static double parse_primary(char **p);
-static int parse_variable(char **p);
-static double parse_number(char **p);
-static double parse_function(const char *name, double arg);
-static void expect_char(char **p, char ch);
-static void skip_spaces(char **p);
-static int match_keyword(char **p, const char *kw);
-static void do_print(char **p);
-static void do_input(char **p);
-static void do_if(struct line *ln, char **p);
-static void do_goto(char **p);
-static void do_gosub(char **p, char *ret_pos);
-static void do_return(void);
-static void do_for(struct line *ln, char **p, char *start_pos);
-static void do_next(char **p);
-static void do_sleep_cmd(char **p);
-static void sleep_ticks(int ticks);
-static int handle_tab(char **p, int *col);
-static struct line *line_for_index(int idx);
-static int find_line_index(int number);
-static char *next_statement(char *p);
-static int ci_compare_n(const char *a, const char *b, size_t n);
-static int ci_compare(const char *a, const char *b);
-static int ascii_upper(int c);
-static int ascii_isalpha(int c);
+static char *read_file_line();
+static char *dup_string();
+static char *trim_left();
+static void add_line();
+static int finalize_program();
+static int compare_line();
+static void free_program();
+static void reset_state();
+static void run_program();
+static char *execute_statement();
+static double parse_expression();
+static double parse_relational();
+static double parse_term();
+static double parse_factor();
+static double parse_primary();
+static int parse_variable();
+static double parse_number();
+static double parse_function();
+static void expect_char();
+static void skip_spaces();
+static int match_keyword();
+static void do_print();
+static void do_input();
+static void do_if();
+static void do_goto();
+static void do_gosub();
+static void do_return();
+static void do_for();
+static void do_next();
+static void do_sleep_cmd();
+static void sleep_ticks();
+static int handle_tab();
+static struct line *line_for_index();
+static int find_line_index();
+static char *next_statement();
+static int ci_compare_n();
+static int ci_compare();
+static int ascii_upper();
+static int ascii_isalpha();
 
 int
-main(int argc, char **argv)
+main(argc, argv)
+int argc;
+char **argv;
 {
     FILE *fp;
     char *linebuf;
@@ -167,7 +169,8 @@ main(int argc, char **argv)
 }
 
 static char *
-read_file_line(FILE *fp)
+read_file_line(fp)
+FILE *fp;
 {
     size_t cap;
     size_t len;
@@ -208,7 +211,8 @@ read_file_line(FILE *fp)
 }
 
 static char *
-dup_string(const char *s)
+dup_string(s)
+const char *s;
 {
     size_t n;
     char *r;
@@ -223,7 +227,8 @@ dup_string(const char *s)
 }
 
 static char *
-trim_left(char *s)
+trim_left(s)
+char *s;
 {
     while (isspace((unsigned char)*s)) {
         s++;
@@ -232,7 +237,10 @@ trim_left(char *s)
 }
 
 static int
-ci_compare_n(const char *a, const char *b, size_t n)
+ci_compare_n(a, b, n)
+const char *a;
+const char *b;
+size_t n;
 {
     size_t i;
     for (i = 0; i < n; i++) {
@@ -251,7 +259,9 @@ ci_compare_n(const char *a, const char *b, size_t n)
 }
 
 static int
-ci_compare(const char *a, const char *b)
+ci_compare(a, b)
+const char *a;
+const char *b;
 {
     size_t i;
     i = 0;
@@ -269,7 +279,8 @@ ci_compare(const char *a, const char *b)
 }
 
 static int
-ascii_upper(int c)
+ascii_upper(c)
+int c;
 {
     if (c >= 'a' && c <= 'z') {
         return c - 32;
@@ -278,13 +289,16 @@ ascii_upper(int c)
 }
 
 static int
-ascii_isalpha(int c)
+ascii_isalpha(c)
+int c;
 {
     return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
 }
 
 static void
-add_line(struct line **head, struct line *ln)
+add_line(head, ln)
+struct line **head;
+struct line *ln;
 {
     struct line *cur;
     struct line *prev;
@@ -311,7 +325,9 @@ add_line(struct line **head, struct line *ln)
 }
 
 static int
-compare_line(const void *a, const void *b)
+compare_line(a, b)
+const void *a;
+const void *b;
 {
     const struct line *la;
     const struct line *lb;
@@ -328,7 +344,9 @@ compare_line(const void *a, const void *b)
 }
 
 static int
-finalize_program(struct line *head, struct program *out)
+finalize_program(head, out)
+struct line *head;
+struct program *out;
 {
     int count;
     struct line *cur;
@@ -363,7 +381,8 @@ finalize_program(struct line *head, struct program *out)
 }
 
 static void
-free_program(struct program *p)
+free_program(p)
+struct program *p;
 {
     int i;
     if (!p->lines) {
@@ -379,7 +398,7 @@ free_program(struct program *p)
 }
 
 static void
-reset_state(void)
+reset_state()
 {
     int i;
     for (i = 0; i < 26; i++) {
@@ -393,7 +412,8 @@ reset_state(void)
 }
 
 static struct line *
-line_for_index(int idx)
+line_for_index(idx)
+int idx;
 {
     if (idx < 0 || idx >= prog.count) {
         return NULL;
@@ -402,7 +422,8 @@ line_for_index(int idx)
 }
 
 static int
-find_line_index(int number)
+find_line_index(number)
+int number;
 {
     int lo;
     int hi;
@@ -427,7 +448,8 @@ find_line_index(int number)
 }
 
 static char *
-next_statement(char *p)
+next_statement(p)
+char *p;
 {
     int in_string;
     if (!p) {
@@ -456,7 +478,7 @@ next_statement(char *p)
 }
 
 static void
-run_program(void)
+run_program()
 {
     while (running && pc_index < prog.count) {
         struct line *ln;
@@ -477,7 +499,9 @@ run_program(void)
 }
 
 static char *
-execute_statement(struct line *ln, char *pos)
+execute_statement(ln, pos)
+struct line *ln;
+char *pos;
 {
     char *p;
 
@@ -547,7 +571,8 @@ execute_statement(struct line *ln, char *pos)
 }
 
 static void
-skip_spaces(char **p)
+skip_spaces(p)
+char **p;
 {
     while (**p && isspace((unsigned char)**p)) {
         (*p)++;
@@ -555,7 +580,9 @@ skip_spaces(char **p)
 }
 
 static int
-match_keyword(char **p, const char *kw)
+match_keyword(p, kw)
+char **p;
+const char *kw;
 {
     size_t n;
     char *s;
@@ -578,7 +605,9 @@ match_keyword(char **p, const char *kw)
 }
 
 static void
-expect_char(char **p, char ch)
+expect_char(p, ch)
+char **p;
+char ch;
 {
     skip_spaces(p);
     if (**p != ch) {
@@ -591,7 +620,8 @@ expect_char(char **p, char ch)
 }
 
 static int
-parse_variable(char **p)
+parse_variable(p)
+char **p;
 {
     int idx;
     skip_spaces(p);
@@ -605,13 +635,15 @@ parse_variable(char **p)
 }
 
 static double
-parse_expression(char **p)
+parse_expression(p)
+char **p;
 {
     return parse_relational(p);
 }
 
 static double
-parse_relational(char **p)
+parse_relational(p)
+char **p;
 {
     double left;
     double right;
@@ -663,7 +695,8 @@ parse_relational(char **p)
 }
 
 static double
-parse_term(char **p)
+parse_term(p)
+char **p;
 {
     double value;
     int op;
@@ -685,7 +718,8 @@ parse_term(char **p)
 }
 
 static double
-parse_factor(char **p)
+parse_factor(p)
+char **p;
 {
     double value;
     int op;
@@ -709,7 +743,8 @@ parse_factor(char **p)
 }
 
 static double
-parse_primary(char **p)
+parse_primary(p)
+char **p;
 {
     double value;
     char *s;
@@ -735,7 +770,7 @@ parse_primary(char **p)
 
         n = 0;
         while (isalpha((unsigned char)*s) && n < 15) {
-            name[n++] = toupper((unsigned char)*s);
+            name[n++] = ascii_upper((unsigned char)*s);
             s++;
         }
         name[n] = '\0';
@@ -767,7 +802,9 @@ parse_primary(char **p)
 }
 
 static double
-parse_function(const char *name, double arg)
+parse_function(name, arg)
+const char *name;
+double arg;
 {
     if (strcmp(name, "ABS") == 0) {
         return fabs(arg);
@@ -797,7 +834,8 @@ parse_function(const char *name, double arg)
 }
 
 static void
-do_print(char **p)
+do_print(p)
+char **p;
 {
     int newline;
     int at_start;
@@ -858,7 +896,8 @@ do_print(char **p)
 }
 
 static void
-do_input(char **p)
+do_input(p)
+char **p;
 {
     char prompt[64];
     int got_prompt;
@@ -918,7 +957,9 @@ do_input(char **p)
 }
 
 static void
-do_if(struct line *ln, char **p)
+do_if(ln, p)
+struct line *ln;
+char **p;
 {
     double cond;
 
@@ -941,7 +982,8 @@ do_if(struct line *ln, char **p)
 }
 
 static void
-do_goto(char **p)
+do_goto(p)
+char **p;
 {
     int target;
     int idx;
@@ -959,7 +1001,9 @@ do_goto(char **p)
 }
 
 static void
-do_gosub(char **p, char *ret_pos)
+do_gosub(p, ret_pos)
+char **p;
+char *ret_pos;
 {
     int target;
     int idx;
@@ -984,7 +1028,7 @@ do_gosub(char **p, char *ret_pos)
 }
 
 static void
-do_return(void)
+do_return()
 {
     if (gosub_top <= 0) {
         fprintf(stderr, "RETURN without GOSUB\n");
@@ -1000,7 +1044,10 @@ do_return(void)
 }
 
 static void
-do_for(struct line *ln, char **p, char *start_pos)
+do_for(ln, p, start_pos)
+struct line *ln;
+char **p;
+char *start_pos;
 {
     int var;
     double start_val;
@@ -1052,7 +1099,8 @@ do_for(struct line *ln, char **p, char *start_pos)
 }
 
 static void
-do_next(char **p)
+do_next(p)
+char **p;
 {
     int var;
     struct for_frame *fr;
@@ -1106,7 +1154,8 @@ do_next(char **p)
 }
 
 static void
-do_sleep_cmd(char **p)
+do_sleep_cmd(p)
+char **p;
 {
     double v;
     int ticks;
@@ -1120,7 +1169,8 @@ do_sleep_cmd(char **p)
 }
 
 static void
-sleep_ticks(int ticks)
+sleep_ticks(ticks)
+int ticks;
 {
     struct timeval tv;
     int sec;
@@ -1163,7 +1213,9 @@ sleep_ticks(int ticks)
 }
 
 static int
-handle_tab(char **p, int *col)
+handle_tab(p, col)
+char **p;
+int *col;
 {
     int target;
     int spaces;
@@ -1198,7 +1250,8 @@ handle_tab(char **p, int *col)
     return 1;
 }
 static double
-parse_number(char **p)
+parse_number(p)
+char **p;
 {
     char *s;
     double value;

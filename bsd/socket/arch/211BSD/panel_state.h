@@ -10,8 +10,11 @@
 #include "../../panel_packet.h"
 
 /* PDP-11 Panel structure - must match kernel exactly */
+#ifndef PANEL_NATIVE_PDP
+#pragma pack(push, 1)
+#endif
 struct pdp_panel_state {
-    long ps_address;	/* panel switches - 32-bit address */
+    panel_uint32_t ps_address; /* panel switches - 32-bit address */
     short ps_data;		/* panel lamps - 16-bit data */
     short ps_psw;       /* processor status word */
     short ps_mser;      /* machine status register */
@@ -25,5 +28,8 @@ struct pdp_panel_packet {
     struct panel_packet_header header;
     struct pdp_panel_state panel_state;
 };
+#ifndef PANEL_NATIVE_PDP
+#pragma pack(pop)
+#endif
 
 #endif /* PDP_PANEL_STATE_H */

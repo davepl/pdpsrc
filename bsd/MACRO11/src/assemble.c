@@ -26,6 +26,188 @@
 
 
 
+/* Evaluate conditions separately to keep nesting within the native
+   PDP-11 compiler's limits.  Return the parser position to the caller. */
+static int evaluate_condition(STREAM *stream, char *label, char **cpp)
+{
+    char *cp = *cpp;
+    EX_TREE *value;
+    int ok;
+
+    if (strcmp(label, "DF") == 0) {
+        value = parse_expr(cp, 1);
+        cp = value->cp;
+        ok = eval_defined(value);
+        free_tree(value);
+    } else if (strcmp(label, "NDF") == 0) {
+        value = parse_expr(cp, 1);
+        cp = value->cp;
+        ok = eval_undefined(value);
+        free_tree(value);
+    } else if (strcmp(label, "B") == 0) {
+        char           *thing;
+
+        cp = skipwhite(cp);
+        if (!EOL(*cp))
+            thing = getstring(cp, &cp);
+        else
+            thing = memcheck(strdup(""));
+        ok = (*thing == 0);
+        free(thing);
+    } else if (strcmp(label, "NB") == 0) {
+        char           *thing;
+
+        cp = skipwhite(cp);
+        if (!EOL(*cp))
+            thing = getstring(cp, &cp);
+        else
+            thing = memcheck(strdup(""));
+        ok = (*thing != 0);
+        free(thing);
+    } else if (strcmp(label, "IDN") == 0) {
+        char           *thing1,
+                       *thing2;
+
+        thing1 = getstring(cp, &cp);
+        cp = skipdelim(cp);
+        if (!EOL(*cp))
+            thing2 = getstring(cp, &cp);
+        else
+            thing2 = memcheck(strdup(""));
+        ok = (strcmp(thing1, thing2) == 0);
+        free(thing1);
+        free(thing2);
+    } else if (strcmp(label, "DIF") == 0) {
+        char           *thing1,
+                       *thing2;
+
+        thing1 = getstring(cp, &cp);
+        cp = skipdelim(cp);
+        if (!EOL(*cp))
+            thing2 = getstring(cp, &cp);
+        else
+            thing2 = memcheck(strdup(""));
+        ok = (strcmp(thing1, thing2) != 0);
+        free(thing1);
+        free(thing2);
+    } else {
+        int             sword;
+        unsigned        uword;
+        EX_TREE        *value = parse_expr(cp, 0);
+
+        cp = value->cp;
+
+        if (value->type != EX_LIT) {
+            report(stream, "Bad .IF expression\n");
+            list_value(stream, 0);
+            free_tree(value);
+            ok = FALSE;     /* Pick something. */
+        } else {
+            unsigned        word;
+
+            /* Convert to signed and unsigned words */
+            sword = value->data.lit & 0x7fff;
+
+            /* FIXME I don't know if the following
+               is portable enough.  */
+            if (value->data.lit & 0x8000)
+                sword |= ~0xFFFF;   /* Render negative */
+
+            /* Reduce unsigned value to 16 bits */
+            uword = value->data.lit & 0xffff;
+
+            if (strcmp(label, "EQ") == 0 || strcmp(label, "Z") == 0)
+                ok = (uword == 0), word = uword;
+            else if (strcmp(label, "NE") == 0 || strcmp(label, "NZ") == 0)
+                ok = (uword != 0), word = uword;
+            else if (strcmp(label, "GT") == 0 || strcmp(label, "G") == 0)
+                ok = (sword > 0), word = sword;
+            else if (strcmp(label, "GE") == 0)
+                ok = (sword >= 0), word = sword;
+            else if (strcmp(label, "LT") == 0 || strcmp(label, "L") == 0)
+                ok = (sword < 0), word = sword;
+            else if (strcmp(label, "LE") == 0)
+                ok = (sword <= 0), word = sword;
+
+            list_value(stream, word);
+
+            free_tree(value);
+        }
+    }
+    *cpp = cp;
+    return ok;
+}
+
+/* Section attributes have their own parser to avoid deep statement
+   nesting in the native compiler. */
+static int select_section(STACK *stack, TEXT_RLD *tr, SYMBOL *op, char *cp)
+{
+    char *label;
+    SYMBOL         *sectsym;
+    SECTION        *sect;
+
+    label = get_symbol(cp, &cp, NULL);
+    if (label == NULL)
+        label = memcheck(strdup(""));       /* Allow blank */
+
+    sectsym = lookup_sym(label, &section_st);
+    if (sectsym) {
+        sect = sectsym->section;
+        free(label);
+    } else {
+        sect = new_section();
+        sect->label = label;
+        sect->flags = 0;
+        sect->pc = 0;
+        sect->size = 0;
+        sect->type = SECTION_USER;
+        sections[sector++] = sect;
+        sectsym = add_sym(label, 0, 0, sect, &section_st);
+    }
+
+    if (op->value == P_PSECT)
+        sect->flags |= PSECT_REL;
+    else if (op->value == P_CSECT)
+        sect->flags |= PSECT_REL | PSECT_COM | PSECT_GBL;
+
+    while (cp = skipdelim(cp), !EOL(*cp)) {
+        /* Parse section options */
+        label = get_symbol(cp, &cp, NULL);
+        if (strcmp(label, "ABS") == 0) {
+            sect->flags &= ~PSECT_REL;      /* Not relative */
+            sect->flags |= PSECT_COM;       /* implies common */
+        } else if (strcmp(label, "REL") == 0) {
+            sect->flags |= PSECT_REL;       /* Is relative */
+        } else if (strcmp(label, "SAV") == 0) {
+            sect->flags |= PSECT_SAV;       /* Is root */
+        } else if (strcmp(label, "OVR") == 0) {
+            sect->flags |= PSECT_COM;       /* Is common */
+        } else if (strcmp(label, "RW") == 0) {
+            sect->flags &= ~PSECT_RO;       /* Not read-only */
+        } else if (strcmp(label, "RO") == 0) {
+            sect->flags |= PSECT_RO;        /* Is read-only */
+        } else if (strcmp(label, "I") == 0) {
+            sect->flags &= ~PSECT_DATA;     /* Not data */
+        } else if (strcmp(label, "D") == 0) {
+            sect->flags |= PSECT_DATA;      /* data */
+        } else if (strcmp(label, "GBL") == 0) {
+            sect->flags |= PSECT_GBL;       /* Global */
+        } else if (strcmp(label, "LCL") == 0) {
+            sect->flags &= ~PSECT_GBL;      /* Local */
+        } else {
+            report(stack->top, "Unknown flag %s given to " ".PSECT directive\n", label);
+            free(label);
+            return 0;
+        }
+
+        free(label);
+    }
+
+    go_section(tr, sect);
+
+    return 1;
+}
+
 /* assemble - read a line from the input stack, assemble it. */
 
 /* This function is way way too large, because I just coded most of
@@ -696,112 +878,12 @@ static int assemble(
                 case P_IIF:
                 case P_IF:
                     {
-                        EX_TREE        *value;
                         int             ok;
 
                         label = get_symbol(cp, &cp, NULL);      /* Get condition */
                         cp = skipdelim(cp);
 
-                        if (strcmp(label, "DF") == 0) {
-                            value = parse_expr(cp, 1);
-                            cp = value->cp;
-                            ok = eval_defined(value);
-                            free_tree(value);
-                        } else if (strcmp(label, "NDF") == 0) {
-                            value = parse_expr(cp, 1);
-                            cp = value->cp;
-                            ok = eval_undefined(value);
-                            free_tree(value);
-                        } else if (strcmp(label, "B") == 0) {
-                            char           *thing;
-
-                            cp = skipwhite(cp);
-                            if (!EOL(*cp))
-                                thing = getstring(cp, &cp);
-                            else
-                                thing = memcheck(strdup(""));
-                            ok = (*thing == 0);
-                            free(thing);
-                        } else if (strcmp(label, "NB") == 0) {
-                            char           *thing;
-
-                            cp = skipwhite(cp);
-                            if (!EOL(*cp))
-                                thing = getstring(cp, &cp);
-                            else
-                                thing = memcheck(strdup(""));
-                            ok = (*thing != 0);
-                            free(thing);
-                        } else if (strcmp(label, "IDN") == 0) {
-                            char           *thing1,
-                                           *thing2;
-
-                            thing1 = getstring(cp, &cp);
-                            cp = skipdelim(cp);
-                            if (!EOL(*cp))
-                                thing2 = getstring(cp, &cp);
-                            else
-                                thing2 = memcheck(strdup(""));
-                            ok = (strcmp(thing1, thing2) == 0);
-                            free(thing1);
-                            free(thing2);
-                        } else if (strcmp(label, "DIF") == 0) {
-                            char           *thing1,
-                                           *thing2;
-
-                            thing1 = getstring(cp, &cp);
-                            cp = skipdelim(cp);
-                            if (!EOL(*cp))
-                                thing2 = getstring(cp, &cp);
-                            else
-                                thing2 = memcheck(strdup(""));
-                            ok = (strcmp(thing1, thing2) != 0);
-                            free(thing1);
-                            free(thing2);
-                        } else {
-                            int             sword;
-                            unsigned        uword;
-                            EX_TREE        *value = parse_expr(cp, 0);
-
-                            cp = value->cp;
-
-                            if (value->type != EX_LIT) {
-                                report(stack->top, "Bad .IF expression\n");
-                                list_value(stack->top, 0);
-                                free_tree(value);
-                                ok = FALSE;     /* Pick something. */
-                            } else {
-                                unsigned        word;
-
-                                /* Convert to signed and unsigned words */
-                                sword = value->data.lit & 0x7fff;
-
-                                /* FIXME I don't know if the following
-                                   is portable enough.  */
-                                if (value->data.lit & 0x8000)
-                                    sword |= ~0xFFFF;   /* Render negative */
-
-                                /* Reduce unsigned value to 16 bits */
-                                uword = value->data.lit & 0xffff;
-
-                                if (strcmp(label, "EQ") == 0 || strcmp(label, "Z") == 0)
-                                    ok = (uword == 0), word = uword;
-                                else if (strcmp(label, "NE") == 0 || strcmp(label, "NZ") == 0)
-                                    ok = (uword != 0), word = uword;
-                                else if (strcmp(label, "GT") == 0 || strcmp(label, "G") == 0)
-                                    ok = (sword > 0), word = sword;
-                                else if (strcmp(label, "GE") == 0)
-                                    ok = (sword >= 0), word = sword;
-                                else if (strcmp(label, "LT") == 0 || strcmp(label, "L") == 0)
-                                    ok = (sword < 0), word = sword;
-                                else if (strcmp(label, "LE") == 0)
-                                    ok = (sword <= 0), word = sword;
-
-                                list_value(stack->top, word);
-
-                                free_tree(value);
-                            }
-                        }
+                        ok = evaluate_condition(stack->top, label, &cp);
 
                         free(label);
 
@@ -883,72 +965,7 @@ static int assemble(
 
                 case P_CSECT:
                 case P_PSECT:
-                    {
-                        SYMBOL         *sectsym;
-                        SECTION        *sect;
-
-                        label = get_symbol(cp, &cp, NULL);
-                        if (label == NULL)
-                            label = memcheck(strdup(""));       /* Allow blank */
-
-                        sectsym = lookup_sym(label, &section_st);
-                        if (sectsym) {
-                            sect = sectsym->section;
-                            free(label);
-                        } else {
-                            sect = new_section();
-                            sect->label = label;
-                            sect->flags = 0;
-                            sect->pc = 0;
-                            sect->size = 0;
-                            sect->type = SECTION_USER;
-                            sections[sector++] = sect;
-                            sectsym = add_sym(label, 0, 0, sect, &section_st);
-                        }
-
-                        if (op->value == P_PSECT)
-                            sect->flags |= PSECT_REL;
-                        else if (op->value == P_CSECT)
-                            sect->flags |= PSECT_REL | PSECT_COM | PSECT_GBL;
-
-                        while (cp = skipdelim(cp), !EOL(*cp)) {
-                            /* Parse section options */
-                            label = get_symbol(cp, &cp, NULL);
-                            if (strcmp(label, "ABS") == 0) {
-                                sect->flags &= ~PSECT_REL;      /* Not relative */
-                                sect->flags |= PSECT_COM;       /* implies common */
-                            } else if (strcmp(label, "REL") == 0) {
-                                sect->flags |= PSECT_REL;       /* Is relative */
-                            } else if (strcmp(label, "SAV") == 0) {
-                                sect->flags |= PSECT_SAV;       /* Is root */
-                            } else if (strcmp(label, "OVR") == 0) {
-                                sect->flags |= PSECT_COM;       /* Is common */
-                            } else if (strcmp(label, "RW") == 0) {
-                                sect->flags &= ~PSECT_RO;       /* Not read-only */
-                            } else if (strcmp(label, "RO") == 0) {
-                                sect->flags |= PSECT_RO;        /* Is read-only */
-                            } else if (strcmp(label, "I") == 0) {
-                                sect->flags &= ~PSECT_DATA;     /* Not data */
-                            } else if (strcmp(label, "D") == 0) {
-                                sect->flags |= PSECT_DATA;      /* data */
-                            } else if (strcmp(label, "GBL") == 0) {
-                                sect->flags |= PSECT_GBL;       /* Global */
-                            } else if (strcmp(label, "LCL") == 0) {
-                                sect->flags &= ~PSECT_GBL;      /* Local */
-                            } else {
-                                report(stack->top, "Unknown flag %s given to " ".PSECT directive\n", label);
-                                free(label);
-                                return 0;
-                            }
-
-                            free(label);
-                        }
-
-                        go_section(tr, sect);
-
-                        return 1;
-                    }                  /* end PSECT code */
-                    break;
+                    return select_section(stack, tr, op, cp);
 
                 case P_WEAK:
                 case P_GLOBL:
@@ -1478,7 +1495,9 @@ static int assemble(
 
     /* Only thing left is an implied .WORD directive */
     /*JH: fall through in case of illegal opcode, illegal label! */
-    free(label);
+    /* The 2.11BSD allocator does not accept free(NULL). */
+    if (label != NULL)
+        free(label);
 
     return do_word(stack, tr, cp, 2);
 }

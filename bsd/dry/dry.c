@@ -61,7 +61,7 @@ extern char *strcpy();
 extern int strcmp();
 #else
 #include <stdlib.h>  /* for malloc, exit, atoi */
-#include <unistd.h>   /* for sysconf on modern systems */
+#include "../pdp11_unistd.h"   /* for sysconf on modern systems */
 #include <string.h>  /* for strcpy, strcmp */
 #endif
 

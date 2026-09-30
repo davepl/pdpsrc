@@ -1,0 +1,21 @@
+#!/bin/sh
+# cc supplies an output filename.  The PDP preprocessor can corrupt that
+# output; its -E mode with shell redirection produces the complete source.
+for arg in "$@"; do
+    if test "$arg" = -E; then
+        exec /lib/cpp "$@"
+    fi
+done
+first=yes
+for arg in "$@"; do
+    if test "$first" = yes; then
+        set x
+        shift
+        first=no
+    else
+        set x "$@" "$last"
+        shift
+    fi
+    last=$arg
+done
+exec /lib/cpp -E "$@" > "$last"

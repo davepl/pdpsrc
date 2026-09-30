@@ -16,21 +16,22 @@ Browser -> Cloudflare -> Caddy -> Varnish -> PDP .29 (primary)
                                        -> PDP .26 (fallback)
 ```
 
-Both PDPs store the same five files in `/home/www`:
+Both PDPs store the same six files in `/home/www`:
 
 | File | Purpose |
 | --- | --- |
 | `pdp-ai.html` | Complete page, CSS and browser JavaScript |
-| `gary-green-v1.jpg` | Left-column Gary portrait |
-| `unix-gary-apple-touch-icon-v2.png` | 180 × 180 Apple touch icon |
-| `unix-gary-favicon-v2.png` | 32 × 32 browser icon |
-| `unix-gary-preview-v1.jpg` | 972 × 972 Open Graph link-preview image |
+| `gary-green-v2.jpg` | Left-column Gary portrait |
+| `pdp-gary-apple-touch-icon-v3.png` | 180 × 180 Apple touch icon |
+| `pdp-gary-favicon-v3.png` | 32 × 32 browser icon |
+| `pdp-gary-preview-v2.jpg` | Open Graph link-preview image |
+| `glass-tty-vt220-v1.woff2` | Locally hosted terminal font |
 
 The HTML uses absolute public URLs for preview metadata. Apple and other
 clients may cache an older preview. The high-resolution green source artwork
-is preserved in `archive/gary-green-original.png`; it was recolored from the
-owner-supplied Gary illustration. Web derivatives crop and resize that artwork.
-The legacy HTTP server labels PNG as text/plain; the Caddy route corrects
+is preserved in `archive/gary/gary-original-v2.png`; the earlier illustration remains in
+`archive/gary-green-original.png`. Web derivatives crop and resize the artwork.
+The legacy HTTP server labels PNG as text/plain; `config/pdp-gary-route.caddy` corrects
 Content-Type to image/png for the two icon paths in public responses.
 
 Chat has a separate path: `/pdp-ai-api/chat` goes through Caddy directly to the
@@ -70,7 +71,7 @@ No Python, Node.js or AI runtime is installed on the PDP.
 On caddy, after both uploads, invalidate the updated paths:
 
 ```
-varnishadm ban 'req.url ~ ^/(pdp-ai[.]html|gary-green-v1[.]jpg|unix-gary-)'
+varnishadm ban 'req.url ~ ^/(pdp-ai[.]html|gary-green-v1[.]jpg|pdp-gary-|glass-tty-)'
 pdp-backend status
 ```
 
@@ -79,8 +80,9 @@ If the saved mode is not `auto`, use `pdp-backend auto`. Do not force `26` or
 
 ## Restore the AI bridge on ubvmdell
 
-The bridge uses Python 3's standard library. Copy `pdp-ai/server.py` to
-`~/.local/share/pdp-ai/server.py` and `pdp-ai/pdp-ai.service` to
+The bridge uses Python 3's standard library. Copy `proxy/ai-bridge.py` to
+`~/.local/share/pdp-ai/server.py`, `proxy/gary-system-prompt.txt` to
+`~/.local/share/pdp-ai/gary-system-prompt.txt`, and `pdp-ai/pdp-ai.service` to
 `~/.config/systemd/user/pdp-ai.service`, as `dave` on ubvmdell. Create those
 directories if absent. The existing llama-coding user service must provide
 the `qwen3.8-flash-next` model on port 8080. The unit binds the bridge to
