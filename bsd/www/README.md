@@ -67,6 +67,16 @@ refresh the proxy's homepage cache after updating both PDPs. Messaging apps
 control their final presentation and may retain previews of previously shared
 links.
 
+## PDP-Gary chat
+
+[`site/pdp-ai.html`](site/pdp-ai.html) is the public PDP-Gary chat page at
+<https://pdp1173.com/pdp-ai.html>. The AI calls itself **PDP-Gary**. Both PDPs
+serve identical HTML and Gary assets; the existing proxy prefers `.29` and
+falls back to `.26`. Inference runs on ubvmdell, independently of the PDPs.
+See [`README.pdp-ai.md`](README.pdp-ai.md) for source locations, installation,
+credentials, and verification. The native installer restores the chat page
+and images; the modern AI bridge and Caddy route are installed separately.
+
 ## Edit and minify the homepage
 
 Edit `site/index.source.html` on a modern Mac/Linux development machine,

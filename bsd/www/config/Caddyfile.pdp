@@ -3,6 +3,7 @@
 # Choose the Varnish origin on caddy with: pdp-backend auto / 26 / 29 / status.
 http://pdp1173.com, http://www.pdp1173.com, http://davepl.dyndns.org {
     import /etc/caddy/pdp-gary-route.caddy
-    # Preserve the existing private pdp-ai-route.caddy import for the chat API.
+    # Install the route template with the private proxy key first (README.pdp-ai.md).
+    import /etc/caddy/pdp-ai-route.caddy
     reverse_proxy 127.0.0.1:6081
 }
