@@ -1,0 +1,5 @@
+configuration,binary,forced_requested,runs,startup_ms_min,startup_ms_median,startup_ms_max,cpu_ms_median,cpu_percent_median,rendered_frames_median,cpu_ms_per_render_median,data_stack_bytes_max,output_bytes_median,cpu_ms_per_forced_refresh_median
+final-default.log,./top,0,5,16.667,16.667,16.667,16.667,0.549,3,5.556,34304,4297,
+final-default.log,/usr/ucb/top,0,5,1066.668,1066.668,1066.668,50.001,1.657,2,25.0,53696,2616,
+final-forced.log,./top,1000,5,16.667,16.667,33.334,6716.681,56.825,28,,34304,117523,6.717
+final-forced.log,/usr/ucb/top,1000,5,1066.668,1066.668,1083.335,7400.028,48.052,51,,53696,81350,7.4

@@ -1,4 +1,12 @@
-# Live verification
+# Original curses implementation: historical verification
+
+This report records the original build, before the termcap renderer and
+sampling/formatting optimizations. Its build command, binary sizes and
+test counts are historical; they do not describe the current executable.
+See [PERFORMANCE.md](PERFORMANCE.md) for the current implementation's
+native functional checks, comparison measurements and reproduction steps.
+
+## Original live verification
 
 Built and tested on the user's PDP over Telnet at 127.0.0.1:2323, using
 FTP at 127.0.0.1:2121 to transfer source. No simulated process statistics
@@ -28,7 +36,7 @@ assertions passed. They covered:
 - A 200x80 terminal capped within the PDP data-space budget, a 30x8
   terminal showing a resize notice, and recovery to the normal display.
 
-The final capture uses a 120x30 VT100 Telnet session and ./top -n 17 to
+The original capture uses a 120x30 VT100 Telnet session and ./top -n 17 to
 match the reference's 17 visible process rows. The PNG is a rendering of
 that captured live terminal stream, using a matching monospace font.
 Actual times, processes, and resource use naturally differ from the image.

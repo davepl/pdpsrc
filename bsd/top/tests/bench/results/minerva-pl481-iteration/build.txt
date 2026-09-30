@@ -1,0 +1,36 @@
+Measured 2026-09-28 on minerva, 2.11BSD PL481
+Kernel: hz=60 nproc=122
+ABI bytes: int=2 long=4 proc=66 user=862 user_prefix=772 BUFSIZ=1024
+Build: cc -O; cc -i -o top top.o screen.o -ltermcap; strip top
+Previous PR13 commit: 7ddff07 (34260-byte executable)
+Selected source commit: 5975349 (34594-byte executable)
+Candidates run as root in native 80x24 TERM=vt100 PTY.
+Five interleaved 3000-request -s1 runs per program; five 3-second startup runs.
+Three interleaved 120-second ordinary -s1 runs per program.
+
+size: text data bss
+reference: 35328 3550 6684
+previous PR13: 30080 4164 5560
+candidate: 30464 4114 5902
+
+SHA-256 (binary copies fetched using FTP binary transfer):
+2d3c22567c5ae060c57ce7ad2e91a99c4d392503fb856c296491e96dce89792e  /usr/ucb/top (38894 bytes)
+adc5ada4901fed1c3e8fc0aadf041d161e23af4ee601a267ff7b45e8be65ea7f  ./pr13/top (34260 bytes)
+34a52bda70625521377282306e6228d1d979e2f4c077750c0a3efe8cfcc6cfda  ./final/top (34594 bytes)
+
+SHA-256 (candidate build inputs):
+f2533e14958102ecd1434f3fd4fb2a9edd86d28c881d5464202e0aa158026936  top.c
+17cc0e791c0c81889af12c2f39dfa7d0cf6e0fb2d568f16a9cddfae7914c5cdb  screen.c
+1ff813c744a1c774f84eb0793f017ed87a06d33d1fbdb217f358b6517d279dcd  screen.h
+60a6c7887d920cea12c9b48d48b406ce5e075d7fc1d72333cae2e4b3a5bb438d  format.h
+138288cf51c209b05dbf30c19503ecbce07bf1d1d9f2dc1504b7f76ccb544012  Makefile
+
+SHA-256 (observer source, unchanged from PR13):
+60f4c2c225883db4fda7d927c2105bbb2b3ab16cdc940e9b2caf71741ad42411  topbench.c
+
+Post-measurement verification:
+Rebuilt as dave in /usr/dave/source/repos/pdpsrc/bsd/top.
+Native formatter suite passed; rebuilt top byte-for-byte equals ./final/top.
+SHA-256: 34a52bda70625521377282306e6228d1d979e2f4c077750c0a3efe8cfcc6cfda
+The reference /usr/ucb/top hash was unchanged after the full series.
+Both native test runners returned failure for an intentionally failing compiler.

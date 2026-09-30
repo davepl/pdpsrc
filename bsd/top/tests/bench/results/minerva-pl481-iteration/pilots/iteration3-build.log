@@ -1,0 +1,14 @@
+top-best2.c:
+screen-registers.c:
+top-headercache.c:
+screen-registers.c:
+test-rowformat.c:38: No auto. aggregate initialization
+test-rowformat.c:38: 0-length row: names
+test-rowformat.c:38: Too many initializers: names
+text	data	bss	dec	hex
+29568	4164	5610	39342	99ae	top-registers-frozen
+30272	4118	5610	40000	9c40	top-best2
+29760	4162	5902	39824	9b90	top-headercache
+completed-trial-1
+completed-trial-2
+completed-trial-3

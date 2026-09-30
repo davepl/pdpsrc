@@ -1,0 +1,49 @@
+Formatting and renderer regression tests
+=======================================
+
+On a modern development host, run from bsd/top:
+    tests/run.sh
+
+The suite includes the real screen.c against a fake tty/termcap terminal;
+it checks visible cells, attributes, bounded allocation and restoration.
+Two hundred deterministic randomized frames compare the visible terminal
+with the requested contents. Focused checks cover unchanged frames with no
+output or flush, changed spans, prompts, resize extremes and startup failures.
+It extracts fixed(), header_text() and the process-row block from top.c,
+and includes the actual format.h. No copied implementation is substituted.
+
+The typed helper tests exhaust all 65,536 signed16 values on the host and
+check padding, string precision and buffer guards. The row test compares
+128 full rows with the former printf layout. The fixed-point test contains
+88 literal golden results for rounding, carries, zero/exact values and
+32-bit boundaries. The header test changes time, users, load values, query
+success/failure and width while checking that each call still samples.
+
+For an optional larger arithmetic check on a host with Python 3 and cc:
+    python3 tests/fixed-oracle.py
+It compares the actual fixed() with an independent 64-bit oracle across
+274,630 power-of-two residue, word-range and 32-bit boundary cases. This
+supplements the native tests; host long arithmetic can be wider than 32 bits.
+
+On native 2.11BSD, run from bsd/top:
+    /bin/sh tests/native-format.sh
+
+That runner uses simple sed extraction and native cc -O -i in a newly made
+private /tmp directory. It checks 23 signed16 boundaries, all precision and
+buffer cases, the 128 process rows, and all 88 fixed-point golden cases.
+It does not change tty settings or read kernel memory. Initialized test
+arrays are static because the native compiler rejects automatic aggregate
+initialization. Native printf ignores a negative dynamic width; the test
+oracle spells left alignment as an explicit '-' flag with a positive width,
+which preserves the intended semantics on both native and modern libc.
+Each group prints a success message; the final marker is:
+    all native top formatting tests passed
+
+The smaller /bin/sh tests/native-fixed.sh remains available for only the
+88 numeric goldens. Both native runners keep an explicit failure status
+until all checks pass: this old shell can reset $? before an EXIT trap.
+Cleanup removes only each runner's own temporary files. Native
+execution is required to check the target's 16-bit int, 32-bit long and libc.
+
+The bounded live-process workload is documented in README.workload.
+The performance observer and repeatable commands are documented in bench/.

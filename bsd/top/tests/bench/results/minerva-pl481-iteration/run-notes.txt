@@ -1,0 +1,17 @@
+Final-series execution notes, 2026-09-28:
+
+All five 3000-request rounds and all five startup rounds completed.
+The first planned 120-second ordinary reference run was then deliberately
+interrupted to evaluate the final isolated cursor experiment. topbench's
+SIGINT handler killed its own child and exited without a measurement record.
+interrupted-regular.log preserves that partial file (trial marker only).
+
+The cursor experiment did not justify a source change. The selected binary
+remained byte-for-byte unchanged. regular-series.sh reran the entire ordinary
+series from trial 1 after that experiment, using the same commands and order
+as the ordinary section of final-series.sh. No completed regular result was
+selected from before the interruption.
+
+Source/test transfer, compiler-failure injection, and functional checks were
+completed before each accepted final measurement series. No extra FTP or
+Telnet sessions were opened during those accepted series.
