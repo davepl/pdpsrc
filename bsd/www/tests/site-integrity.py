@@ -9,7 +9,9 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parents[1] / 'site'
 FILES = ('index.html', 'pdp11.jpg', 'pdp1183-web.jpg',
          'tmog-banner-v2.jpg', 'pdp1173-tmog-preview-v1.jpg',
-         'gary-green-v1.jpg', 'glass-tty-vt220-v1.woff2', 'pdp-ai.html')
+         'gary-green-v2.jpg', 'pdp-gary-preview-v2.jpg',
+         'pdp-gary-favicon-v3.png', 'pdp-gary-apple-touch-icon-v3.png',
+         'glass-tty-vt220-v1.woff2', 'pdp-ai.html')
 
 
 def main():

@@ -43,3 +43,12 @@ retained as `tmog-banner.first.png`.
 
 These design archives do not contain the mutable visitor total. Keep runtime
 backups separately, as described in the main README.
+
+## Gary artwork
+
+`gary/gary-original-v2.png` is the unchanged replacement supplied on September
+24, 2026 (the second image, with a moustache). The portrait was scaled to
+480×720 with macOS sips and encoded as JPEG quality 88. The 600×600 preview
+uses a crop at x=200, y=80, encoded at quality 90; 180×180 and 32×32 PNG
+icons are scaled from that crop. The older public Gary assets remain in
+`site/` and on the web servers for rollback.

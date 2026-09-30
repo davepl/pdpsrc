@@ -25,9 +25,10 @@ SOURCE_FILES = (
     'tests/virtual-panel.js', 'archive/virtual-panel/UPSTREAM.md',
     'archive/virtual-panel/pdp11-70.svg',
     'site/pdp1173-tmog-preview-v1.jpg', 'archive/link-preview/tmog.original.png',
-    'site/pdp-ai.html', 'site/gary-green-v1.jpg',
-    'site/pdp-gary-preview-v1.jpg', 'site/pdp-gary-favicon-v2.png',
-    'site/pdp-gary-apple-touch-icon-v2.png', 'tests/gary-visitors.js',
+    'archive/gary/gary-original-v2.png',
+    'site/pdp-ai.html', 'site/gary-green-v2.jpg',
+    'site/pdp-gary-preview-v2.jpg', 'site/pdp-gary-favicon-v3.png',
+    'site/pdp-gary-apple-touch-icon-v3.png', 'tests/gary-visitors.js',
     'tests/gary-counter.py', 'proxy/visitor-service.py',
     'config/pdp-gary-route.caddy', 'config/README.varnish.md', 'README.visitors',
     'site/glass-tty-vt220-v1.woff2', 'archive/glasstty/Glass_TTY_VT220.ttf',
@@ -35,9 +36,9 @@ SOURCE_FILES = (
     'proxy/ai-bridge.py', 'proxy/gary-system-prompt.txt',
 )
 PUBLIC_IMAGES = ('pdp1183-web.jpg', 'tmog-banner-v2.jpg', 'pdp1173-tmog-preview-v1.jpg')
-PUBLIC_ASSETS = PUBLIC_IMAGES + ('gary-green-v1.jpg', 'glass-tty-vt220-v1.woff2')
-GARY_IMAGES = ('gary-green-v1.jpg', 'pdp-gary-preview-v1.jpg',
-               'pdp-gary-favicon-v2.png', 'pdp-gary-apple-touch-icon-v2.png')
+PUBLIC_ASSETS = PUBLIC_IMAGES + ('gary-green-v2.jpg', 'glass-tty-vt220-v1.woff2')
+GARY_IMAGES = ('gary-green-v2.jpg', 'pdp-gary-preview-v2.jpg',
+               'pdp-gary-favicon-v3.png', 'pdp-gary-apple-touch-icon-v3.png')
 GARY_ASSETS = GARY_IMAGES + ('glass-tty-vt220-v1.woff2',)
 
 
@@ -78,7 +79,7 @@ def main():
         # Keep the on-machine restore source in sync with the served page.
         for directory in ('archive', 'archive/pre-webtop-192.168.1.26',
                           'archive/amber-webtop', 'archive/virtual-panel',
-                          'archive/link-preview', 'archive/glasstty', 'proxy', 'config'):
+                          'archive/link-preview', 'archive/glasstty', 'archive/gary', 'proxy', 'config'):
             target = SOURCE + '/' + directory
             try:
                 ftp.mkd(target)
