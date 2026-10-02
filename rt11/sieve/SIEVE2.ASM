@@ -9,7 +9,6 @@
 
                 .TITLE  SIEVE                           ; Program title
                 .MCALL  .PRINT,.EXIT,.TTYOUT, .GTIM     ; System macros
-                .GLOBL  $DIVTK,$DIV60                   ; Global symbols
 
 
 HELLOMSG:       .ASCIZ  /Sieve of Eratosthenes by Davepl 2024/
@@ -41,7 +40,7 @@ START:  .PRINT  #HELLOMSG          ; Welcome banner
 ;-- Clear the byte array -----------------------------------------------
 
 ;        .PRINT  #TIMESTMP          ; Display timestamp
-         JSR     PC, STRTTMR
+; Timer starts below, after initialization and console output.
 ;        JSR     PC, PRNUM
 ;        .PRINT  #NEWLINE
 
@@ -54,6 +53,8 @@ INITL:
         BNE     INITL
 
         .PRINT  #RUNMSG           ; Display progress message "Running sieve"; 
+
+        JSR     PC, STRTTMR      ; Time sieve only, excluding console I/O
 
 ;-- Run the sieve ------------------------------------------------------
 
@@ -127,12 +128,13 @@ PRNXT:
 DONE:   
         MOV     R3, R0            ; Print count of primes
         JSR     PC, PRNUM
-        .PRINT  NEWLINE
+        .PRINT  #NEWLINE
 
         .PRINT  #TIMRMSG
         JSR     PC, ELAPSED
         JSR     PC, PRNUM         ; Print elapsed time
 
+        .PRINT  #NEWLINE
         .EXIT                     ; Exit program
 
 ;-- Subroutines --------------------------------------------------------
@@ -237,18 +239,19 @@ TICKS2:  .BLKW   2
 
 STRTTMR:    MOV     #TICKS, R1
             .GTIM   #AREA1, R1
-            MOV     TICKS, TICKS1        ; Store low order time in TICKS1
+            MOV     TICKS, TICKS1        ; Store high order time in TICKS1
             MOV     TICKS+2, TICKS1+2    ; Store low order time in TICKS1
             MOV     TICKS+2, R0
             RTS     PC
 
 STOPTMR:    MOV     #TICKS, R1
             .GTIM   #AREA1, R1
-            MOV     TICKS, TICKS2         ; Store low order time in TICKS2
+            MOV     TICKS, TICKS2         ; Store high order time in TICKS2
             MOV     TICKS+2, TICKS2+2     ; Store low order time in TICKS2
             MOV     TICKS+2, R0
             RTS     PC      
 
+; Low-word difference is valid for runs shorter than 65536 ticks.
 ELAPSED:    MOV     TICKS2+2, R0 
             SUB     TICKS1+2, R0
             RTS     PC
