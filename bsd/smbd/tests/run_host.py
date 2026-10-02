@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory(prefix='smbd-host-tests-') as work:
         port = s.getsockname()[1]
     cases = ((False, 4, 'read'), (True, 4, 'write'),
              (True, 4, 'metadata-restart'), (False, 1, 'one-worker'), (False, 4, 'guest'),
-             (True, 4, 'eight-credits'))
+             (True, 4, 'eight-credits'), (True, 4, 'optional-signing'))
     restart_client = None
     for writable, workers, case in cases:
         with (work / (case + '.log')).open('w+') as log:
@@ -36,6 +36,7 @@ with tempfile.TemporaryDirectory(prefix='smbd-host-tests-') as work:
                                        '-a', '127.0.0.1', '-p', str(port), '-T', str(work),
                                        '-c', str(workers), '-v'] +
                                       (['-C', '8'] if case == 'eight-credits' else []) +
+                                      (['-S', 'optional'] if case == 'optional-signing' else []) +
                                       (['-g'] if case == 'guest' else ['-P', str(password)]) +
                                       (['-w', '-M', str(work / 'metadata')] if writable else []), stderr=log)
             try:
@@ -53,7 +54,9 @@ with tempfile.TemporaryDirectory(prefix='smbd-host-tests-') as work:
                     # The readiness socket briefly occupied the only child;
                     # allow the listener's one-second reap cycle to finish.
                     time.sleep(1.1)
-                if case == 'eight-credits':
+                if case == 'optional-signing':
+                    tests = ['signing_test.py', 'write_test.py']
+                elif case == 'eight-credits':
                     tests = ['credits_test.py', 'protocol.py', 'write_test.py']
                 elif case == 'guest':
                     tests = ['guest_test.py']
@@ -71,6 +74,8 @@ with tempfile.TemporaryDirectory(prefix='smbd-host-tests-') as work:
                         args += ['--auth-recovery-only', '--timeout', '5'] if workers == 1 else ['--fixture-root', str(share)]
                     if test == 'write_test.py' and not writable:
                         args += ['--read-only']
+                    if test == 'write_test.py' and case == 'optional-signing':
+                        args += ['--optional-signing']
                     if test == 'reconnect_test.py' and writable:
                         args += ['--writable']
                     if test == 'reconnect_test.py' and case == 'metadata-restart':

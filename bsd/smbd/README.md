@@ -2,7 +2,7 @@
 
 A small native SMB **2.0.2** server for transferring files between a PDP-11
 and modern desktops. One configured SMB account accesses one disk share.
-NTLMv2 through SPNEGO and HMAC-SHA256 signing are required for normal sessions.
+NTLMv2 through SPNEGO and HMAC-SHA256 signing are required by default.
 All filesystem and protocol processing runs on the serving machine, using its
 C library and BSD interfaces; there is no Samba, OpenSSL, or gateway dependency.
 
@@ -78,6 +78,20 @@ retain their handles; unfinished logins and partial frames time out. Ctrl-C
 stops the listener and its workers.
 Installation, daemonization, and `/etc/rc` edits are not performed by `make`.
 
+`-S optional` permits password-authenticated sessions without per-message
+signing when the client allows it. Clients that require signing still get it,
+and signed requests are always verified. The successful authentication reply
+is still signed. `-S required` is the default. Optional signing keeps Unix
+permissions and password authentication, but unsigned traffic has no
+cryptographic protection against modification in transit; use it on a trusted
+network. This stays on SMB 2.0.2 and does not enable SMB1 or guest access.
+
+Windows clients that require signing need an administrator to run
+`Set-SmbClientConfiguration -RequireSecuritySignature $false` to use unsigned
+sessions. This is a machine-wide client policy; restore `$true` to require
+signing again. On macOS, check `smbutil statshares -m MOUNTPOINT` after a fresh
+mount; `SIGNING_ON` shows whether the connection actually uses signing.
+
 For desktop uploads, also use `-M /etc/smbd/times`. Writable startup creates
 this mode-0600 metadata table if absent. It stores SMB creation/change times
 that 2.11BSD cannot represent directly; Finder requires creation-time updates
@@ -93,7 +107,7 @@ an error.
 For non-root host development, use a protected credential path, an owned
 export, and `-a 127.0.0.1 -p 1445`; omit `-R` and `-U`. Explicit `-g` replaces
 password authentication with unsigned laboratory guest mode. A client requiring
-signing cannot use that mode. None of these commands changes client policy.
+signing cannot use that mode. Server options do not change client policy.
 
 ## Connect
 

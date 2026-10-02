@@ -60,7 +60,7 @@ struct config {
  char *metadata_file;
  u8 nthash[16];
  unsigned port;
- int guest, max_connections, verbose, writable, max_credits;
+ int guest, max_connections, verbose, writable, max_credits, optional_signing;
 };
 extern struct config cfg;
 void session_revoke(int);

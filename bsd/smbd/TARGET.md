@@ -703,3 +703,61 @@ The disposable acceptance directory was deleted through SMB and its absence
 verified; the temporary Mac mount was removed. The service was restarted
 without `-v` as PID 1489, and password login, enumeration and browsing passed
 again. A repeated `start` correctly reported that same listener already running.
+
+## Optional signing on mentec (2026-10-02)
+
+`-S optional` retains NTLMv2 password authentication but permits unsigned
+requests when the client does not require signing. The default remains
+`-S required`. Client signing requirements from NEGOTIATE or SESSION_SETUP
+are honored; signed requests are verified even on an optional session, and
+successful authentication replies remain signed.
+
+The full isolated host regression suite passed, including unsigned file
+write/read/delete with checked response flags, incorrect passwords, corrupt
+signatures, denial of unsigned requests after client-required signing, and an
+independent signing-required client. Existing signed filesystem tests also
+passed against the optional server.
+
+Built natively on minerva in `/usr/tmp/smbd-credits`; its live service was not
+changed. Source snapshot:
+`8418c4e7ec084c9a0a6f35afdea89a162e1000ca59d7e4f1ecc0d2bdcdc54f04`.
+The 113961-byte executable was uploaded and read back byte for byte; SHA256:
+`ed9dce5995096717fe17bcc25354b524849011e4d25635936f6960f8df88d9b1`.
+Native size: resident text 32320, data 3966, BSS 38742; overlays 27456 and
+18944. The rounded instruction windows still fit 32768 + 32768 bytes.
+
+Mentec's startup script now uses `-S optional -C 16`; the prior script and
+executable are retained as `start.signed` and `smbd.signed`. Listener PID at
+deployment was 1599. Export permissions and the authentication account did
+not change.
+
+A fresh native macOS 26.5.2 mount negotiated SMB 2.002 without signing or
+reconnects. No Mac preferences were changed. The same 1048576-byte payload
+as the signed test passed write, flush, rename and byte-for-byte readback:
+flush at 42.25 seconds, rename at 59.12, complete at 99.69 seconds, versus
+455.35 seconds for the earlier signed run (approximately 4.6 times faster).
+Readback used `F_NOCACHE`. SHA256 remained
+`fbbab289f7f94b25736c58be46a994c441fd02552cc6022352e3d86d2fab7c83`.
+The disposable directory and temporary test mount were removed; the user's
+existing `/Volumes/usr` mount was left mounted.
+
+On hpz2, `RequireSecuritySignature` was true and was changed to false using
+`Set-SmbClientConfiguration -RequireSecuritySignature $false -Force`, as
+authorized for unsigned access. This machine-wide client policy can be
+restored with `$true`; it does not change the Windows SMB server policy.
+The native Windows redirector then passed a 1048576-byte write, flush, rename
+and SHA256-verified readback: flush at 31.71 seconds, total 75.51 seconds.
+`Get-SmbConnection` reported dialect 2.0.2, `Signed: false`, and
+`Encrypted: false`. The disposable test directory and PowerShell drive were
+removed; unrelated connections were not changed.
+
+The optional-signing protocol suite also passed against the deployed native
+server: wrong passwords rejected, unsigned write/read/delete with response
+flags checked, valid signed requests verified, corrupt signatures disconnected,
+unsigned requests denied when SESSION_SETUP required signing, and an independent
+client requiring signing at negotiation accepted. Remote probes allow the
+listener's one-second child reap cycle between connections; the initial rapid
+probe exhausted admission slots while desktop sessions were also connected.
+Repeated startup reported the existing PID 1599. The user's older Finder
+mount retained its signing-required flag after reconnect, so a fresh mount is
+recommended to pick up the new negotiation policy.

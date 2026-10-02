@@ -29,6 +29,7 @@ p.add_argument('--user', default='pdp')
 p.add_argument('--password', default='testpass')
 p.add_argument('--share', default='pdp')
 p.add_argument('--read-only', action='store_true')
+p.add_argument('--optional-signing', action='store_true')
 p.add_argument('--disconnect-timeout', type=float,
                help='seconds to allow worker cleanup (default: 5 locally, 30 remotely)')
 a = p.parse_args()
@@ -153,7 +154,7 @@ try:
                         preferredDialect=SMB2_DIALECT_002, timeout=120)
     try:
         imp.login(a.user, a.password)
-        assert imp.isSigningRequired()
+        assert imp.isSigningRequired() == (not a.optional_signing)
         name = directory + '\\impacket.bin'
         imp.putFile(a.share, name, io.BytesIO(payload).read)
         out = io.BytesIO()
@@ -164,7 +165,8 @@ try:
         imp.logoff()
     finally:
         imp.close()
-    print('PASS Impacket: signed write/read byte comparison, rename and delete')
+    print('PASS Impacket: %s write/read byte comparison, rename and delete' %
+          ('unsigned' if a.optional_signing else 'signed'))
 
     with connection() as (c1, s1, t1), connection() as (c2, s2, t2):
         name = directory + '\\sharing.bin'

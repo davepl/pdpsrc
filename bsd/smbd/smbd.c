@@ -163,9 +163,9 @@ negotiate()
     found=0;
     for(i=0;i<n;i++) if(get16(request+100+i*2)==0x202) found=1;
     if(!found) return ST_NOT_SUPPORTED;
-    auth.signing_required=!cfg.guest || (get16(request+68)&2)!=0;
+    auth.signing_required=(!cfg.guest && !cfg.optional_signing) || (get16(request+68)&2)!=0;
     put16(response+64,65);
-    put16(response+66,cfg.guest?1:3);
+    put16(response+66,(cfg.guest || cfg.optional_signing)?1:3);
     put16(response+68,0x202);
     memcpy(response+72,server_guid,16);
     put32(response+92,SMBD_TRANSFER);
@@ -565,7 +565,8 @@ usage()
 {
     fprintf(stderr,"usage: smbd -r directory [-s share] [-u smbuser -P password-file | -H hash-file | -g]\n"
         "            [-a IPv4-address] [-p port] [-c connections] [-C credits] [-U unixuser]\n"
-        "            [-R random-pool] [-T temporary-directory] [-M metadata-file] [-w] [-v]\n");
+        "            [-R random-pool] [-T temporary-directory] [-M metadata-file]\n"
+        "            [-S required|optional] [-w] [-v]\n");
     exit(2);
 }
 
@@ -603,6 +604,11 @@ char **argv;
             case 'R': cfg.random_file=argv[i]; break;
             case 'T': temporary_directory=argv[i]; break;
             case 'M': cfg.metadata_file=argv[i]; break;
+            case 'S':
+                if(!strcmp(argv[i],"optional")) cfg.optional_signing=1;
+                else if(!strcmp(argv[i],"required")) cfg.optional_signing=0;
+                else usage();
+                break;
             case 'a': cfg.bind_address=argv[i]; break;
             case 'p':
                 number=strtol(argv[i],&end,10);
@@ -668,7 +674,8 @@ char **argv;
     signal(SIGPIPE,SIG_IGN); signal(SIGINT,stop_server); signal(SIGTERM,stop_server);
     fprintf(stderr,"smbd: SMB 2.0.2 %s share %s on %s:%u; %d workers, %s\n",
         cfg.writable?"read/write":"read-only",cfg.share,cfg.bind_address,cfg.port,
-        cfg.max_connections,cfg.guest?"LAB GUEST":"NTLMv2 + signing");
+        cfg.max_connections,cfg.guest?"LAB GUEST":
+        (cfg.optional_signing?"NTLMv2 + optional signing":"NTLMv2 + signing"));
     while(!stopped) {
         reap_children();
         FD_ZERO(&readers); FD_SET(listenfd,&readers); timeout.tv_sec=1; timeout.tv_usec=0;
