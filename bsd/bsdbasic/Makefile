@@ -18,7 +18,12 @@ $(PROG): $(SRC)
 	echo "$(CC) $$CF -o $@ $(SRC) $$LF"; \
 	$(CC) $$CF -o $@ $(SRC) $$LF
 
-clean:
-	rm -f $(PROG) *.o
+test: $(PROG)
+	./$(PROG) test.bas > test.out
+	cmp test.expected test.out
+	rm -f test.out
 
-.PHONY: all clean
+clean:
+	rm -f $(PROG) *.o test.out
+
+.PHONY: all clean test

@@ -2,7 +2,7 @@
 	.TITLE  SIEVE            	 ; Program title
 ;---------------------------------------------------------------------
 
-	.MCALL  .PRINT,.EXIT,.TTYOUT     ; System macros
+	.MCALL  .PRINT,.EXIT,.TTYOUT,.GTIM     ; System macros
 
 ;-- String Table -----------------------------------------------------
 
@@ -16,6 +16,7 @@ PRIMMSG:        .ASCIZ  /Prime numbers found:/
 MARKCMPMSG:     .ASCIZ  /Marking composite: /
 CHECKCMPMSG:    .ASCIZ  /Checking if composite: /
 EMPTYMSG:       .ASCIZ  //
+TIMRMSG:        .ASCII  /Ticks elapsed (sieve only): /<200>
 
 ;-- Constants ---------------------------------------------------------
 
@@ -47,6 +48,8 @@ INITL:
         .PRINT  #RUNMSG
 
 ;-- Run the sieve ------------------------------------------------------
+
+        .GTIM   #TAREA, #TSTART   ; Start after setup and progress output
 
         MOV     #3, R1            ; Start with 3 (first odd prime)
 SIEVE:
@@ -82,6 +85,7 @@ NXTODD:
         BR      SIEVE             ; Continue sieving
 
 DONE.SV:
+        .GTIM   #TAREA, #TSTOP    ; Stop before printing results
         .PRINT  #DONEMSG
         .PRINT  #PRIMMSG
 
@@ -111,9 +115,16 @@ PRNXT:
         ADD     #2, R1            ; Move to next odd number
         BR      PRNLP             ; Continue printing primes
 
-DONE:	.PRINT	EMPTYMSG
+DONE:	.PRINT	#EMPTYMSG
 	MOV	R3, R0		  ; Print count of primes
 	JSR	PC, PRNUM
+
+        .PRINT  #EMPTYMSG
+        .PRINT  #TIMRMSG
+        MOV     TSTOP+2, R0       ; Low word of RT-11 clock ticks
+        SUB     TSTART+2, R0      ; Valid for runs shorter than 65536 ticks
+        JSR     PC, PRNUM
+        .PRINT  #EMPTYMSG
 
         .EXIT                     ; Exit program
 
@@ -158,6 +169,10 @@ PRINT:  ADD     #'0, R1           ; Convert remainder to ASCII
         MOV     (SP)+, R0         ; Restore R0
         RTS     PC                ; Return
 
+
+TAREA:   .BLKW   2               ; .GTIM argument block
+TSTART:  .BLKW   2               ; Clock: high word, low word
+TSTOP:   .BLKW   2
 
 BYTEARR: .BLKB   BSIZE            ; Byte array for sieve
 

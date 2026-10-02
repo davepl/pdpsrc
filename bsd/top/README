@@ -1,0 +1,251 @@
+top for 2.11BSD UNIX / PDP-11
+===========================
+
+Build and run
+-------------
+On the PDP, enter the bsd/top directory of your checkout and run:
+
+    make
+
+Install once as root (or with a working sudo):
+
+    sudo make install
+    /usr/local/top
+
+The installed executable is root:kmem, mode 2755, like UCB top. Any user
+can run it without sudo; the kmem group grants read access to /dev/kmem,
+/dev/mem and /dev/swap. After opening these devices read-only, top drops
+its extra group privilege. Do not make the devices world-readable.
+BINDIR defaults to /usr/local and can be overridden when installing.
+
+If you prefer to run the executable in this source directory:
+
+    sudo make install-local
+    ./top
+
+Repeat installation after rebuilding: make produces an ordinary executable
+without special permissions. The build removes the old executable first
+so its root ownership after install-local does not prevent rebuilding as
+the source directory's owner. top.debug is never given special permissions.
+
+Use an interactive terminal. TERM must name the terminal being used. For
+a VT100-compatible terminal, for example:
+
+    TERM=vt100; export TERM
+    /usr/local/top
+
+The native build uses separate instruction and data spaces (-i) and the
+2.11BSD termcap library. make produces the stripped executable top and
+keeps top.debug with symbols for diagnosis. It does not install or replace
+/usr/ucb/top. No curses, ncurses, /proc, Linux interfaces, or subprocesses
+are used to collect or display statistics.
+
+This implementation was originally developed on mentec at 2.11BSD patch
+level 498 and optimized and tested on minerva at patch level 481. Build
+against the target system's installed headers; /unix must describe its
+running kernel. See PERFORMANCE.md for current results and their scope.
+
+Reading the display
+-------------------
+The display follows the supplied mentec reference: hostname, time, uptime,
+logged-in users and load averages; task states; CPU states; memory; swap;
+a status line; a reverse-video heading; then the process rows:
+
+    PID USER      PR  NI  TEXT  DATA STACK S     TIME   DTIME COMMAND
+
+TIME is cumulative user + system CPU time in seconds, excluding children.
+DTIME is CPU seconds since the preceding sample. The first display appears
+immediately with identities, cumulative accounting and memory information.
+CPU percentages say "waiting for interval sample" and DTIME is "-" until
+an interval exists. Newly seen processes start with zero DTIME until they
+have a preceding observation. PID and start time distinguish a reused
+process-table slot from its previous occupant.
+
+Memory columns are KiB (1024 bytes). Process segment sizes come from
+64-byte kernel clicks; swap allocation uses 512-byte blocks. Used memory
+includes the kernel and other allocations, so it is not the sum of the
+displayed process sizes.
+
+States are R for running/runnable, S for sleeping/waiting, T for stopped,
+and Z for zombie. A following 's' means the process is swapped out. '?' in
+the time fields means that its user area could not be read consistently.
+Processes can exit or move while top reads memory; such entries do not
+abort the monitor. Zombie exit accounting is handled separately because
+the kernel reuses parts of a zombie's process structure for different data.
+
+Terminal size
+-------------
+The first line uses a compact layout when the full summary will not fit.
+Rows adapt to the terminal, and -n can limit the number of displayed
+processes. The last column is left unused so output cannot wrap or scroll
+at the right margin. Large terminals are capped at 160 columns, 50 rows
+and 5000 cells to conserve the PDP-11's data address space.
+
+SIGWINCH rebuilds the bounded screen cache after a size change. Quit,
+Ctrl-C, termination and handled runtime errors restore the original
+terminal settings. A terminal smaller than 40 columns by 9 rows gets a
+resize notice instead of a clipped process table.
+
+The mentec telnetd accepts NAWS (Negotiate About Window Size) but does not
+ask for it automatically. With the Mac's telnet client, press Ctrl-] and
+enter this at the local telnet> prompt once per connection:
+
+    send will naws
+
+Return to the PDP session; resizing the Mac terminal will now update the
+PDP's terminal size. Without NAWS, set the size manually before running:
+
+    stty rows 30 columns 120
+
+Use stty size to inspect the size that the PDP actually sees.
+
+Options and keys
+----------------
+    -s seconds    Refresh interval, 0.1 to 1800 seconds (default 1).
+    -o column     Sort column, 0..10 (default 9, DTIME then TIME).
+    -n rows       Maximum processes shown (0 fills the screen).
+    -I            Initially hide idle processes.
+    -h            Print command-line help.
+
+    q             Quit.
+    Space         Refresh now.
+    Ctrl-L        Redraw.
+    I or i        Toggle idle processes.
+    P             Sort by DTIME, then TIME.
+    T             Sort by cumulative TIME.
+    N             Sort by PID.
+    M             Sort by data size.
+    s             Prompt for refresh interval (Escape cancels).
+    o             Prompt for sort column (Escape cancels).
+    h or ?        Toggle interactive help.
+
+Sort columns: 0 PID, 1 numeric UID, 2 priority, 3 nice, 4 text size,
+5 data size, 6 stack size, 7 state, 8 TIME, 9 DTIME, 10 command.
+
+How the implementation works
+----------------------------
+A PDP-11 process has a 64 KiB data address space even when the machine has
+free physical RAM. Its variables, heap and stack must share that space.
+screen.c therefore keeps one bounded character image instead of two curses
+screen images. It compares each new row with its previous contents and
+sends only the changed span. An exactly matching row bypasses copying and
+sanitizing, while clipped or unsanitized input still takes the bounded path.
+The cache also remembers each row length, avoiding another scan of old text.
+An unchanged frame emits nothing. Output is
+buffered until the frame is ready, avoiding a system call for each
+character. termcap supplies the terminal's cursor and clearing sequences;
+the renderer does not assume ANSI escapes.
+
+Sampling and display need different representations. The kernel has a
+fixed number of process slots, but only occupied slots need display rows.
+The history array remembers each slot's last identity and CPU time. Sorts
+move short indices into the display rows, avoiding repeated copies of
+command names and accounting fields.
+
+A sample first reads the kernel process table, then the necessary prefix
+of each user area. The user area's owning-slot pointer is checked before
+its accounting is accepted. After all user areas have been read, top reads
+the relevant process-table prefix again into the same buffer and validates
+each row's PID, address and RAM/swap location. This batches the consistency
+checks into one final read instead of seeking and reading once per process.
+It also avoids allocating a second complete table. An entry that changed
+is marked unavailable, and its history is invalidated so it cannot create
+a false CPU difference on the next refresh. This is a live observation,
+not an atomic snapshot that stops other processes.
+
+The kernel symbols _proc, _nproc, _hz and _cp_time are resolved once from
+/unix and read through /dev/kmem. User areas come from /dev/mem or
+/dev/swap. sysctl supplies boot time, physical memory and allocation maps;
+getloadavg supplies load averages. On this 2.11BSD interface, successful
+sysctl calls return a byte count rather than zero.
+
+The login count rereads utmp on every refresh but keeps its file stream
+open, as the system top does. Login/logout normally update records in
+place, and rewind discards buffered records before rereading. Retaining
+the stream avoids repeated open/close operations and buffer allocation.
+An initial open failure is retried. If an administrator replaces utmp
+with a different file, restart top so it opens the replacement; an open
+descriptor continues to refer to the original file.
+
+CPU, memory and process-time fields use integer fixed-point formatting.
+Separating the integer part from the remainder before scaling prevents
+large counters from overflowing. Quotients are reused rather than asking
+the native compiler to repeat a software division for the remainder.
+Powers of two use exact shifts and masks, and decimal rounding carries
+into the integer part when necessary. Decimal conversion starts with 32-bit
+arithmetic only when needed, then finishes with native 16-bit operations
+once the integer part fits. This does not limit the displayed counter.
+Long sampling gaps scale down both
+sides of a CPU ratio before multiplication. A forced refresh within the
+same kernel clock tick retains the last measured CPU percentage.
+
+The process-row layout is fixed, so format.h appends typed fields directly
+to one bounded line instead of interpreting two printf formats for each
+process. Field widths remain next to the values in draw(), and every append
+reserves the terminating NUL byte. Summary and error messages still use
+printf where the extra formatting machinery is useful.
+
+Header text is cached only while all its inputs match: current time, user
+count, load values and query status, and terminal width. Each refresh still
+samples those inputs. This saves repeated formatting during rapid manual
+refreshes; the clock normally invalidates it on every one-second update.
+
+Selected loop indices and pointers use explicit register declarations.
+This historical compiler otherwise leaves these locals on the stack; its
+three available word registers suit frequently reused word-sized values.
+That is a target-specific choice backed by measurements, not general advice
+for modern compilers. The code keeps ordinary named structures and fields.
+
+The first screen does not wait for a refresh timer: cumulative values are
+already meaningful, while rates require two observations. Signals merely
+set flags; the main loop performs resizing and cleanup because allocation
+and buffered output are unsafe to call from an interrupted signal handler.
+
+Testing and measurement
+-----------------------
+On a modern development host, run from bsd/top:
+
+    sh tests/run.sh
+
+The tests compile the actual renderer with fake terminal services and
+check the resulting characters and attributes. They cover changed spans,
+disappearing rows, 200 randomized frames, resizing, allocation failures
+and terminal restoration. The actual fixed-point formatter is also tested
+against 88 explicit expected results, including rounding boundaries and
+the largest unsigned 32-bit counters. Further checks exhaust the signed
+16-bit integer range for row fields, compare 128 complete rows with the
+former layout, and verify header-cache invalidation. An optional independent
+64-bit oracle checks 274,630 fixed-point results. Host tests do not replace
+native tests of narrower integer types and library behavior.
+
+Run numeric and row-formatting checks on 2.11BSD with:
+
+    /bin/sh tests/native-format.sh
+
+The script uses the native compiler and libc, keeps generated files in a
+private temporary directory, and cleans up when it finishes. See
+tests/README for the distinction between host and native checks.
+
+tests/README.workload describes an opt-in native test with more than 32
+occupied processes, a stopped child, a zombie and ongoing process churn.
+It has a bounded duration and cleans up its own children.
+
+The native timing harness and methodology are in tests/bench/README.md.
+It creates and drains a pseudo-terminal on the PDP, keeping Telnet and
+the modern host's network timing outside the measured path. Compare the
+same terminal, workload, privileges and refresh interval. Compare stripped
+binaries with stripped binaries: debugging symbols increase file length
+but do not consume a running process's memory. Observed data + stack and
+native child CPU accounting measure different costs from executable size.
+
+PERFORMANCE.md records the current native checks and measurements.
+VALIDATION.md preserves the original curses implementation's test report;
+its old binary sizes and test counts do not describe this version.
+
+Attribution
+-----------
+The kernel interfaces and presentation were checked against the installed
+2.11BSD ps, vmstat and top sources. The existing UCB top was written by
+Digby Tarvin, with later contributions including Johnny Billquist and
+other 2.11BSD maintainers. This separate implementation retains that
+acknowledgment; its build does not replace the system copy of top.

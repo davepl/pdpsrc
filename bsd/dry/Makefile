@@ -2,22 +2,22 @@
 # Simplified for 2.9BSD and modern systems
 
 # Default target: build the simplified 2.9BSD version
-all: dry29
+all: dry29 dry
 
 # 2.9BSD version (integer-only, K&R C style)
-dry29:
-	cc -O -Wno-implicit-function-declaration -o dry29 dry29.c
+dry29: dry29.c
+	${CC} ${CFLAGS} -O -o dry29 dry29.c
 
 # No optimization (safe for all PDP-11 models)  
 dry29-noopt:
-	cc -Wno-implicit-function-declaration -o dry29 dry29.c
+	${CC} ${CFLAGS} -o dry29 dry29.c
 
 # Debug version with extra output
 dry29-debug:
-	cc -Wno-implicit-function-declaration -o dry29 dry29.c
+	${CC} ${CFLAGS} -o dry29 dry29.c
 
 # Original cross-platform version (for comparison)
-dry:
+dry: dry.c ../pdp11_unistd.h
 	cc -O -o dry dry.c
 
 # Test targets

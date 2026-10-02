@@ -1,7 +1,7 @@
-# UNIX-Gary / PDP Gary
+# PDP-Gary
 
 The public page is <https://pdp1173.com/pdp-ai.html> (`/pdp-ai` redirects there).
-Its title is **UNIX-Gary**; the assistant introduces itself as **PDP Gary**.
+Its title and assistant name are **PDP-Gary**.
 The green terminal UI includes streaming replies, per-tab conversation history,
 Stop and New conversation controls, and a compact mobile layout. Gary's persona
 is a grumpy UNIX wizard who gives practical answers using traditional tools,
@@ -16,21 +16,22 @@ Browser -> Cloudflare -> Caddy -> Varnish -> PDP .29 (primary)
                                        -> PDP .26 (fallback)
 ```
 
-Both PDPs store the same five files in `/home/www`:
+Both PDPs store the same six files in `/home/www`:
 
 | File | Purpose |
 | --- | --- |
 | `pdp-ai.html` | Complete page, CSS and browser JavaScript |
-| `gary-green-v1.jpg` | Left-column Gary portrait |
-| `unix-gary-apple-touch-icon-v2.png` | 180 × 180 Apple touch icon |
-| `unix-gary-favicon-v2.png` | 32 × 32 browser icon |
-| `unix-gary-preview-v1.jpg` | 972 × 972 Open Graph link-preview image |
+| `gary-green-v2.jpg` | Left-column Gary portrait |
+| `pdp-gary-apple-touch-icon-v3.png` | 180 × 180 Apple touch icon |
+| `pdp-gary-favicon-v3.png` | 32 × 32 browser icon |
+| `pdp-gary-preview-v2.jpg` | 600 × 600 Open Graph link-preview image |
+| `glass-tty-vt220-v1.woff2` | Terminal display font |
 
 The HTML uses absolute public URLs for preview metadata. Apple and other
 clients may cache an older preview. The high-resolution green source artwork
-is preserved in `archive/gary-green-original.png`; it was recolored from the
-owner-supplied Gary illustration. Web derivatives crop and resize that artwork.
-The legacy HTTP server labels PNG as text/plain; the Caddy route corrects
+is preserved unchanged in `archive/gary/gary-original-v2.png`, as supplied by
+the owner. Web derivatives crop and resize that artwork.
+The legacy HTTP server labels PNG as text/plain; `config/pdp-gary-route.caddy` corrects
 Content-Type to image/png for the two icon paths in public responses.
 
 Chat has a separate path: `/pdp-ai-api/chat` goes through Caddy directly to the
@@ -61,7 +62,7 @@ sets mode 644, then verifies direct HTTP byte for byte. It attempts to restore
 changed files on a failed verification. Keep the backup if a network failure
 also interrupts rollback. No credentials are stored in the source or arguments.
 
-These commands update only the five static chat files. For a complete native
+These commands update only the six static chat files. For a complete native
 restoration, `deploy.py` includes all chat source and assets in its source
 bundle, and `install.sh` publishes the static files after taking its usual
 runtime backup. Install the modern bridge and Caddy route separately below.
@@ -70,7 +71,7 @@ No Python, Node.js or AI runtime is installed on the PDP.
 On caddy, after both uploads, invalidate the updated paths:
 
 ```
-varnishadm ban 'req.url ~ ^/(pdp-ai[.]html|gary-green-v1[.]jpg|unix-gary-)'
+varnishadm ban 'req.url ~ ^/(pdp-ai[.]html|gary-green-v2[.]jpg|pdp-gary-|glass-tty-vt220-v1[.]woff2)'
 pdp-backend status
 ```
 
@@ -110,7 +111,10 @@ Copy `config/pdp-ai-route.caddy.template` to `/etc/caddy/pdp-ai-route.caddy` on
 caddy. Replace `PROXY_KEY_PLACEHOLDER` there with the same private proxy key;
 use root ownership, group `caddy`, and mode 640. Merge the import shown in
 `config/Caddyfile.pdp` into the existing PDP host block, preserving other sites.
-The template itself contains no working credential.
+The template itself contains no working credential. Also install
+`config/pdp-gary-route.caddy` at `/etc/caddy/pdp-gary-route.caddy`; the
+host block imports both routes to retain visitor counts and current icon MIME
+types alongside the chat API.
 
 The route limits request bodies, forwards only the dedicated bridge, and uses
 Cloudflare's connecting-IP header for per-client rate accounting. Preserve the

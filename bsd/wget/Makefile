@@ -11,7 +11,7 @@ CFLAGS  = -O   # or -O2 if your system supports it; or just -g
 
 all: wget
 
-wget: wget.c
+wget: wget.c ../pdp11_unistd.h
 	@if [ "`uname -m`" = "pdp11" ]; then \
 		$(CC) $(CFLAGS) wget.c -o wget $(LIBS); \
 	else \

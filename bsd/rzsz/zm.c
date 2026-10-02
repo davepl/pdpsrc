@@ -53,6 +53,10 @@
 int Rxtimeout = 100;		/* Tenths of seconds to wait for something */
 #endif
 
+int zsbh32(), zsendline(), zputhex(), zsda32(), zsdar32();
+int zrdat32(), zrdatr32(), zdlread(), garbitch(), noxrd7();
+int zrbhd32(), zrbhdr(), zgethex(), zrhhdr(), zgeth1();
+
 /* Globals used by ZMODEM functions */
 int Rxframeind;		/* ZBIN ZBIN32, or ZHEX type of frame */
 int Rxtype;		/* Type of header received */

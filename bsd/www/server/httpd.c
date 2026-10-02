@@ -41,7 +41,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
+#include "../../pdp11_unistd.h"
 
 #define CGI_BIN /* Undef to disable CGI support */
 

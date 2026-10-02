@@ -1,0 +1,9 @@
+trial=1
+path=/usr/ucb/top status=0 startup_us=1083335 wall_us=120050001 user_us=150003 system_us=50001 rendered_frames=70 output_bytes=31691 data_bytes=50176 stack_bytes=3520 data_stack_bytes=53696 maxrss_raw=0 forced_requested=0 forced_refreshes=0 forced_us=0 deadline_hit=0 observer_failed=0
+path=./final/top status=0 startup_us=16667 wall_us=120033334 user_us=16667 system_us=0 rendered_frames=117 output_bytes=11144 data_bytes=28672 stack_bytes=5632 data_stack_bytes=34304 maxrss_raw=0 forced_requested=0 forced_refreshes=0 forced_us=0 deadline_hit=0 observer_failed=0
+trial=2
+path=./final/top status=0 startup_us=16667 wall_us=120033334 user_us=16667 system_us=0 rendered_frames=117 output_bytes=9697 data_bytes=28672 stack_bytes=5632 data_stack_bytes=34304 maxrss_raw=0 forced_requested=0 forced_refreshes=0 forced_us=0 deadline_hit=0 observer_failed=0
+path=/usr/ucb/top status=0 startup_us=1066668 wall_us=120033334 user_us=83335 system_us=0 rendered_frames=57 output_bytes=11699 data_bytes=48128 stack_bytes=3520 data_stack_bytes=51648 maxrss_raw=0 forced_requested=0 forced_refreshes=0 forced_us=0 deadline_hit=0 observer_failed=0
+trial=3
+path=/usr/ucb/top status=0 startup_us=1066668 wall_us=120000000 user_us=66668 system_us=16667 rendered_frames=60 output_bytes=13248 data_bytes=50176 stack_bytes=3520 data_stack_bytes=53696 maxrss_raw=0 forced_requested=0 forced_refreshes=0 forced_us=0 deadline_hit=0 observer_failed=0
+path=./final/top status=0 startup_us=16667 wall_us=120033334 user_us=0 system_us=16667 rendered_frames=117 output_bytes=8597 data_bytes=28672 stack_bytes=5632 data_stack_bytes=34304 maxrss_raw=0 forced_requested=0 forced_refreshes=0 forced_us=0 deadline_hit=0 observer_failed=0

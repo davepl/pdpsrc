@@ -9,7 +9,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <unistd.h>     /* For getopt() on most systems */
+#include "../pdp11_unistd.h"     /* For getopt() on most systems */
+#if defined(pdp11) || defined(__pdp11__)
+typedef unsigned char uint8_t;
+typedef unsigned short uint16_t;
+#else
+#include <stdint.h>
+#endif
 /* Additional getopt header for some modern systems */
 #ifdef __pdp11__
 /* getopt available via unistd.h on 2.11BSD */

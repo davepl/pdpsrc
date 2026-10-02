@@ -6,7 +6,7 @@ LDFLAGS =
 LIBS = -lm
 
 # Program names
-PROGRAMS = stars matrix sine matrix2 sine2 life
+PROGRAMS = stars matrix sine matrix2 sine2 life chars splash graphics/graphics
 
 # Default target
 all: $(PROGRAMS)
@@ -53,6 +53,15 @@ life: life.c
 	else \
 		$(CC) $(CFLAGS) -Wno-deprecated-non-prototype -o life life.c $(LIBS); \
 	fi
+
+chars: chars.c
+	$(CC) $(CFLAGS) -o chars chars.c
+
+splash: splash.c
+	$(CC) $(CFLAGS) -o splash splash.c
+
+graphics/graphics: graphics/graphics.c
+	$(CC) $(CFLAGS) -o graphics/graphics graphics/graphics.c
 
 # Clean target
 clean:

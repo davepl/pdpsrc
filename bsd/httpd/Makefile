@@ -8,7 +8,7 @@ LIBS=
 
 all:	${PROGRAM}
 
-${OBJS}: ${SRCS}
+${OBJS}: ${SRCS} ../pdp11_unistd.h
 	@if [ "`uname -m`" = "pdp11" ]; then \
 		echo "Building for PDP-11..."; \
 		${CC} ${CFLAGS} -c -o $@ ${SRCS}; \

@@ -1,0 +1,29 @@
+Native process-state workload
+=============================
+
+On 2.11BSD, from bsd/top:
+
+    cc -O -i -o top-workload tests/workload.c
+    ./top-workload 30
+
+While it runs, use a second terminal to run the candidate top. The harness
+prints the PIDs of its stopped child, intentional zombie, and churn manager.
+The 33 sleeping children force top beyond its initial 32-row allocation.
+The manager forks and reaps one short-lived child per second, exercising
+process creation and exit while top samples the live kernel tables.
+
+Check that top stays responsive, reports T and Z for the printed PIDs, and
+does not interpret the zombie's overlaid accounting fields as segment sizes.
+PID sorting (-o 0) helps locate the printed PIDs; rows may extend beyond one
+screen. Repeat with idle filtering, and verify recovery after the workload
+ends. Churn is intentionally transient and need not appear in every frame.
+
+The default is 30 seconds; an optional duration accepts 5 through 300 seconds.
+Ctrl-C, SIGTERM, SIGHUP, or normal expiry makes the parent kill and reap only
+its recorded direct children, including the stopped child. A failed fork
+also cleans up the partial workload. Do not SIGKILL the parent: no process
+can run cleanup after that signal, and its stopped child would need manual
+cleanup. No other users' processes or files are changed.
+
+This is a native, explicitly launched integration test. It is not run by
+tests/run.sh and is not a CPU benchmark: its purpose is lifecycle coverage.
