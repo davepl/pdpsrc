@@ -47,7 +47,7 @@ int control, report;
   if (control >= 0) {
    if (write(report, "S", 1) != 1) _exit(3);
    while (read(control, &c, 1) < 0) if (errno != EINTR) _exit(4);
-   if (!revoked) _exit(5);
+   if (!session_revoked) _exit(5);
   }
   session_end();
   if (control < 0 && write(report, "S", 1) != 1) _exit(3);

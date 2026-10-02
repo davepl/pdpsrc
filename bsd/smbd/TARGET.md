@@ -622,3 +622,84 @@ policy was changed. These operations ran through the macOS SMB filesystem
 against the native PDP, not an independent Python client's emulation of Git.
 The disposable probe was created under `test/smb-git-probe-vqoowdcl`; the
 user's original clone destination was untouched.
+
+## Mentec RA82 deployment (2026-10-02)
+
+The `192.168.1.29` mentec host is a physical PDP-11/83 with a Mentec M1
+processor and 3 MiB memory, as confirmed by its owner. It runs 2.11BSD
+patch 499; the kernel reports model 73. Its `/dev/ra8g` filesystem is mounted at
+`/mnt/ra82/usr`; the `usr` share exports that directory. SMB account `pdp`
+uses the existing Unix account `dave` (UID 100, primary GID 0), with extra
+groups cleared. `-w` enables writes subject to that account's existing
+permissions. Export ownership and modes were not changed: the root-owned
+0755 share root remains non-writable, while `dave/` is writable by dave.
+
+The root-only installation is `/usr/local/smbd` (0700). Its password hash,
+fresh 1 MiB entropy pool, and persistent timestamp table are mode 0600 and
+outside the export. The `start` script checks `/dev/ra8g` is mounted before
+launching, checks its PID file to avoid duplicate starts, and uses native
+`nohup` with `/usr/tmp` for spools. Startup is enabled in `/etc/rc.local`;
+the original is `/etc/rc.local.pre-smbd-20261002`. Shell syntax and repeated
+start were checked; reboot has not been tested.
+
+Compilation on mentec stopped in `/lib/c1` with exit 8 while compiling
+`wire.c`. The deployed executable was instead built natively on minerva
+(`192.168.1.26`), in a separate `/usr/tmp/smbd-credits` staging tree; its
+running service was not changed. FTP upload was verified byte for byte.
+The normal 64 KiB transfer size and required signing are unchanged.
+Mentec uses `-C 16` to bound queued work on its slower CPU; the default
+credit limit remains 32. Verbose diagnostics now include frame/reply sizes and
+timestamps, invalid-credit/signature failures, and child exit status. The
+full isolated host regression suite passed with this final code.
+
+Native source snapshot:
+`e5be03468aeb102dbc4ae6c5bad8ed0b7bf260de33cdb981f4f492bc2d73d2dc`.
+Executable: 113817 bytes, SHA256
+`6cb0973c8b9e311d0849b56ba32c76561f70bcb42193a6abce2b9c86ef6a42a9`.
+
+```
+text    data    bss     dec     hex
+32256   3886    38740   74882   12482   total text: 78656
+        overlays: 27456,18944
+```
+
+The rounded base and overlay windows still fit 32768 + 32768 bytes.
+Static data+BSS is 42626 bytes, leaving 22910 bytes for heap and stack.
+
+The reconnect signal callback now lives in resident `revoke.o`, so it cannot
+be displaced by either code overlay during asynchronous delivery. Native
+signed reconnect tests passed: failed authentication preserves the old
+session, successful replacement closes it and releases its exclusive handle,
+and delete-on-close cleanup finishes before new authentication is acknowledged.
+
+The original receive loop stopped draining TCP during HMAC processing. On
+real hardware a 64 KiB signature takes roughly 12 seconds; the Mac logged
+`TRAN_SEND` error 35 while the receive window stayed closed. The worker now
+prefetches incoming bytes between hash chunks into a private 2 MiB disk
+ring, preserving the normal frame/signature validation before dispatch.
+The ring test passed under ASan/UBSan: exact capacity, wraparound, 3 MiB
+byte ordering, EOF and session revocation. Temporary Mac timeout/queue
+settings used during diagnosis were removed before final acceptance.
+
+The eight-credit host tests also passed: signed window saturation and
+replenishment, maximum eight-command compounds, and writable operations.
+Receive prefetch alone prevented TCP send failures but allowed a long queue
+to exceed per-request deadlines at the default 32 credits. Eight credits
+passed the host protocol tests but stalled the native Mac flush after all
+1 MiB reached disk; this setting was not accepted for deployment.
+
+With `-C 16`, the native macOS 26.5.2 client passed a 1048576-byte write,
+`fsync`, close, rename to a name containing spaces, and full network readback.
+Flush completed at 231.7 seconds, close at 235.4, rename at 250.8, and byte
+comparison at 455.3 seconds. SHA256:
+`fbbab289f7f94b25736c58be46a994c441fd02552cc6022352e3d86d2fab7c83`.
+Server logs confirmed the readback used SMB READ requests. `smbutil statshares`
+reported SMB 2.002, signing required/on, and zero session reconnects. No Mac
+SMB preference overrides were present for this successful test.
+
+Final native checks passed share enumeration (`usr`, `IPC$`), denial of a
+create at the root-owned export root, and all authenticated reconnect cases.
+The disposable acceptance directory was deleted through SMB and its absence
+verified; the temporary Mac mount was removed. The service was restarted
+without `-v` as PID 1489, and password login, enumeration and browsing passed
+again. A repeated `start` correctly reported that same listener already running.

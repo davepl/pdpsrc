@@ -8,10 +8,11 @@
 
 #define SESSION_ROWS 16
 #define SESSION_SIZE 16
-static int registry_fd = -1, own_slot = -1, connection_fd = -1;
+static int registry_fd = -1, own_slot = -1;
 static char registry_path[SMBD_PATH];
 static struct stat registry_stat;
-static volatile int revoked;
+extern int session_connection_fd;
+extern volatile int session_revoked;
 
 static int
 row(slot, p, writing)
@@ -73,23 +74,13 @@ sessions_open()
  return fd;
 }
 
-static void
-revoke_connection(sig)
-int sig;
-{
- (void)sig; revoked = 1;
- /* shutdown interrupts idle reads without closing/reusing the descriptor.
-  * Files and delete-on-close state are released by the normal serve cleanup. */
- if (connection_fd >= 0) shutdown(connection_fd, 2);
-}
-
 void
 sessions_child(fd, socket_fd)
 int fd, socket_fd;
 {
- close(registry_fd); registry_fd = fd; connection_fd = socket_fd;
- own_slot = -1; revoked = 0;
- signal(SIGUSR1, revoke_connection);
+ close(registry_fd); registry_fd = fd; session_connection_fd = socket_fd;
+ own_slot = -1; session_revoked = 0;
+ signal(SIGUSR1, session_revoke);
 }
 
 /* Called only after NTLM authentication succeeds. Unknown previous IDs,
@@ -112,7 +103,7 @@ u32 lo, hi, previous_lo, previous_hi;
    previous = i; pid = (int)get32(p); signal_old = get32(p + 12) == 1UL;
   }
  }
- if (available < 0 || revoked) goto bad;
+ if (available < 0 || session_revoked) goto bad;
  memset(p, 0, sizeof(p)); put32(p, (u32)(unsigned)getpid());
  put64(p + 4, lo, hi); put32(p + 12, 1UL);
  if (row(available, p, 1)) goto bad;
@@ -129,7 +120,7 @@ u32 lo, hi, previous_lo, previous_hi;
  /* Never wait while holding the registry lock: old normal cleanup needs it.
   * A dead worker is cleared by the parent's reap pass after fs_reap. */
  for (tries = 0; previous >= 0 && tries < 60; tries++) {
-  if (revoked || sessions_lock()) return -1;
+  if (session_revoked || sessions_lock()) return -1;
   if (row(previous, p, 0)) { sessions_unlock(); return -1; }
   waiting = get32(p) == (u32)(unsigned)pid &&
             get32(p + 4) == previous_lo && get32(p + 8) == previous_hi;
@@ -137,7 +128,7 @@ u32 lo, hi, previous_lo, previous_hi;
   if (!waiting) return 0;
   sleep(1);
  }
- return previous < 0 && !revoked ? 0 : -1;
+ return previous < 0 && !session_revoked ? 0 : -1;
 bad:
  sessions_unlock(); return -1;
 }

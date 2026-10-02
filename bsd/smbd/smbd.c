@@ -68,22 +68,6 @@ int sig;
 }
 
 static int
-full_read(fd, p, len)
-int fd;
-u8 *p;
-unsigned len;
-{
-    int n;
-    while(len) {
-        n=read(fd,p,len);
-        if(n<0 && errno==EINTR) continue;
-        if(n<=0) return -1;
-        p+=n; len-=n;
-    }
-    return 0;
-}
-
-static int
 full_write(fd, p, len)
 int fd;
 const u8 *p;
@@ -116,6 +100,7 @@ u8 *digest;
         if(fread(io_buffer,1,n,f)!=n) return -1;
         if(pos==0) { if(n<64) return -1; memset(io_buffer+48,0,16); }
         hmac_update(&h,io_buffer,n);
+        if(transport_prefetch(io_buffer,sizeof(io_buffer))) return -1;
         pos+=n; len-=n;
     }
     hmac_final(&h,digest);
@@ -147,11 +132,11 @@ credit_grant()
     unsigned n,want;
     want=get16(request+14);
     if(want==0) want=1;
-    n=32-credit_count;
+    n=cfg.max_credits-credit_count;
     if(n>want) n=want;
     /* Grant at least four initially for desktop compound requests. */
     if(!negotiated && n<4) n=4;
-    if(n>32-credit_count) n=32-credit_count;
+    if(n>cfg.max_credits-credit_count) n=cfg.max_credits-credit_count;
     credit_count+=n;
     return n;
 }
@@ -361,11 +346,18 @@ long total;
             if(next || idx) return -1;
             return 0;
         }
-        if(credit_take()) return -1;
+        if(credit_take()) {
+            if(cfg.verbose) fprintf(stderr,"smbd: invalid credit cmd=%u mid=%lu window=%lu+%u\n",
+                cmd,get32(request+24),credit_lo,credit_count);
+            return -1;
+        }
         grant=credit_grant();
         status=ST_OK;
         if((flags&8) && (!auth.authenticated || auth.guest ||
-           spool_hash(in,pos,len,digest) || !constant_equal(digest,request+48,16))) return -1;
+           spool_hash(in,pos,len,digest) || !constant_equal(digest,request+48,16))) {
+            if(cfg.verbose) fprintf(stderr,"smbd: invalid signature cmd=%u bytes=%ld\n",cmd,len);
+            return -1;
+        }
         if(auth.authenticated && auth.signing_required && !(flags&8)) status=ST_DENIED;
         if(flags&4) {
             if(!idx) status=ST_INVALID;
@@ -473,13 +465,14 @@ long total;
 }
 
 static void
-serve(fd, in, out)
+serve(fd, in, out, ahead)
 int fd;
-FILE *in,*out;
+FILE *in,*out,*ahead;
 {
     u8 header[4];
     long total,left,size;
     unsigned n;
+    transport_init(fd,ahead);
     fs_init(); rpc_init();
     credit_count=1; credit_lo=credit_hi=0;
     session_lo=get32(auth.challenge); session_hi=get32(auth.challenge+4);
@@ -491,20 +484,22 @@ FILE *in,*out;
          * down their handles just because a user pauses between operations.
          * Admission is bounded; partial frames and logins still time out. */
         alarm(auth.authenticated?0:120);
-        if(full_read(fd,header,4)) break;
+        if(transport_read(header,4)) break;
         alarm(120);
         total=((long)header[1]<<16)|((long)header[2]<<8)|header[3];
+        if(cfg.verbose) fprintf(stderr,"smbd[%ld] time=%ld frame=%ld\n",(long)getpid(),(long)time(0),total);
         if(header[0]!=0 || total<64 || total>SMBD_MAXFRAME) break;
         rewind(in); left=total;
         while(left>0) {
             n=left>(long)sizeof(io_buffer)?sizeof(io_buffer):(unsigned)left;
-            if(full_read(fd,io_buffer,n) || fwrite(io_buffer,1,n,in)!=n) goto done;
+            if(transport_read(io_buffer,n) || fwrite(io_buffer,1,n,in)!=n) goto done;
             left-=n;
         }
         if(fflush(in)) break;
         total=bootstrap(in,total);
         if(total<0 || process_frame(in,out,total)) break;
         size=ftell(out);
+        if(cfg.verbose) fprintf(stderr,"smbd[%ld] time=%ld send=%ld\n",(long)getpid(),(long)time(0),size);
         if(size<0 || size>SMBD_MAXREPLY) break;
         if(!size) continue;
         header[0]=0; header[1]=size>>16; header[2]=size>>8; header[3]=size;
@@ -523,7 +518,7 @@ FILE *in,*out;
     }
 done:
     alarm(0); fs_close_all(); rpc_close_all(); session_end();
-    fclose(in); fclose(out); close(fd);
+    fclose(in); fclose(out); fclose(ahead); close(fd);
 }
 
 static void
@@ -537,6 +532,13 @@ reap_children()
 #endif
     if(sessions_lock()) { stopped=1; return; }
     while((pid=wait3(&status,WNOHANG,(struct rusage *)0))>0) {
+        if(cfg.verbose) fprintf(stderr,"smbd: worker %d exited status=%x\n",pid,
+#ifdef PDP11
+            status.w_status
+#else
+            status
+#endif
+            );
         fs_reap(pid);
         if(sessions_reaped(pid)) stopped=1;
         for(i=0;i<16;i++) if(children[i]==pid) { children[i]=0; child_count--; break; }
@@ -562,7 +564,7 @@ static void
 usage()
 {
     fprintf(stderr,"usage: smbd -r directory [-s share] [-u smbuser -P password-file | -H hash-file | -g]\n"
-        "            [-a IPv4-address] [-p port] [-c connections] [-U unixuser]\n"
+        "            [-a IPv4-address] [-p port] [-c connections] [-C credits] [-U unixuser]\n"
         "            [-R random-pool] [-T temporary-directory] [-M metadata-file] [-w] [-v]\n");
     exit(2);
 }
@@ -579,11 +581,12 @@ char **argv;
     struct timeval timeout;
     fd_set readers;
     char *unixuser;
-    FILE *in,*out;
+    FILE *in,*out,*ahead;
     long number;
     char *end;
     memset(&cfg,0,sizeof(cfg));
     cfg.share="pdp"; cfg.user="pdp"; cfg.port=445; cfg.max_connections=4;
+    cfg.max_credits=32;
     cfg.bind_address="0.0.0.0"; unixuser="nobody";
     for(i=1;i<argc;i++) {
         if(!strcmp(argv[i],"-g")) cfg.guest=1;
@@ -609,6 +612,10 @@ char **argv;
                 number=strtol(argv[i],&end,10);
                 if(!*argv[i] || *end || number<1 || number>16) usage();
                 cfg.max_connections=(int)number; break;
+            case 'C':
+                number=strtol(argv[i],&end,10);
+                if(!*argv[i] || *end || number<8 || number>32) usage();
+                cfg.max_credits=(int)number; break;
             case 'U': unixuser=argv[i]; break;
             default: usage();
             }
@@ -673,8 +680,11 @@ char **argv;
         if(child_count>=cfg.max_connections) { close(fd); continue; }
         memset(&auth,0,sizeof(auth));
         if(!auth_random_challenge()) { fprintf(stderr,"smbd: random source exhausted or unavailable\n"); close(fd); continue; }
-        in=private_spool(); out=private_spool();
-        if(!in || !out) { if(in) fclose(in); if(out) fclose(out); close(fd); continue; }
+        in=private_spool(); out=private_spool(); ahead=private_spool();
+        if(!in || !out || !ahead) {
+            if(in) fclose(in); if(out) fclose(out); if(ahead) fclose(ahead);
+            close(fd); continue;
+        }
         /* flock locks belong to open descriptions. A dup/inherited parent
          * description would let workers pass each other's locks. */
         child_state=open(state_path,O_RDWR);
@@ -682,16 +692,16 @@ char **argv;
            st.st_dev!=state_stat.st_dev || st.st_ino!=state_stat.st_ino ||
            st.st_nlink!=1 || (st.st_mode&077)!=0) {
             if(child_state>=0) close(child_state);
-            fclose(in); fclose(out); close(fd); continue;
+            fclose(in); fclose(out); fclose(ahead); close(fd); continue;
         }
         child_meta=cfg.metadata_file?metadata_reopen():-1;
         if(cfg.metadata_file && child_meta<0) {
-            close(child_state); fclose(in); fclose(out); close(fd); continue;
+            close(child_state); fclose(in); fclose(out); fclose(ahead); close(fd); continue;
         }
         child_session=sessions_open();
         if(child_session<0) {
             close(child_state); if(child_meta>=0) close(child_meta);
-            fclose(in); fclose(out); close(fd); continue;
+            fclose(in); fclose(out); fclose(ahead); close(fd); continue;
         }
         pid=fork();
         if(pid==0) {
@@ -703,11 +713,11 @@ char **argv;
             close(listenfd); signal(SIGINT,SIG_DFL); signal(SIGTERM,SIG_DFL);
             if(geteuid()==0 && (chroot(".") || chdir("/") || setgroups(0,(gid_t *)0) ||
                 setgid(worker_gid) || setuid(worker_uid))) { perror("confinement"); _exit(1); }
-            serve(fd,in,out); _exit(0);
+            serve(fd,in,out,ahead); _exit(0);
         }
         close(child_session);
         close(child_state); if(child_meta>=0) close(child_meta);
-        fclose(in); fclose(out); close(fd);
+        fclose(in); fclose(out); fclose(ahead); close(fd);
         if(pid<0) { perror("fork"); continue; }
         for(i=0;i<16;i++) if(!children[i]) { children[i]=pid; child_count++; break; }
     }

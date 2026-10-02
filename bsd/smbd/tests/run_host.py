@@ -27,13 +27,15 @@ with tempfile.TemporaryDirectory(prefix='smbd-host-tests-') as work:
         s.bind(('127.0.0.1', 0))
         port = s.getsockname()[1]
     cases = ((False, 4, 'read'), (True, 4, 'write'),
-             (True, 4, 'metadata-restart'), (False, 1, 'one-worker'), (False, 4, 'guest'))
+             (True, 4, 'metadata-restart'), (False, 1, 'one-worker'), (False, 4, 'guest'),
+             (True, 4, 'eight-credits'))
     restart_client = None
     for writable, workers, case in cases:
         with (work / (case + '.log')).open('w+') as log:
             server = subprocess.Popen([str(root / 'smbd'), '-r', str(share),
                                        '-a', '127.0.0.1', '-p', str(port), '-T', str(work),
                                        '-c', str(workers), '-v'] +
+                                      (['-C', '8'] if case == 'eight-credits' else []) +
                                       (['-g'] if case == 'guest' else ['-P', str(password)]) +
                                       (['-w', '-M', str(work / 'metadata')] if writable else []), stderr=log)
             try:
@@ -51,7 +53,9 @@ with tempfile.TemporaryDirectory(prefix='smbd-host-tests-') as work:
                     # The readiness socket briefly occupied the only child;
                     # allow the listener's one-second reap cycle to finish.
                     time.sleep(1.1)
-                if case == 'guest':
+                if case == 'eight-credits':
+                    tests = ['credits_test.py', 'protocol.py', 'write_test.py']
+                elif case == 'guest':
                     tests = ['guest_test.py']
                 elif case == 'metadata-restart':
                     tests = ['metadata_test.py', 'reconnect_test.py']
@@ -98,8 +102,12 @@ with tempfile.TemporaryDirectory(prefix='smbd-host-tests-') as work:
                     str(root / 'wire.c'), '-o', str(work / 'metadata-test')], check=True)
     subprocess.run([str(work / 'metadata-test')], check=True)
     subprocess.run(['cc', *flags, str(root / 'tests/session_test.c'),
-                    str(root / 'wire.c'), '-o', str(work / 'session-test')], check=True)
+                    str(root / 'wire.c'), str(root / 'revoke.c'),
+                    '-o', str(work / 'session-test')], check=True)
     subprocess.run([str(work / 'session-test')], check=True, timeout=15)
+    subprocess.run(['cc', *flags, str(root / 'tests/transport_test.c'),
+                    '-o', str(work / 'transport-test')], check=True)
+    subprocess.run([str(work / 'transport-test')], check=True, timeout=15)
     subprocess.run(['cc', *flags, str(root / 'tests/rpc_fuzz.c'),
                     str(root / 'wire.c'), '-o', str(work / 'rpc-test')], check=True)
     subprocess.run([str(work / 'rpc-test')], check=True)

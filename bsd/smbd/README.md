@@ -68,7 +68,10 @@ Native foreground launch (substitute actual paths/address):
 ```
 
 Add `-w` for writable service. `-c N` sets the worker limit (default 4, maximum
-16). `-T directory` places temporary spools and the sharing registry on a
+16). `-C N` sets the credit limit (8–32, default 32). The physical Mentec M1
+uses `-C 16` to limit queued work while leaving room for desktop metadata
+requests. Lower limits need client testing; eight credits stalled macOS flushes.
+`-T directory` places temporary spools and the sharing registry on a
 chosen local filesystem (default `/tmp`); use a filesystem with adequate free
 space, such as `/usr/tmp` on the measured PDP. Authenticated idle connections
 retain their handles; unfinished logins and partial frames time out. Ctrl-C
@@ -135,6 +138,9 @@ PDP-11, Windows, macOS, GUI, and independent-library test results.
   cannot be recovered after reconnecting.
 - Two 8,192-byte protocol buffers and two 4,096-byte RPC buffers. Transfers up
   to 65,536 bytes stream through small workspaces and private temporary files.
+  While hashing, the worker drains incoming TCP data into a bounded 2 MiB
+  disk ring under `-T`, preventing client send timeouts on slower CPUs.
+  Prefetched bytes are authenticated and executed in their original order.
   Incoming frames are capped at 524,288 bytes and compound replies at 589,824.
   Signed READ data is snapshotted once, then hashed and sent from that snapshot.
   Temporary disk storage must be available outside the chroot.

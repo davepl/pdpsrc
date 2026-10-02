@@ -60,9 +60,13 @@ struct config {
  char *metadata_file;
  u8 nthash[16];
  unsigned port;
- int guest, max_connections, verbose, writable;
+ int guest, max_connections, verbose, writable, max_credits;
 };
 extern struct config cfg;
+void session_revoke(int);
+void transport_init(int, FILE *);
+int transport_read(u8 *, unsigned);
+int transport_prefetch(u8 *, unsigned);
 extern struct authstate auth;
 extern u8 request[SMBD_BUFSIZE], response[SMBD_BUFSIZE];
 extern unsigned request_len, response_len;
