@@ -1,0 +1,13 @@
+top-best3.c:
+screen-registers.c:
+top-best5.c:
+screen-registers.c:
+Assertion failed: file "test-rowformat.c", line 19
+fixed-point tests passed: 88 golden cases and buffer guards
+text	data	bss	dec	hex
+30272	4118	5610	40000	9c40	top-best2
+30464	4114	5902	40480	9e20	top-best3
+30528	4114	5902	40544	9e60	top-best5
+completed-trial-1
+completed-trial-2
+completed-trial-3
