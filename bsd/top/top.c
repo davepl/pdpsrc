@@ -180,10 +180,16 @@ setup()
     }
     if ((kmem = open("/dev/kmem", O_RDONLY)) < 0 ||
         (mem = open("/dev/mem", O_RDONLY)) < 0) {
-        strcpy(error_text, "cannot open /dev/kmem or /dev/mem (run as root)");
+        strcpy(error_text, "cannot read kernel memory; ask root to run make install");
         return 0;
     }
     swapfd = open("/dev/swap", O_RDONLY);
+    /* Keep the read-only descriptors, but shed the installed kmem group
+     * before reading user-controlled terminal settings or drawing. */
+    if (setregid(getgid(), getgid()) < 0) {
+        strcpy(error_text, "cannot drop kernel-memory group privilege");
+        return 0;
+    }
     if (!readat(kmem, (off_t)symbols[1].n_value,
             (char *)&nproc, sizeof(nproc)) ||
         !readat(kmem, (off_t)symbols[2].n_value, (char *)&hz, sizeof(hz)) ||
