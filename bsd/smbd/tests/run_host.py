@@ -58,7 +58,7 @@ with tempfile.TemporaryDirectory(prefix='smbd-host-tests-') as work:
                 elif workers == 1:
                     tests = ['protocol.py']
                 elif writable:
-                    tests = ['write_test.py', 'archive_test.py', 'metadata_test.py', 'reconnect_test.py']
+                    tests = ['write_test.py', 'archive_test.py', 'hidden_test.py', 'metadata_test.py', 'reconnect_test.py']
                 else:
                     tests = ['clients.py', 'protocol.py', 'rpc_test.py', 'write_test.py', 'reconnect_test.py']
                 for test in tests:

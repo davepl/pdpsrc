@@ -156,6 +156,11 @@ PDP-11, Windows, macOS, GUI, and independent-library test results.
   truncation set it. Writable exports should be owned by the worker's Unix
   account because changing inode flags requires ownership. Native flag storage
   adds no per-file memory table or sidecar files.
+  HIDDEN is also persistent: user flag `0x0020` on 2.11BSD, `UF_HIDDEN`
+  where available (otherwise private flag `0x0400`), and `user.smbd.hidden`
+  on Linux. This permits macOS to create dot directories such as Git's `.git`.
+  HIDDEN survives writes and renames; an explicit attribute update can clear it
+  independently of ARCHIVE. SYSTEM and other unimplemented flags are rejected.
 - Access/write timestamps have native one-second resolution. With `-M`, SMB
   creation/change times persist as exact FILETIME values in a 262,208-byte
   table with 2,048 entries and a 128-byte workspace. Rename and hard links

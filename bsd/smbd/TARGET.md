@@ -578,3 +578,47 @@ and displayed the Explorer-uploaded `binary file.bin` as 262 KB in
 `explorer-upload-20261001`. That Finder tab and mount were left open for
 review. The owned local Finder download/upload fixtures and their generated
 view metadata were removed after checking their names and hashes.
+
+## Hidden attributes and macOS Git (2026-10-02)
+
+On the signed macOS mount, both `git clone` and a plain `mkdir .git` failed
+with `Operation not supported`. The server rejected the HIDDEN attribute
+on CREATE. HIDDEN is now stored in native user inode flag `0x0020`, separate
+from ARCHIVE (`0x0080`) and the timestamp marker (`0x0040`). The server
+returns it in CREATE, QUERY_INFO, and directory enumeration and implements
+explicit SET_INFO changes. Writes preserve it, and NORMAL clears it.
+
+The full host regression suite passed, including the new signed independent
+`tests/hidden_test.py` checks for file/directory creation, rename, fresh TCP
+sessions, directory enumeration, writes, readonly/archive independence and
+explicit clearing. That hidden-attribute test and the existing persistent ARCHIVE regression
+also passed on the native PDP.
+
+Native source snapshot
+`7ed00062beae01f81a83f7e4c015f77aad7f94550eb0aa78cae33cb7a40fc7a4`
+compiled without warnings in `/usr/tmp/smbd-git-compat/bsd/smbd`:
+
+```
+text    data    bss     dec     hex
+31808   3686    38720   74214   121e6   total text: 77440
+        overlays: 27456,18176
+```
+
+The executable is 111985 bytes. Static data remains 42406 bytes; only overlay
+text grows, by 384 bytes. The same two 32 KiB instruction windows still fit.
+The replacement daemon runs through native `nohup` as PID 17079, using the
+existing export, NT-hash file, entropy pool and timestamp table. Its PID file
+is `/usr/tmp/smbd-git-compat/server.pid` and its mode-0600 log is
+`/usr/tmp/smbd-git-compat/nohup.out`. No startup files were changed. The old
+macOS mount disconnected during restart; a fresh `mount_smbfs` connection
+authenticated successfully and created `.git`. Transparent recovery of the
+old macOS mount was not verified.
+
+Using that fresh signed macOS mount, `git init` succeeded, then an unmodified
+`git clone https://github.com/davepl/MACRO-11` completed with all six working
+files. `git fsck --full` passed and `git status --short` was empty. The
+Mac client reported SMB 2.0.2 with signing required and enabled; no client
+policy was changed. These operations ran through the macOS SMB filesystem
+against the native PDP, not an independent Python client's emulation of Git.
+The disposable probe was created under `test/smb-git-probe-vqoowdcl`; the
+user's original clone destination was untouched.

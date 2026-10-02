@@ -16,11 +16,19 @@
 #endif
 
 /* 2.11BSD reserves user flag bits 0x08..0x80; macOS reserves 0x0100..0x4000.
- * These inode flags store SMB ARCHIVE without changing Unix permission bits.
+ * These inode flags store SMB ARCHIVE/HIDDEN without changing Unix permissions.
  * They are deliberately platform-specific: Darwin 0x80 is UF_DATAVAULT. */
 #ifdef PDP11
 #define SMBD_ARCHIVE 0x0080
+#define SMBD_HIDDEN 0x0020
 #else
+#ifdef UF_HIDDEN
+#define SMBD_HIDDEN UF_HIDDEN
+#else
+#ifndef __linux__
+#define SMBD_HIDDEN 0x0400
+#endif
+#endif
 #ifdef UF_ARCHIVE
 #define SMBD_ARCHIVE UF_ARCHIVE
 #else
@@ -897,27 +905,27 @@ u32 *action;
 }
 
 static int
-archive_get(fd, st)
-int fd;
+flag_get(fd, st, hidden)
+int fd, hidden;
 struct stat *st;
 {
 #ifdef __linux__
  unsigned char value;
  ssize_t n;
  (void)st;
- n = fgetxattr(fd, "user.smbd.archive", &value, 1);
+ n = fgetxattr(fd, hidden ? "user.smbd.hidden" : "user.smbd.archive", &value, 1);
  if (n < 0 && errno == ENODATA) return 0;
  if (n != 1 || value > 1) { if (n >= 0) errno = EIO; return -1; }
  return value;
 #else
  (void)fd;
- return (st->st_flags & SMBD_ARCHIVE) != 0;
+ return (st->st_flags & (hidden ? SMBD_HIDDEN : SMBD_ARCHIVE)) != 0;
 #endif
 }
 
 static int
-archive_set(fd, st, on)
-int fd, on;
+flag_set(fd, st, on, hidden)
+int fd, on, hidden;
 struct stat *st;
 {
  int current;
@@ -930,18 +938,28 @@ struct stat *st;
  unsigned long flags;
 #endif
 #endif
- current = archive_get(fd, st);
+ current = flag_get(fd, st, hidden);
  if (current < 0) return -1;
  if (current == on) return 0;
 #ifdef __linux__
  value = on ? 1 : 0;
- if (fsetxattr(fd, "user.smbd.archive", &value, 1, 0) < 0) return -1;
+ if (fsetxattr(fd, hidden ? "user.smbd.hidden" : "user.smbd.archive",
+               &value, 1, 0) < 0) return -1;
 #else
  flags = st->st_flags;
- if (on) flags |= SMBD_ARCHIVE; else flags &= ~SMBD_ARCHIVE;
+ if (on) flags |= hidden ? SMBD_HIDDEN : SMBD_ARCHIVE;
+ else flags &= ~(hidden ? SMBD_HIDDEN : SMBD_ARCHIVE);
  if (fchflags(fd, flags) < 0) return -1;
 #endif
  return fstat(fd, st);
+}
+
+static int
+archive_set(fd, st, on)
+int fd, on;
+struct stat *st;
+{
+ return flag_set(fd, st, on, 0);
 }
 
 static u32
@@ -950,10 +968,11 @@ struct stat *st;
 int fd;
 {
  u32 attrs;
- int archive;
- archive = archive_get(fd, st);
- if (archive < 0) return MASK32;
+ int archive, hidden;
+ archive = flag_get(fd, st, 0); hidden = flag_get(fd, st, 1);
+ if (archive < 0 || hidden < 0) return MASK32;
  attrs = (isdir(st) ? 0x10UL : 0UL) | (archive ? 0x20UL : 0UL) |
+         (hidden ? 2UL : 0UL) |
          ((!cfg.writable || !(st->st_mode & 0222)) ? 1UL : 0UL);
  return attrs ? attrs : 0x80UL;
 }
@@ -1168,7 +1187,7 @@ create_file()
   if (options & 0x00001000UL) return ST_DENIED;
  }
  if (cfg.writable && disposition != 1) {
-  if (attrs & ~0xb1UL) return ST_NOT_SUPPORTED;
+  if (attrs & ~0xb3UL) return ST_NOT_SUPPORTED;
   if ((options & 1UL) && (attrs & 1UL)) return ST_NOT_SUPPORTED;
   if (!(options & 1UL) && (attrs & 0x10UL)) return ST_NOT_SUPPORTED;
   if ((options & 0x1000UL) && (attrs & 1UL)) return ST_DENIED;
@@ -1249,6 +1268,10 @@ create_file()
  }
  if (cfg.writable && action != 1 &&
      archive_set(fd, &st, !isdir(&st) || (attrs & 0x20UL) != 0) < 0) {
+  status = os_error(); close(fd); return status;
+ }
+ if (cfg.writable && action != 1 &&
+     flag_set(fd, &st, (attrs & 2UL) != 0, 1) < 0) {
   status = os_error(); close(fd); return status;
  }
  if (cfg.writable && action != 1 && time_change(fd, &st, 0) < 0) {
@@ -1465,7 +1488,7 @@ unsigned len;
  struct timeval tv[2];
  u8 values[16];
  u32 attrs;
- int a, m, mode, birth, change, changed, archive;
+ int a, m, mode, birth, change, changed, archive, hidden;
  if (len != 40) return ST_INVALID;
  if (!(h->access & 0x100UL)) return ST_DENIED;
  if (fstat(h->fd, &st) < 0) return os_error();
@@ -1487,7 +1510,7 @@ unsigned len;
  mode = st.st_mode & 07777;
  changed = birth || a == 0 || m == 0;
  if (attrs) {
-  if (attrs & ~0xb1UL) return basic_unsupported("attribute flags");
+  if (attrs & ~0xb3UL) return basic_unsupported("attribute flags");
   if (isdir(&st)) {
    /* DOS read-only directories still permit child creation/deletion. Native
     * chmod cannot express that; only an unchanged value is supported. */
@@ -1498,14 +1521,16 @@ unsigned len;
    if (attrs & 1UL) mode &= ~0222;
    else if (!(mode & 0222)) mode |= 0200;
   }
-  archive = archive_get(h->fd, &st);
-  if (archive < 0) return os_error();
-  if (archive != ((attrs & 0x20UL) != 0) || mode != (st.st_mode & 07777)) changed = 1;
+  archive = flag_get(h->fd, &st, 0); hidden = flag_get(h->fd, &st, 1);
+  if (archive < 0 || hidden < 0) return os_error();
+  if (archive != ((attrs & 0x20UL) != 0) || hidden != ((attrs & 2UL) != 0) ||
+      mode != (st.st_mode & 07777)) changed = 1;
  }
  /* Validate all fields before any mutation, and preserve the original birth
   * time before native chmod/utimes can change ctime. */
  if ((changed || change) && time_prepare(h->fd, &st) < 0) return os_error();
- if (attrs && archive_set(h->fd, &st, (attrs & 0x20UL) != 0) < 0)
+ if (attrs && (archive_set(h->fd, &st, (attrs & 0x20UL) != 0) < 0 ||
+               flag_set(h->fd, &st, (attrs & 2UL) != 0, 1) < 0))
   return os_error();
  if ((a == 0 && tv[0].tv_sec != st.st_atime) ||
      (m == 0 && tv[1].tv_sec != st.st_mtime)) {
