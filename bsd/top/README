@@ -6,14 +6,33 @@ Build and run
 On the PDP, enter the bsd/top directory of your checkout and run:
 
     make
+
+Install once as root (or with a working sudo):
+
+    sudo make install
+    /usr/local/top
+
+The installed executable is root:kmem, mode 2755, like UCB top. Any user
+can run it without sudo; the kmem group grants read access to /dev/kmem,
+/dev/mem and /dev/swap. After opening these devices read-only, top drops
+its extra group privilege. Do not make the devices world-readable.
+BINDIR defaults to /usr/local and can be overridden when installing.
+
+If you prefer to run the executable in this source directory:
+
+    sudo make install-local
     ./top
 
-Use an interactive terminal and an account with read access to /dev/kmem,
-/dev/mem and /dev/swap, such as root. TERM must name the terminal being
-used. For a VT100-compatible terminal, for example:
+Repeat installation after rebuilding: make produces an ordinary executable
+without special permissions. The build removes the old executable first
+so its root ownership after install-local does not prevent rebuilding as
+the source directory's owner. top.debug is never given special permissions.
+
+Use an interactive terminal. TERM must name the terminal being used. For
+a VT100-compatible terminal, for example:
 
     TERM=vt100; export TERM
-    ./top
+    /usr/local/top
 
 The native build uses separate instruction and data spaces (-i) and the
 2.11BSD termcap library. make produces the stripped executable top and
