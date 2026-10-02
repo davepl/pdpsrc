@@ -1,0 +1,52 @@
+pdpfetch 1.0 -- a small system summary for 2.11BSD on the PDP-11
+
+Build on the PDP-11:
+    make
+    ./pdpfetch
+
+Install (as root):
+    make install
+The default destination is /usr/local/pdpfetch, matching the traditional
+2.11BSD PATH. Override with: make install BINDIR=/some/existing/directory
+
+Options:
+    -n, --no-color   ASCII logo, without ANSI escapes
+    -c, --color      Force ANSI color
+    -p, --plain      Just the information; no logo or color
+    -v, --version   Version
+    -h, --help      Help
+
+The original ASCII logo depicts a PDP-11 front panel. No mascot is used.
+Color is automatic only on recognized ANSI color terminal types (xterm,
+screen, tmux, ansi). VT100, dumb terminals and redirected output default
+to no color. NO_COLOR disables automatic color. -c overrides NO_COLOR;
+-p always disables color. Narrow terminals automatically omit the logo.
+Lines fit the reported terminal width (80 columns if it is unavailable).
+
+No root privileges, /dev/kmem access, subprocesses, network connections,
+external commands, or third-party libraries are needed at runtime.
+The program is K&R C, built with the native cc and split I/D (-i).
+This is a 2.11BSD program, not a Linux/macOS build target.
+
+Data sources and meanings:
+* sysctl: hostname, release, running kernel, CPU model, boot time, memory,
+  and the 1/5/15 minute load averages.
+* /VERSION: installed BSD patch level (optional).
+* passwd database: real user's name and configured LOGIN shell. This is
+  deliberately not a guess at the currently executing interactive shell.
+* TERM: terminal type, not the terminal emulator's product name.
+* statfs: KiB used/total for the filesystems containing / and /usr.
+* getfsstat: count of currently mounted filesystems.
+* Memory: physical memory minus the free memory reported by HW_USERMEM.
+  This includes kernel and other resident allocations, not just processes.
+  Reported physical RAM can be slightly less than installed RAM.
+Unavailable queries are labeled unavailable. Environment strings are
+bounded and control characters replaced before display.
+
+Validation on Minerva, 2.11BSD patch 499, kernel #39:
+Native make; execution without root privileges; live values compared with
+sysctl/df; plain and redirected output; explicit color; NO_COLOR; invalid
+options; terminal control-character sanitization; narrow-terminal layout.
+Run the basic output checks again with: make check
+
+The code is original; it does not incorporate Neofetch or Fastfetch code.
