@@ -12,6 +12,12 @@ a bounded `srvsvc` RPC implementation provide share enumeration and share
 information. A small on-disk registry coordinates open sharing and pending
 deletions across worker processes.
 
+Directory probes with literal names use direct case-insensitive comparison.
+Each worker caches eight sharing-registry rows only while holding the registry
+lock; releasing and reacquiring it forces fresh validation. Directory entries
+and file attributes are not cached by the server. Small replies include their
+TCP framing prefix in the first send.
+
 ## Build and configure
 
 ```

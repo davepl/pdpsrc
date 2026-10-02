@@ -88,6 +88,11 @@ static u8 match_a[NAME_LIMIT + 1], match_b[NAME_LIMIT + 1];
 static u8 state_buffer[STATE_SIZE];
 static unsigned state_rows;
 static int state_depth;
+/* Valid only while this process holds the registry lock. A command often
+ * scans the same rows for sweep, sharing, registration and close cleanup. */
+#define STATE_CACHE 8
+static struct state_entry state_cache[STATE_CACHE];
+static unsigned state_cached[STATE_CACHE];
 static struct handle *pending_read_times;
 static struct timeval saved_read_times[2];
 
@@ -113,6 +118,7 @@ state_enter()
   flock(fs_state_fd, LOCK_UN); return -1;
  }
  state_rows = (unsigned)(end / STATE_SIZE); state_depth = 1;
+ memset(state_cached, 0, sizeof(state_cached));
  return 0;
 }
 
@@ -126,10 +132,22 @@ state_leave()
 static unsigned
 state_checksum()
 {
- unsigned a, b, i;
+ unsigned a, b, i, used, end;
  a = b = 0;
- for (i = 0; i < STATE_SIZE; i++) {
+ used = get16(state_buffer + 36);
+ if (used >= SMBD_PATH) used = SMBD_PATH;
+ end = 40 + used;
+ for (i = 0; i < end; i++) {
   if (i == 38 || i == 39) continue;
+  a += state_buffer[i]; if (a >= 255) a -= 255;
+  b += a; if (b >= 255) b -= 255;
+ }
+ /* Canonical rows have zero padding. Preserve the checksum of the entire
+  * row, including padding, without doing Fletcher arithmetic per zero.
+  * The reduced product is at most 254*254+254, fitting 16-bit unsigned. */
+ for (i = end; i < STATE_SIZE && !state_buffer[i]; i++) ;
+ if (i == STATE_SIZE) b = (b + a * ((STATE_SIZE - end) % 255)) % 255;
+ else for (i = end; i < STATE_SIZE; i++) {
   a += state_buffer[i]; if (a >= 255) a -= 255;
   b += a; if (b >= 255) b -= 255;
  }
@@ -141,10 +159,14 @@ state_read(slot, e)
 unsigned slot;
 struct state_entry *e;
 {
- unsigned done;
+ unsigned done, cache;
  int n;
  memset(e, 0, sizeof(*e));
  if (slot >= state_rows) return 0;
+ cache = slot % STATE_CACHE;
+ if (state_depth && state_cached[cache] == slot + 1) {
+  memcpy(e, &state_cache[cache], sizeof(*e)); return 0;
+ }
  if (lseek(fs_state_fd, (long)slot * STATE_SIZE, 0) < 0) return -1;
  done = 0;
  while (done < STATE_SIZE) {
@@ -163,6 +185,9 @@ struct state_entry *e;
  n = get16(state_buffer + 36);
  if (n >= SMBD_PATH) return -1;
  memcpy(e->path, state_buffer + 40, n); e->path[n] = 0;
+ if (state_depth) {
+  memcpy(&state_cache[cache], e, sizeof(*e)); state_cached[cache] = slot + 1;
+ }
  return 0;
 }
 
@@ -171,9 +196,11 @@ state_write(slot, e)
 unsigned slot;
 struct state_entry *e;
 {
- unsigned done, len;
+ unsigned done, len, cache;
  int n;
  if (slot >= STATE_ROWS) return -1;
+ cache = slot % STATE_CACHE;
+ state_cached[cache] = 0;
  memset(state_buffer, 0, sizeof(state_buffer));
  put32(state_buffer, e->pid); put32(state_buffer + 4, e->serial);
  put64(state_buffer + 8, e->device, (e->device >> 16) >> 16);
@@ -192,6 +219,9 @@ struct state_entry *e;
   done += n;
  }
  if (slot >= state_rows) state_rows = slot + 1;
+ if (state_depth) {
+  memcpy(&state_cache[cache], e, sizeof(*e)); state_cached[cache] = slot + 1;
+ }
  return 0;
 }
 
@@ -383,6 +413,12 @@ const char *pattern, *name;
  u8 *a, *b, *t;
  n = strlen(name);
  if (n > NAME_LIMIT) return 0;
+ /* Desktop attribute probes use literal names, especially absent ._ files.
+  * Avoid the quadratic wildcard engine for this common directory scan. */
+ if (pattern[0] == '*' && !pattern[1]) return 1;
+ for (i = 0; pattern[i]; i++)
+  if (strchr("*?<>\"", pattern[i])) break;
+ if (!pattern[i]) return same_name(pattern, name);
  lastdot = n;
  for (i = 0; i < n; i++) if (name[i] == '.') lastdot = i;
  a = match_a; b = match_b;

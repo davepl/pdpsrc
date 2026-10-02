@@ -503,8 +503,13 @@ FILE *in,*out,*ahead;
         if(size<0 || size>SMBD_MAXREPLY) break;
         if(!size) continue;
         header[0]=0; header[1]=size>>16; header[2]=size>>8; header[3]=size;
-        if(full_write(fd,header,4) || fseek(out,0L,0)) break;
-        left=size;
+        /* Small metadata replies fit in one write, including their framing.
+         * A separate four-byte send costs another TCP packet and system call. */
+        if(fseek(out,0L,0)) break;
+        n=size>(long)(sizeof(io_buffer)-4)?sizeof(io_buffer)-4:(unsigned)size;
+        memcpy(io_buffer,header,4);
+        if(fread(io_buffer+4,1,n,out)!=n || full_write(fd,io_buffer,n+4)) break;
+        left=size-n;
         while(left>0) {
             n=left>(long)sizeof(io_buffer)?sizeof(io_buffer):(unsigned)left;
             if(fread(io_buffer,1,n,out)!=n || full_write(fd,io_buffer,n)) goto done;

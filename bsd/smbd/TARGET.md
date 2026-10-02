@@ -761,3 +761,54 @@ probe exhausted admission slots while desktop sessions were also connected.
 Repeated startup reported the existing PID 1599. The user's older Finder
 mount retained its signing-required flag after reconnect, so a fresh mount is
 recommended to pick up the new negotiation policy.
+
+## Directory listing performance on mentec (2026-10-02)
+
+The user's `ls -l /Volumes/usr` took 23.88 and 31.97 seconds for 33 entries.
+A packet trace showed unsigned SMB traffic, including repeated literal
+`._name` AppleDouble probes using CREATE/QUERY_DIRECTORY/CLOSE, followed by
+an explicit CLOSE when the missing-name result propagated through the compound.
+The general wildcard matcher and repeated registry validation made these
+small metadata requests expensive on the physical CPU.
+
+Literal patterns now use direct case-insensitive comparison, with a separate
+fast path for `*`; DOS wildcard behavior is unchanged. Eight registry rows
+are cached only within a held registry lock and are invalidated on every
+outer lock acquisition. Writes update or invalidate those cached rows.
+Full-row Fletcher checksums retain their existing format, but verified zero
+padding uses an equivalent bounded 16-bit calculation. Nonzero padding still
+gets fully checksummed, so corruption is not ignored. TCP framing is sent
+together with the first response block, eliminating a separate four-byte
+packet for each reply. No directory contents or file attributes are cached
+by these server changes.
+
+The full host regression suite passed, including independent multi-client
+sharing and deletion tests, signed/unsigned transfers and large compounds.
+The filesystem suite passed 2983 checks under ASan/UBSan, with new checks for
+literal mixed-case lookup, absent AppleDouble names, registry corruption after
+lock release, original checksum compatibility, and corrupt padding rejection.
+
+Minerva (.26) was unreachable on FTP and Telnet. The native build instead ran
+in a temporary local SIMH instance using cloned disk images and a private NAT
+network. The original images and live physical filesystem were not used as
+build scratch space. Native source snapshot:
+`598b8ada39ed061dd198dfd3cb387cb219bcc4351037b94361af9b11868f83d0`.
+The 114703-byte executable was uploaded and read back byte for byte; SHA256:
+`0359e82c9cfc37f9bda1059386153a845ae5bfc02e38d4d3c2b58d1b18c34513`.
+Resident text is 32448 bytes, overlays 27968 and 18944, data 3972, BSS 43078.
+Both rounded text windows remain within 32768 bytes; data+BSS leaves 18486
+bytes for heap and stack.
+
+The deployed build completed `ls -l /Volumes/usr` in 10.658 seconds, with
+byte-for-byte identical output to the original 33-entry listing. This is
+about 2.2 times faster than the first baseline. A subsequent run was served
+from the Mac's cache and is excluded from the server speed comparison.
+Intermediate builds measured 11.5–15.9 seconds, illustrating workload/cache
+variation. The final listener started as PID 3513; startup remains idempotent
+and uses the existing optional-signing policy and Unix permissions.
+
+Native acceptance also passed two-client exclusive sharing and release, a
+65536-byte write/flush/read comparison, rename and deletion. Test files were
+removed. The temporary build simulator was halted cleanly and its cloned
+images discarded. The previous production executable remains available as
+`/usr/local/smbd/smbd.pre-list`.

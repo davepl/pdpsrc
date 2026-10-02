@@ -288,15 +288,37 @@ metadata_fs_tests()
 static void
 mutable_tests()
 {
- u8 id[16], other[16], dir[16], data[40], bytes[256];
+ u8 id[16], other[16], dir[16], data[40], bytes[256], row[SMBD_PATH + 40];
  struct stat before, after;
  int fd;
- unsigned i;
+ unsigned i, a, b;
  cfg.writable = 1;
  fs_state_fd = open(".test-state", O_CREAT | O_TRUNC | O_RDWR, 0600);
  CHECK(fs_state_fd >= 0); fs_init();
  CHECK(create_name("write.bin", 0xc0010000UL, 0x42UL, 2UL, 7UL, id) == ST_OK);
  CHECK(get32(response + 68) == 2UL);
+ /* A previously cached row must be revalidated after releasing the lock. */
+ CHECK(lseek(fs_state_fd, 0L, 0) == 0 && read(fs_state_fd, bytes, 1) == 1);
+ bytes[0] ^= 1;
+ CHECK(lseek(fs_state_fd, 0L, 0) == 0 && write(fs_state_fd, bytes, 1) == 1);
+ CHECK(info(id, 1, 5, 24) == ST_DENIED);
+ bytes[0] ^= 1;
+ CHECK(lseek(fs_state_fd, 0L, 0) == 0 && write(fs_state_fd, bytes, 1) == 1);
+ CHECK(info(id, 1, 5, 24) == ST_OK);
+ /* Keep the original full-row Fletcher format, including unused padding. */
+ CHECK(lseek(fs_state_fd, 0L, 0) == 0 && read(fs_state_fd, row, sizeof(row)) == sizeof(row));
+ a = b = 0;
+ for (i = 0; i < sizeof(row); i++) {
+  if (i == 38 || i == 39) continue;
+  a = (a + row[i]) % 255; b = (b + a) % 255;
+ }
+ CHECK(get16(row + 38) == (a | (b << 8)));
+ row[sizeof(row) - 1] = 1;
+ CHECK(lseek(fs_state_fd, 0L, 0) == 0 && write(fs_state_fd, row, sizeof(row)) == sizeof(row));
+ CHECK(info(id, 1, 5, 24) == ST_DENIED);
+ row[sizeof(row) - 1] = 0;
+ CHECK(lseek(fs_state_fd, 0L, 0) == 0 && write(fs_state_fd, row, sizeof(row)) == sizeof(row));
+ CHECK(info(id, 1, 5, 24) == ST_OK);
  archive_storage("write.bin", 1, 1);
  CHECK(write_id(id, 0UL, 65536UL) == ST_OK && get32(response + 68) == 65536UL);
  CHECK(write_id(id, 65536UL, 123UL) == ST_OK);
@@ -508,6 +530,10 @@ main()
  CHECK(directory(dir, 1, 17, "z*", 512) == ST_OK);
  CHECK(directory(dir, 1, 0, 0, 512) == ST_NO_MORE);
  CHECK(directory(dir, 1, 17, "not here", 512) == ST_NO_FILE);
+ CHECK(directory(dir, 1, 17, "zErO", 512) == ST_OK);
+ CHECK(directory(dir, 1, 0, 0, 512) == ST_NO_MORE);
+ CHECK(directory(dir, 1, 17, "._Zero", 512) == ST_NO_FILE);
+ CHECK(directory(dir, 1, 17, "Z?ro", 512) == ST_OK);
  CHECK(directory(dir, 1, 17, "*", 64) == ST_TOO_SMALL);
  CHECK(directory(dir, 1, 0, 0, 512) == ST_OK);
  CHECK(close_id(dir) == ST_OK);
