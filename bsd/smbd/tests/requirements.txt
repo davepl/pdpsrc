@@ -1,0 +1,4 @@
+# Only the independent host tests need these; the server has no dependencies.
+smbprotocol==1.17.0
+impacket==0.13.1
+pyspnego==0.12.3

@@ -18,7 +18,7 @@ command from the repository root delegates to this directory.
 The build includes the 2.9BSD sieve, MACRO11 tools and assembly sample,
 native assembly sieve and attention program, both BASIC interpreters,
 bug demonstrations, both Dhrystone versions, HTTP servers, menu, MQTT,
-novi, rz/sz and transfer utilities, screen demonstrations, sieves, the native
+novi, rz/sz and transfer utilities, the SMB2 file server, screen demonstrations, sieves, the native
 socket client and diagnostics, sudo, top, wget, and the web helpers. The
 MACRO11 sample produces a bare-metal image; building it does not run it.
 Foreign socket clients, kernel source examples, archived websites and the

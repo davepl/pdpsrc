@@ -1,0 +1,7 @@
+smbd
+smbpwd
+*.o
+smbd.debug
+tests/crypto_test
+tests/wire_test
+__pycache__/
