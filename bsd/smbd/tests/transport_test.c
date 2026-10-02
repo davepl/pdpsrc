@@ -6,6 +6,37 @@
 volatile int session_revoked;
 #define CHECK(x) do { if (!(x)) { fprintf(stderr,"transport line %d errno %d\n",__LINE__,errno); exit(1); } } while (0)
 
+static void
+frames()
+{
+ FILE *f;
+ u8 b[208];
+ unsigned i;
+ f = tmpfile(); CHECK(f != 0);
+ memset(b, 0, sizeof(b));
+ for (i = 0; i < 2; i++) {
+  memcpy(b + i * 120, "\376SMB", 4); put16(b + i * 120 + 4, 64);
+ }
+ put16(b + 12, 5); put32(b + 20, 120UL); put32(b + 100, 1UL);
+ put16(b + 132, 6);
+ CHECK(fwrite(b, 1, sizeof(b), f) == sizeof(b) && fflush(f) == 0);
+ CHECK(frame_validate(f, (long)sizeof(b)) == 1);
+ /* Signing, data transfers, and mutating CREATE must not batch locks. */
+ put32(b + 16, 8UL);
+ rewind(f); CHECK(fwrite(b, 1, sizeof(b), f) == sizeof(b) && fflush(f) == 0);
+ CHECK(frame_validate(f, (long)sizeof(b)) == 0);
+ put32(b + 16, 0UL); put32(b + 104, 0x1000UL);
+ rewind(f); CHECK(fwrite(b, 1, sizeof(b), f) == sizeof(b) && fflush(f) == 0);
+ CHECK(frame_validate(f, (long)sizeof(b)) == 0);
+ put32(b + 104, 0UL); put16(b + 132, 8);
+ rewind(f); CHECK(fwrite(b, 1, sizeof(b), f) == sizeof(b) && fflush(f) == 0);
+ CHECK(frame_validate(f, (long)sizeof(b)) == 0);
+ put32(b + 20, 121UL);
+ rewind(f); CHECK(fwrite(b, 1, sizeof(b), f) == sizeof(b) && fflush(f) == 0);
+ CHECK(frame_validate(f, (long)sizeof(b)) == -1);
+ fclose(f);
+}
+
 int
 main()
 {
@@ -14,6 +45,7 @@ main()
  long sent, consumed, total;
  u8 outgoing[2003], incoming[2039], scratch[2048];
  FILE *spool;
+ frames();
  CHECK(socketpair(AF_UNIX, SOCK_STREAM, 0, pair) == 0);
  flags = fcntl(pair[1], F_GETFL, 0);
  CHECK(flags >= 0 && fcntl(pair[1], F_SETFL, flags | O_NONBLOCK) == 0);

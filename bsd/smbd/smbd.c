@@ -8,6 +8,7 @@
 #include <sys/time.h>
 #endif
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <signal.h>
 #include <pwd.h>
@@ -164,6 +165,7 @@ negotiate()
     for(i=0;i<n;i++) if(get16(request+100+i*2)==0x202) found=1;
     if(!found) return ST_NOT_SUPPORTED;
     auth.signing_required=(!cfg.guest && !cfg.optional_signing) || (get16(request+68)&2)!=0;
+    memset(response+64,0,64);
     put16(response+64,65);
     put16(response+66,(cfg.guest || cfg.optional_signing)?1:3);
     put16(response+68,0x202);
@@ -252,6 +254,7 @@ tree_connect()
     tree_ids[i]=next_tree;
     tree_pipe[i]=pipe;
     put32(response+36,next_tree);
+    memset(response+64,0,16);
     put16(response+64,16); response[66]=pipe?2:1;
     put32(response+68,pipe?0UL:0x30UL); /* manual caching disabled */
     put32(response+76,pipe?0x0012019fUL:cfg.writable?0x001301ffUL:0x001200a9UL);
@@ -272,7 +275,7 @@ unsigned cmd;
     if(cmd==2 || cmd==13) {
         if(request_len<68 || get16(request+64)!=4) return ST_INVALID;
         if(cmd==2) { fs_close_all(); rpc_close_all(); memset(tree_ids,0,sizeof(tree_ids)); }
-        put16(response+64,4); response_len=68;
+        put32(response+64,4UL); response_len=68;
         return ST_OK;
     }
     if(cmd==3) return tree_connect();
@@ -283,7 +286,7 @@ unsigned cmd;
         if(request_len<68 || get16(request+64)!=4) return ST_INVALID;
         if(tree_pipe[i]) rpc_close_tree(tree); else fs_close_tree(tree);
         tree_ids[i]=0;
-        put16(response+64,4); response_len=68; return ST_OK;
+        put32(response+64,4UL); response_len=68; return ST_OK;
     }
     if(tree_pipe[i]) return rpc_dispatch(cmd);
     if(cmd==11) { /* No disk FSCTL extensions in this SMB 2.0.2 service. */
@@ -293,28 +296,6 @@ unsigned cmd;
     return fs_dispatch(cmd);
 }
 
-/* Validate the entire chain before executing any operation. */
-static int
-validate_chain(f, total)
-FILE *f;
-long total;
-{
-    long pos,next;
-    unsigned count;
-    u8 h[64];
-    pos=0; count=0;
-    while(pos<total) {
-        if(++count>SMBD_COMPOUNDS || total-pos<64 || fseek(f,pos,0) || fread(h,1,64,f)!=64)
-            return -1;
-        if(memcmp(h,"\376SMB",4) || get16(h+4)!=64 || (get32(h+16)&3)) return -1;
-        next=(long)get32(h+20);
-        if(!next) return 0;
-        if(next<64 || (next&7) || next>total-pos-64) return -1;
-        pos+=next;
-    }
-    return -1;
-}
-
 static int
 process_frame(in, out, total)
 FILE *in,*out;
@@ -322,18 +303,10 @@ long total;
 {
     long pos,len,next,start,outlen,pad,left;
     u32 status,previous,flags,prev_tree,read_status;
-    unsigned cmd,grant,n;
-    int idx,sign,logged_off;
+    unsigned cmd,grant,n,prev_cmd;
+    int idx,sign,logged_off,streamed;
     u8 digest[32],prev_session[8];
-    if(validate_chain(in,total)) {
-        if(cfg.verbose) {
-            rewind(in); fread(io_buffer,1,4,in);
-            fprintf(stderr,"smbd: rejected frame length=%ld magic=%02x%02x%02x%02x\n",total,
-                io_buffer[0],io_buffer[1],io_buffer[2],io_buffer[3]);
-        }
-        return -1;
-    }
-    rewind(out); pos=0; previous=ST_OK; idx=0;
+    rewind(out); pos=0; previous=ST_OK; idx=0; prev_cmd=0;
     memset(prev_session,0,8); prev_tree=0;
     memset(related_file,0,16);
     while(pos<total) {
@@ -363,10 +336,16 @@ long total;
             if(!idx) status=ST_INVALID;
             else {
                 memcpy(request+40,prev_session,8); put32(request+36,prev_tree);
-                if(previous!=ST_OK) status=previous;
+                /* An empty directory query leaves its open handle valid.
+                 * Complete the requested CLOSE instead of making macOS send
+                 * another packet just to release that handle. */
+                if(previous!=ST_OK && !(cmd==6 && prev_cmd==14 &&
+                   (previous==0xc000000fUL || previous==0x80000006UL))) status=previous;
             }
         } else memset(related_file,0,16);
-        memset(response,0,sizeof(response));
+        /* Each command initializes its own body. Clearing the whole 8 KiB
+         * buffer here made small metadata requests expensive on a PDP-11. */
+        memset(response,0,64);
         memcpy(response,"\376SMB",4); put16(response+4,64);
         put16(response+12,cmd); put16(response+14,grant);
         put32(response+16,1|(flags&4));
@@ -381,13 +360,15 @@ long total;
         else put32(response+8,status);
         if(cfg.verbose) fprintf(stderr,"smbd[%ld] cmd=%u mid=%lu:%lu status=%08lx bytes=%u+%ld\n",
             (long)getpid(),cmd,get32(request+28),get32(request+24),status,response_len,read_length);
-        previous=status; memcpy(prev_session,response+40,8); prev_tree=get32(response+36);
+        previous=status; prev_cmd=cmd; memcpy(prev_session,response+40,8); prev_tree=get32(response+36);
         sign=auth.authenticated && !auth.guest && ((flags&8) || (cmd==1 && status==ST_OK));
         logged_off=cmd==2 && status==ST_OK;
         if(sign) put32(response+16,get32(response+16)|8);
         start=ftell(out);
-        if(start<0 || fwrite(response,1,response_len,out)!=response_len) goto read_error;
-        if(read_fd>=0 && read_length) {
+        if(start<0) goto read_error;
+        streamed=read_fd>=0 && read_length;
+        if(streamed) {
+            if(fwrite(response,1,response_len,out)!=response_len) goto read_error;
             if(lseek(read_fd,(off_t)read_offset,0)<0) goto read_error;
             left=read_length;
             while(left>0) {
@@ -406,20 +387,23 @@ long total;
         read_status=fs_read_complete();
         if(read_status) {
             error_body(read_status); previous=read_status;
-            if(fseek(out,start+(long)response_len,0)) return -1;
         }
         outlen=(long)response_len+read_length;
         pad=next?((8-(outlen&7))&7):0;
-        memset(io_buffer,0,8);
-        if(pad && fwrite(io_buffer,1,(unsigned)pad,out)!=(unsigned)pad) return -1;
         outlen+=pad;
         put32(response+20,next?(u32)outlen:0UL);
-        if(fseek(out,start,0) || fwrite(response,1,response_len,out)!=response_len || fflush(out)) return -1;
+        /* Metadata replies are complete in memory: write them once. READ
+         * still snapshots the file before signing or sending any bytes. */
+        if(streamed && fseek(out,start,0)) return -1;
+        if(fwrite(response,1,response_len,out)!=response_len) return -1;
+        if(streamed && fseek(out,start+outlen-pad,0)) return -1;
+        memset(io_buffer,0,8);
+        if(pad && fwrite(io_buffer,1,(unsigned)pad,out)!=(unsigned)pad) return -1;
         if(sign) {
-            if(spool_hash(out,start,outlen,digest) || fseek(out,start+48,0) || fwrite(digest,1,16,out)!=16)
+            if(fflush(out) || spool_hash(out,start,outlen,digest) || fseek(out,start+48,0) || fwrite(digest,1,16,out)!=16)
                 return -1;
+            if(fseek(out,start+outlen,0)) return -1;
         }
-        if(fseek(out,start+outlen,0)) return -1;
         if(logged_off) { session_end(); auth.authenticated=0; memset(auth.key,0,16); }
         pos+=len; idx++;
     }
@@ -472,6 +456,7 @@ FILE *in,*out,*ahead;
     u8 header[4];
     long total,left,size;
     unsigned n;
+    int result, batch;
     transport_init(fd,ahead);
     fs_init(); rpc_init();
     credit_count=1; credit_lo=credit_hi=0;
@@ -497,7 +482,12 @@ FILE *in,*out,*ahead;
         }
         if(fflush(in)) break;
         total=bootstrap(in,total);
-        if(total<0 || process_frame(in,out,total)) break;
+        if(total<0) break;
+        batch=frame_validate(in,total);
+        if(batch<0 || (batch && fs_batch_begin())) break;
+        result=process_frame(in,out,total);
+        if(batch) fs_batch_end();
+        if(result) break;
         size=ftell(out);
         if(cfg.verbose) fprintf(stderr,"smbd[%ld] time=%ld send=%ld\n",(long)getpid(),(long)time(0),size);
         if(size<0 || size>SMBD_MAXREPLY) break;
@@ -571,7 +561,7 @@ usage()
     fprintf(stderr,"usage: smbd -r directory [-s share] [-u smbuser -P password-file | -H hash-file | -g]\n"
         "            [-a IPv4-address] [-p port] [-c connections] [-C credits] [-U unixuser]\n"
         "            [-R random-pool] [-T temporary-directory] [-M metadata-file]\n"
-        "            [-S required|optional] [-w] [-v]\n");
+        "            [-S required|optional] [-A appledouble|none] [-w] [-v]\n");
     exit(2);
 }
 
@@ -612,6 +602,11 @@ char **argv;
             case 'S':
                 if(!strcmp(argv[i],"optional")) cfg.optional_signing=1;
                 else if(!strcmp(argv[i],"required")) cfg.optional_signing=0;
+                else usage();
+                break;
+            case 'A':
+                if(!strcmp(argv[i],"none")) cfg.mac_fast=1;
+                else if(!strcmp(argv[i],"appledouble")) cfg.mac_fast=0;
                 else usage();
                 break;
             case 'a': cfg.bind_address=argv[i]; break;
@@ -690,6 +685,11 @@ char **argv;
         fd=accept(listenfd,(struct sockaddr *)0,0);
         if(fd<0) continue;
         if(child_count>=cfg.max_connections) { close(fd); continue; }
+        /* SMB metadata is request/reply traffic. Do not queue a completed
+         * small reply behind TCP's Nagle/delayed-ACK interaction. */
+        if(setsockopt(fd,IPPROTO_TCP,TCP_NODELAY,(char *)&one,sizeof(one))) {
+            perror("TCP_NODELAY"); close(fd); continue;
+        }
         memset(&auth,0,sizeof(auth));
         if(!auth_random_challenge()) { fprintf(stderr,"smbd: random source exhausted or unavailable\n"); close(fd); continue; }
         in=private_spool(); out=private_spool(); ahead=private_spool();

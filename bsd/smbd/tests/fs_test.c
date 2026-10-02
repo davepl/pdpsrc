@@ -1,6 +1,7 @@
 /* Host filesystem tests; compile with ../fs.c and ../wire.c. */
 #include "../smbd.h"
 #include <fcntl.h>
+#include <sys/file.h>
 #include <sys/time.h>
 #ifdef __linux__
 #include <sys/xattr.h>
@@ -55,6 +56,26 @@ u32 access, options;
 u8 *id;
 {
  return create_name(name, access, options, 1UL, 7UL, id);
+}
+
+static u32
+open_alias(name, last, id)
+char *name;
+unsigned last;
+u8 *id;
+{
+ unsigned n;
+ u32 s;
+ reset(); put16(request + 64, 57);
+ put32(request + 88, 1UL); put32(request + 96, 7UL);
+ put32(request + 100, 1UL);
+ n = utf16_encode(request + 120, name, SMBD_PATH * 2);
+ put16(request + 120 + n - 2, last);
+ put16(request + 108, 120); put16(request + 110, n);
+ request_len = 120 + n;
+ s = fs_dispatch(5);
+ if (!s) memcpy(id, response + 128, 16);
+ return s;
 }
 
 static u32
@@ -295,8 +316,30 @@ mutable_tests()
  cfg.writable = 1;
  fs_state_fd = open(".test-state", O_CREAT | O_TRUNC | O_RDWR, 0600);
  CHECK(fs_state_fd >= 0); fs_init();
+ CHECK(create_name("trailing.", 0xc0010000UL, 0x40UL, 2UL, 7UL, id) == ST_OK);
+ CHECK(close_id(id) == ST_OK);
+ CHECK(open_alias("trailing.", 0xf029, id) == ST_OK);
+ CHECK(close_id(id) == ST_OK && unlink("trailing.") == 0);
+ CHECK(create_name("trailing ", 0xc0010000UL, 0x40UL, 2UL, 7UL, id) == ST_OK);
+ CHECK(close_id(id) == ST_OK);
+ CHECK(open_alias("trailing ", 0xf028, id) == ST_OK);
+ CHECK(close_id(id) == ST_OK && unlink("trailing ") == 0);
+ CHECK(open_alias("..", 0xf029, id) == 0xc0000033UL);
+ CHECK(open_alias(".", 0xf029, id) == 0xc0000033UL);
+ CHECK(open_alias("escape", 0xf026, id) == 0xc0000033UL);
+ CHECK(open_alias("other", 0x00e9, id) == 0xc0000033UL);
  CHECK(create_name("write.bin", 0xc0010000UL, 0x42UL, 2UL, 7UL, id) == ST_OK);
  CHECK(get32(response + 68) == 2UL);
+ /* A compound keeps sibling registry users out between commands, then
+  * releases its extra reference even when a command reports an error. */
+ fd = open(".test-state", O_RDWR); CHECK(fd >= 0);
+ CHECK(fs_batch_begin() == 0);
+ CHECK(info(id, 1, 5, 24) == ST_OK);
+ CHECK(flock(fd, LOCK_EX | LOCK_NB) < 0 && errno == EWOULDBLOCK);
+ CHECK(info(id, 1, 255, 24) == ST_NOT_SUPPORTED);
+ fs_batch_end();
+ CHECK(flock(fd, LOCK_EX | LOCK_NB) == 0);
+ CHECK(flock(fd, LOCK_UN) == 0); close(fd);
  /* A previously cached row must be revalidated after releasing the lock. */
  CHECK(lseek(fs_state_fd, 0L, 0) == 0 && read(fs_state_fd, bytes, 1) == 1);
  bytes[0] ^= 1;

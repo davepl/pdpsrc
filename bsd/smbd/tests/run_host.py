@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory(prefix='smbd-host-tests-') as work:
         port = s.getsockname()[1]
     cases = ((False, 4, 'read'), (True, 4, 'write'),
              (True, 4, 'metadata-restart'), (False, 1, 'one-worker'), (False, 4, 'guest'),
-             (True, 4, 'eight-credits'), (True, 4, 'optional-signing'))
+             (True, 4, 'eight-credits'), (True, 4, 'optional-signing'), (True, 4, 'mac-fast'))
     restart_client = None
     for writable, workers, case in cases:
         with (work / (case + '.log')).open('w+') as log:
@@ -36,7 +36,8 @@ with tempfile.TemporaryDirectory(prefix='smbd-host-tests-') as work:
                                        '-a', '127.0.0.1', '-p', str(port), '-T', str(work),
                                        '-c', str(workers), '-v'] +
                                       (['-C', '8'] if case == 'eight-credits' else []) +
-                                      (['-S', 'optional'] if case == 'optional-signing' else []) +
+                                      (['-S', 'optional'] if case in ('optional-signing', 'mac-fast') else []) +
+                                      (['-A', 'none'] if case == 'mac-fast' else []) +
                                       (['-g'] if case == 'guest' else ['-P', str(password)]) +
                                       (['-w', '-M', str(work / 'metadata')] if writable else []), stderr=log)
             try:
@@ -54,8 +55,10 @@ with tempfile.TemporaryDirectory(prefix='smbd-host-tests-') as work:
                     # The readiness socket briefly occupied the only child;
                     # allow the listener's one-second reap cycle to finish.
                     time.sleep(1.1)
-                if case == 'optional-signing':
-                    tests = ['signing_test.py', 'write_test.py']
+                if case == 'mac-fast':
+                    tests = ['mac_fast_test.py', 'write_test.py', 'metadata_test.py']
+                elif case == 'optional-signing':
+                    tests = ['signing_test.py', 'write_test.py', 'mac_listing_test.py']
                 elif case == 'eight-credits':
                     tests = ['credits_test.py', 'protocol.py', 'write_test.py']
                 elif case == 'guest':
@@ -74,13 +77,13 @@ with tempfile.TemporaryDirectory(prefix='smbd-host-tests-') as work:
                         args += ['--auth-recovery-only', '--timeout', '5'] if workers == 1 else ['--fixture-root', str(share)]
                     if test == 'write_test.py' and not writable:
                         args += ['--read-only']
-                    if test == 'write_test.py' and case == 'optional-signing':
+                    if test == 'write_test.py' and case in ('optional-signing', 'mac-fast'):
                         args += ['--optional-signing']
                     if test == 'reconnect_test.py' and writable:
                         args += ['--writable']
                     if test == 'reconnect_test.py' and case == 'metadata-restart':
                         args += ['--restart-id', hex(restart_id)]
-                    if test == 'metadata_test.py':
+                    if test == 'metadata_test.py' and case != 'mac-fast':
                         args += ['--name', 'smbd-metadata-restart', '--phase',
                                  'verify' if case == 'metadata-restart' else 'prepare']
                     subprocess.run(args, check=True)
@@ -110,7 +113,7 @@ with tempfile.TemporaryDirectory(prefix='smbd-host-tests-') as work:
                     str(root / 'wire.c'), str(root / 'revoke.c'),
                     '-o', str(work / 'session-test')], check=True)
     subprocess.run([str(work / 'session-test')], check=True, timeout=15)
-    subprocess.run(['cc', *flags, str(root / 'tests/transport_test.c'),
+    subprocess.run(['cc', *flags, str(root / 'tests/transport_test.c'), str(root / 'wire.c'),
                     '-o', str(work / 'transport-test')], check=True)
     subprocess.run([str(work / 'transport-test')], check=True, timeout=15)
     subprocess.run(['cc', *flags, str(root / 'tests/rpc_fuzz.c'),

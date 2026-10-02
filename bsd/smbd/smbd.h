@@ -60,7 +60,7 @@ struct config {
  char *metadata_file;
  u8 nthash[16];
  unsigned port;
- int guest, max_connections, verbose, writable, max_credits, optional_signing;
+ int guest, max_connections, verbose, writable, max_credits, optional_signing, mac_fast;
 };
 extern struct config cfg;
 void session_revoke(int);
@@ -135,5 +135,9 @@ void rpc_init(void);
 void rpc_close_all(void);
 void rpc_close_tree(u32);
 u32 rpc_dispatch(unsigned);
+
+int frame_validate(FILE *, long);
+int fs_batch_begin(void);
+void fs_batch_end(void);
 
 #endif

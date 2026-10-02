@@ -18,6 +18,28 @@ lock; releasing and reacquiring it forces fresh validation. Directory entries
 and file attributes are not cached by the server. Small replies include their
 TCP framing prefix in the first send.
 
+## Faster Mac listings with reduced metadata
+
+`-A none` enables an explicit metadata-free mode for Macs. The server answers
+Apple AAPL directory queries with bulk attributes and an empty extended-attribute
+namespace, avoiding the per-entry AppleDouble probes that dominate listing time
+on a physical PDP-11. The default, `-A appledouble`, retains the existing behavior.
+Restart the daemon and make a fresh client connection when changing this option.
+Signing policy remains separately controlled by `-S`.
+
+Fast mode does not preserve Finder tags/comments, custom icons, quarantine and
+other extended attributes, or resource forks. Resource forks can contain essential
+contents in older Mac files. Ordinary file data, names, directories, Unix access
+permissions and supported timestamps remain available. Existing `._` files are
+left untouched; their metadata is not exposed through the fast-mode attribute
+namespace. Attempts to write named streams are rejected, not silently discarded.
+Metadata-preserving copy tools can therefore report errors: on macOS use
+`cp -X source destination` for an intentional data-only copy.
+
+On the physical Mentec system, a fresh 33-entry Mac `ls -l` improved from 16.71
+seconds to 0.654 seconds; an immediate client-cached repeat took 0.005 seconds.
+See [TARGET.md](TARGET.md) for measurements and acceptance limitations.
+
 ## Build and configure
 
 ```

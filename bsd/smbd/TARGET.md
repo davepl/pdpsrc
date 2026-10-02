@@ -812,3 +812,54 @@ Native acceptance also passed two-client exclusive sharing and release, a
 removed. The temporary build simulator was halted cleanly and its cloned
 images discarded. The previous production executable remains available as
 `/usr/local/smbd/smbd.pre-list`.
+
+
+## Mac bulk metadata and fast mode (2026-10-02)
+
+The next fresh Mac baseline was 16.71 seconds for the 33-entry usr root.
+Bounded unsigned metadata compounds now share one registry-lock acquisition;
+cache copies avoid unused path capacity, small replies avoid a second spool
+copy, and accepted sockets use TCP_NODELAY. Related CLOSE executes after a
+no-match directory query, releasing the handle without a separate Mac request.
+Path decoding supports the Mac SFM escapes for trailing period and space while
+retaining traversal checks and rejection of other unsupported Unicode names.
+These changes alone reduced a fresh listing to 7.20 seconds.
+
+The explicitly selected `-A none` mode negotiates AAPL bulk directory attributes
+and exposes an empty, nonwritable named-stream namespace. It supplies the v1/v2
+layout, no-attributes flag, maximum access and Unix mode where negotiated.
+The default remains `-A appledouble`. Fast mode gives up extended attributes,
+Finder metadata and resource forks; it retains normal file data and permissions.
+Mac `cp` may copy the data but report failure preserving attributes; `cp -X`
+requests a data-only copy. Existing AppleDouble files are not deleted.
+
+With `-S optional -A none` on 192.168.1.29, a newly mounted native Mac share
+completed `ls -l` in 0.654238 seconds (33 entries). Its immediate cached repeat
+completed in 0.005345 seconds. This is about 25 times faster than the fresh
+16.71-second baseline; cached timings are not server-throughput measurements.
+A localhost Mac trace showed four listing round trips without per-entry probes.
+Finder was also reconnected successfully at /Volumes/usr and displayed all
+33 entries. The user's Windows cached 0.009-second result was not independently
+remeasured in this run.
+
+The full host regression suite passed, including ASan/UBSan filesystem checks
+(3002), metadata persistence, signed/unsigned and large-compound processing,
+sharing, deletion and the new independent Mac listing/AAPL protocol checks.
+Serial acceptance through the native Mac mount passed a 64 KiB write, fsync,
+exact readback, rename and deletion; unsupported attribute writes were rejected
+and a create at the protected share root was denied.
+
+During an earlier parallel native write and AppleDouble acceptance run, a worker
+became stuck in a kernel buffer wait and did not exit after SIGKILL. The operator
+authorized a reboot, which recovered the machine. The underlying cause remains
+undetermined; the full native signing test in that run did not complete. The
+subsequent serial fast-mode checks passed, but do not resolve that kernel stall.
+
+The native build used a temporary local SIMH clone because .26 was unavailable.
+Source snapshot: f497a454a70518c3e8dcca140000bb5fea2f6dc04629a7ffc29abbfa456cb0fb.
+The 117377-byte executable was uploaded and read back byte for byte; SHA256:
+e4c7735de6d8ebd779dc217938181b819c3fc24c176ad295b7139db97e2a5004.
+Resident text is 32320 bytes, overlays 29504 and 19584, data 3990, BSS 43082.
+Data+BSS leaves 18464 bytes for heap and stack. Production startup now includes
+`-A none`; the prior executable and startup are retained as `smbd.pre-mac` and
+`start.appledouble`. Existing Unix ownership and access permissions are unchanged.

@@ -80,6 +80,7 @@ struct handle {
 };
 static struct handle handles[SMBD_HANDLES];
 static u32 next_serial;
+static unsigned apple_caps;
 static int initialized, rootfd = -1;
 /* Scratch is shared by sequential commands, keeping the PDP-11 stack small. */
 static char input_path[SMBD_PATH], resolved_path[SMBD_PATH];
@@ -129,6 +130,21 @@ state_leave()
   flock(fs_state_fd, LOCK_UN);
 }
 
+/* A bounded unsigned metadata compound holds one extra lock reference.
+ * Sibling workers cannot change the cached registry rows between commands;
+ * the reference is released before any response is sent to the network. */
+int
+fs_batch_begin()
+{
+ return state_enter();
+}
+
+void
+fs_batch_end()
+{
+ state_leave();
+}
+
 static unsigned
 state_checksum()
 {
@@ -154,6 +170,22 @@ state_checksum()
  return a | (b << 8);
 }
 
+/* Only the terminated pathname is live. Copying/clearing its unused
+ * 512-byte capacity for every registry scan dominates tiny directory probes. */
+static void
+state_copy(to, from)
+struct state_entry *to, *from;
+{
+ memcpy(to, from, (unsigned)(from->path - (char *)from) + strlen(from->path) + 1);
+}
+
+static void
+state_clear(e)
+struct state_entry *e;
+{
+ memset(e, 0, (unsigned)(e->path - (char *)e) + 1);
+}
+
 static int
 state_read(slot, e)
 unsigned slot;
@@ -161,11 +193,10 @@ struct state_entry *e;
 {
  unsigned done, cache;
  int n;
- memset(e, 0, sizeof(*e));
- if (slot >= state_rows) return 0;
+ if (slot >= state_rows) { state_clear(e); return 0; }
  cache = slot % STATE_CACHE;
  if (state_depth && state_cached[cache] == slot + 1) {
-  memcpy(e, &state_cache[cache], sizeof(*e)); return 0;
+  state_copy(e, &state_cache[cache]); return 0;
  }
  if (lseek(fs_state_fd, (long)slot * STATE_SIZE, 0) < 0) return -1;
  done = 0;
@@ -186,7 +217,7 @@ struct state_entry *e;
  if (n >= SMBD_PATH) return -1;
  memcpy(e->path, state_buffer + 40, n); e->path[n] = 0;
  if (state_depth) {
-  memcpy(&state_cache[cache], e, sizeof(*e)); state_cached[cache] = slot + 1;
+  state_copy(&state_cache[cache], e); state_cached[cache] = slot + 1;
  }
  return 0;
 }
@@ -220,7 +251,7 @@ struct state_entry *e;
  }
  if (slot >= state_rows) state_rows = slot + 1;
  if (state_depth) {
-  memcpy(&state_cache[cache], e, sizeof(*e)); state_cached[cache] = slot + 1;
+  state_copy(&state_cache[cache], e); state_cached[cache] = slot + 1;
  }
  return 0;
 }
@@ -277,7 +308,7 @@ u32 share, options;
   if (!e.pid && !e.flags) break;
  }
  if (i >= STATE_ROWS) return -1;
- memset(&e, 0, sizeof(e));
+ state_clear(&e);
  e.pid = (u32)(unsigned)getpid(); e.serial = h->serial;
  e.device = (u32)st->st_dev; e.inode = (u32)st->st_ino;
  e.access = h->access; e.share = share;
@@ -297,7 +328,7 @@ struct handle *h;
  if (state_read(h->state_slot, &e)) return -1;
  if (e.pid != (u32)(unsigned)getpid() || e.serial != h->serial) return -1;
  if (e.flags & STATE_DELETE) { e.pid = 0; e.access = 0; }
- else memset(&e, 0, sizeof(e));
+ else state_clear(&e);
  return state_write(h->state_slot, &e);
 }
 
@@ -330,7 +361,7 @@ int pid;
   if (state_read(i, &e)) break;
   if (e.pid != (u32)(unsigned)pid) continue;
   if (e.flags & STATE_DELETE) { e.pid = 0; e.access = 0; }
-  else memset(&e, 0, sizeof(e));
+  else state_clear(&e);
   if (state_write(i, &e)) break;
  }
  state_leave();
@@ -381,6 +412,32 @@ const char *a, *b;
   if (lower((unsigned char)*a++) != lower((unsigned char)*b++)) return 0;
  }
  return *a == *b;
+}
+
+/* macOS maps trailing spaces and periods to SFM private-use characters.
+ * Decode these two aliases to names already in our ASCII namespace. Keep
+ * separators, other Unicode, and the remaining SFM characters unsupported;
+ * normal component validation still rejects dot/dotdot after conversion. */
+static int
+path_decode(out, cap, in, len)
+char *out;
+unsigned cap, len;
+const u8 *in;
+{
+ unsigned i, c, next;
+ if ((len & 1) || len / 2 >= cap) return -1;
+ for (i = 0; i < len / 2; i++) {
+  c = get16(in + i * 2);
+  if (c == 0xf028 || c == 0xf029) {
+   next = i + 1 < len / 2 ? get16(in + i * 2 + 2) : 0;
+   if (next && next != '/' && next != '\\') return -1;
+   c = c == 0xf028 ? ' ' : '.';
+  }
+  if (c < 32 || c > 126) return -1;
+  out[i] = (char)c;
+ }
+ out[len / 2] = 0;
+ return 0;
 }
 
 /* The on-disk namespace is deliberately a subset of ASCII. No replacement
@@ -452,6 +509,7 @@ void
 fs_init()
 {
  unsigned i;
+ apple_caps = 0;
  if (initialized) {
   fs_close_all();
   if (rootfd >= 0) close(rootfd);
@@ -767,7 +825,7 @@ state_sweep()
   if (active) continue;
   status = delete_path(&e);
   if (status && !result) result = status;
-  memset(&e, 0, sizeof(e));
+  state_clear(&e);
   if (state_write(i, &e)) return ST_DENIED;
  }
  return result;
@@ -1203,13 +1261,35 @@ int fd;
  return 0;
 }
 
+/* Fast mode exposes an explicitly empty, non-writable stream namespace.
+ * The ordinary data fork remains accessible, including its ::$DATA spelling.
+ * Never acknowledge a metadata write that would silently discard its bytes. */
+static u32
+empty_stream(access, disposition)
+u32 access, disposition;
+{
+ char *colon, *type, *p;
+ colon = strchr(input_path, ':');
+ if (!colon) return ST_OK;
+ if (colon == input_path) return ST_NAME_INVALID;
+ for (p = colon + 1; *p; p++) if (*p == '/' || *p == '\\') return ST_NAME_INVALID;
+ type = strchr(colon + 1, ':');
+ if (type && !same_name(type + 1, "$DATA")) return ST_NOT_SUPPORTED;
+ if (type) *type = 0;
+ if (!colon[1]) { *colon = 0; return ST_OK; }
+ if (!valid_name(colon + 1, 0)) return ST_NAME_INVALID;
+ if (disposition != 1 || (access & WRITE_ACCESS)) return ST_DENIED;
+ return ST_NOT_FOUND;
+}
+
 static u32
 create_file()
 {
  u8 *b, *r, *ctx;
  unsigned off, len, i, slot, cend, pos, n, dout, previous;
  u32 disposition, options, access, share, status, co, cl, next, dl, action, attrs;
- int fd, mxac, qfid;
+ int fd, mxac, qfid, aapl;
+ u32 bitmap, caps;
  struct stat st;
  struct handle *h;
  b = request + 64; r = response + 64;
@@ -1243,9 +1323,13 @@ create_file()
  off = get16(b + 44); len = get16(b + 46);
  if (len && (off < 120 || !bounds(off, len, request_len))) return ST_INVALID;
  if (!len) input_path[0] = 0;
- else if (utf16_decode(input_path, sizeof(input_path), request + off, len))
+ else if (path_decode(input_path, sizeof(input_path), request + off, len))
   return ST_NAME_INVALID;
- mxac = qfid = 0;
+ if (cfg.mac_fast) {
+  status = empty_stream(access, disposition);
+  if (status) return status;
+ }
+ mxac = qfid = aapl = 0; bitmap = caps = 0;
  co = get32(b + 48); cl = get32(b + 52);
  if (cl) {
   if (co < 120 || co > request_len || cl > request_len - co || (co & 7UL))
@@ -1263,6 +1347,13 @@ create_file()
    if (off < 16 || !bounds(off, len, n) || dl > n ||
        (dl && (dout < 16 || !bounds(dout, (unsigned)dl, n)))) return ST_INVALID;
    if (len == 4) {
+    if (cfg.mac_fast && !memcmp(ctx + off, "AAPL", 4)) {
+     if (aapl || dl != 24UL || get32(ctx + dout + 4)) return ST_INVALID;
+     if (get32(ctx + dout) != 1UL) return ST_NOT_SUPPORTED;
+     aapl = 1; bitmap = get32(ctx + dout + 8) & 7UL;
+     caps = get32(ctx + dout + 16);
+     caps = (caps & 16UL ? 16UL : caps & 1UL) | (caps & 4UL);
+    }
     if (!memcmp(ctx + off, "MxAc", 4)) mxac = 1;
     if (!memcmp(ctx + off, "QFid", 4)) qfid = 1;
     if (!memcmp(ctx + off, "ExtA", 4) && dl) return ST_NO_EAS;
@@ -1344,7 +1435,23 @@ create_file()
   put64(ctx + 24, (u32)st.st_ino, 0UL);
   put64(ctx + 32, (u32)st.st_dev, 0UL);
   if (previous) put32(response + previous, (u32)(response_len - previous));
-  response_len += 56;
+  previous = response_len; response_len += 56;
+ }
+ if (aapl) {
+  ctx = response + response_len; memset(ctx, 0, 80);
+  put16(ctx + 4, 16); put16(ctx + 6, 4); put16(ctx + 10, 24);
+  memcpy(ctx + 16, "AAPL", 4); put32(ctx + 24, 1UL);
+  put32(ctx + 32, bitmap); n = 40;
+  if (bitmap & 1UL) {
+   put32(ctx + n, caps); n += 8; apple_caps = (unsigned)caps;
+  }
+  if (bitmap & 2UL) n += 8; /* no resolve-ID, case-sensitive or full-sync claim */
+  if (bitmap & 4UL) {
+   put32(ctx + n + 4, 14UL); utf16_encode(ctx + n + 8, "2.11BSD", 14); n += 24;
+  }
+  put32(ctx + 12, (u32)(n - 24));
+  if (previous) put32(response + previous, (u32)(response_len - previous));
+  response_len += n;
  }
  if (response_len > 152) {
   put32(r + 80, 152UL); put32(r + 84, (u32)(response_len - 152));
@@ -1610,7 +1717,7 @@ unsigned len;
  if (!(h->access & 0x10000UL)) return ST_DENIED;
  if (len < 20 || p[0] > 1 || get32(p + 8) || get32(p + 12)) return ST_INVALID;
  n = get32(p + 16);
- if (n > len - 20 || utf16_decode(input_path, sizeof(input_path), p + 20, (unsigned)n))
+ if (n > len - 20 || path_decode(input_path, sizeof(input_path), p + 20, (unsigned)n))
   return ST_NAME_INVALID;
  if (h->path[0] != '.' || h->path[1] != '/') return ST_DENIED;
  if (fstat(h->fd, &source) < 0) return os_error();
@@ -1769,7 +1876,7 @@ query_directory()
  off = get16(b + 24); len = get16(b + 26); output = get32(b + 28);
  if (len && (off < 96 || !bounds(off, len, request_len))) return ST_INVALID;
  if (len) {
-  if (utf16_decode(input_path, sizeof(input_path), request + off, len) ||
+  if (path_decode(input_path, sizeof(input_path), request + off, len) ||
       !valid_name(input_path, 1)) return ST_NAME_INVALID;
   if (!h->searched || (flags & 0x10)) strcpy(h->pattern, input_path);
  }
@@ -1843,7 +1950,15 @@ query_directory()
    put64(p + 40, file_size(&st), 0UL);
    put64(p + 48, allocation_size(&st), 0UL);
    put32(p + 56, attrs); put32(p + 60, (u32)len);
-   if (cls == 37) put64(p + 96, (u32)st.st_ino, 0UL);
+   if (cls == 37) {
+    put64(p + 96, (u32)st.st_ino, 0UL);
+    if (apple_caps & 17) {
+     put32(p + 64, cfg.writable ? FULL_ACCESS : READ_ACCESS);
+     if (apple_caps & 16) put16(p + 68, 1); /* AAPL v2: no xattrs */
+     if (apple_caps & 4) put16(p + 94, st.st_mode);
+     /* Resource fork length and compressed Finder info remain zero. */
+    }
+   }
    if (cls == 38) put64(p + 72, (u32)st.st_ino, 0UL);
   }
   utf16_encode(p + base, de->d_name, len);
@@ -1963,7 +2078,8 @@ query_info()
    break;
   case 4: put32(p, 7UL); put32(p + 4, 0x10UL); n = 8; break;
   case 5:
-   put32(p, cfg.writable ? 2UL : 0x00080002UL); /* preserves filename case */
+   put32(p, (cfg.writable ? 2UL : 0x00080002UL) |
+         (cfg.mac_fast ? 0x00040000UL : 0UL)); /* empty named-stream namespace in fast mode */
    put32(p + 4, MAXNAMLEN > NAME_LIMIT ? NAME_LIMIT : MAXNAMLEN);
    n = utf16_encode(p + 12, "2.11BSD", 32); put32(p + 8, (u32)n); n += 12;
    break;
