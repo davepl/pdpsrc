@@ -21,14 +21,17 @@ lseek followed by one word-aligned 512-byte raw character-device read.
 The program opens O_RDONLY and issues only the label-get ioctl; no writes.
 
 DIOCGDINFO supplies sector size, sectors per cylinder and total sectors.
-An existing raw partition covering the entire disk at offset zero is
-selected from the label; partition c is not assumed to cover the disk.
+The largest nonempty zero-offset partition supplies a usable range. The
+sweep is bounded by both that partition and the label unit size; geometry
+can round up beyond the usable partition (as on the RA82). A clipping
+notice is printed in that case. Partition c is not assumed to be the
+whole disk. -n also prints each partition size and offset.
 The last target is the first sector of the last (possibly partial)
 logical cylinder, derived from total sectors, so it stays inside the pack.
 The RA driver default label has no total-sector field; in that case the
 size comes from its largest zero-offset partition (the MSCP drive size),
 and a synthetic-geometry notice is printed. An invalid label, missing
-whole-disk partition or unsupported
+zero-offset raw partition or unsupported
 32-bit byte-offset range is rejected. No RA60/RA82 geometry is hard-coded.
 
 MSCP addresses logical blocks. Label geometry may be synthetic, and drive
@@ -51,3 +54,11 @@ This selects the existing sibling ksh/native-tools/c0 and c1, plus the
 preprocessor wrapper, through a generated compiler/ directory. Override
 PDP_COMPILER_PASSES if those private passes live elsewhere. For a clean
 rebuild: make clean; /bin/sh ./build-mentec.sh
+
+Every read checks its sector and byte-offset bounds before seeking.
+A hardware error stops the sweep; it is not retried. MSCP status 0353
+indicates a drive-detected error. Do not repeat a sweep that faults a
+drive; inspect its fault indication and controller diagnostics first.
+
+Host regression checks (simulated devices; no raw disk access):
+  python3 tests/test_seektest.py

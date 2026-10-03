@@ -53,14 +53,24 @@ long limit;
 }
 
 static int
-readcyl(fd, cyl, spc, delay)
+readcyl(fd, cyl, spc, delay, total)
 int fd;
 long cyl, spc, delay;
+unsigned long total;
 {
         off_t offset;
         struct timeval tv;
         int count;
 
+        /* Check each request before either multiplication. Never issue a
+         * raw read outside the selected partition or signed off_t range. */
+        if (!total || cyl < 0 || spc <= 0 ||
+            (unsigned long)cyl > (total - 1UL) / (unsigned long)spc ||
+            (unsigned long)cyl >
+            (2147483647UL / 512UL) / (unsigned long)spc) {
+                fprintf(stderr, "refusing out-of-range cylinder %ld\n", cyl);
+                return (-1);
+        }
         offset = (off_t)(cyl * spc * 512L);
         if (lseek(fd, offset, 0) == (off_t)-1) {
                 perror("lseek");
@@ -96,7 +106,7 @@ char **argv;
         char device[32], *arg;
         int unit, fd, part, chosen, info, first;
         long n, step, delay, spc, last, low, high;
-        unsigned long total;
+        unsigned long total, span;
         struct stat st;
 
         info = 0;
@@ -151,20 +161,37 @@ char **argv;
         }
         close(fd);
         total = label.d_secperunit;
-        /* Unlabelled RA media get a driver-generated label: secperunit
-         * is zero, but partition a contains the MSCP-reported size. */
-        if (!total && label.d_npartitions <= MAXPARTITIONS) {
-                for (part = 0; part < label.d_npartitions; part++)
-                        if (label.d_partitions[part].p_offset == 0 &&
-                            label.d_partitions[part].p_size > total)
-                                total = label.d_partitions[part].p_size;
-                fprintf(stderr, "using partition size and synthetic label geometry\n");
-        }
         spc = (long)label.d_secpercyl;
-        if (label.d_secsize != 512 || !total || spc <= 0 ||
+        if (label.d_secsize != 512 || spc <= 0 ||
             label.d_npartitions == 0 || label.d_npartitions > MAXPARTITIONS) {
                 fprintf(stderr, "need a valid 512-byte-sector disk label with geometry\n");
                 return (1);
+        }
+        /* Label geometry can include sectors not present in the usable
+         * zero-offset partition (this RA82 label rounds up cylinders).
+         * Bound the sweep by BOTH the label and the partition, rather than
+         * demanding that a partition reach a padded label unit size. */
+        span = 0;
+        for (part = 0; part < label.d_npartitions; part++) {
+                if (info)
+                        printf("partition %c: %lu sectors, offset %lu\n",
+                            'a' + part, label.d_partitions[part].p_size,
+                            label.d_partitions[part].p_offset);
+                if (label.d_partitions[part].p_offset == 0 &&
+                    label.d_partitions[part].p_size > span)
+                        span = label.d_partitions[part].p_size;
+        }
+        if (!span) {
+                fprintf(stderr, "no nonempty zero-offset partition in the label\n");
+                return (1);
+        }
+        if (!total) {
+                total = span;
+                fprintf(stderr, "using partition size and synthetic label geometry\n");
+        } else if (total > span) {
+                fprintf(stderr, "label reports %lu sectors; limiting sweep to %lu sectors in zero-offset partition\n",
+                    total, span);
+                total = span;
         }
         /* Do not assume 'c' is the whole disk on 2.11BSD. */
         chosen = -1;
@@ -184,7 +211,7 @@ char **argv;
                 close(fd);
         }
         if (chosen < 0) {
-                fprintf(stderr, "no readable raw partition covers the whole disk\n");
+                fprintf(stderr, "cannot open a raw zero-offset partition covering %lu sectors\n", total);
                 return (1);
         }
         last = (long)((total - 1UL) / (unsigned long)spc);
@@ -208,8 +235,8 @@ char **argv;
                 low = 0;
                 high = last;
                 while (low <= high) {
-                        if (readcyl(fd, low, spc, delay) < 0 ||
-                            (high != low && readcyl(fd, high, spc, delay) < 0)) {
+                        if (readcyl(fd, low, spc, delay, total) < 0 ||
+                            (high != low && readcyl(fd, high, spc, delay, total) < 0)) {
                                 close(fd);
                                 return (1);
                         }
