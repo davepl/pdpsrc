@@ -18,7 +18,7 @@ command from the repository root delegates to this directory.
 The build includes the 2.9BSD sieve, MACRO11 tools and assembly sample,
 native assembly sieve and attention program, both BASIC interpreters,
 bug demonstrations, both Dhrystone versions, HTTP servers, menu, MQTT,
-novi, rz/sz and transfer utilities, the SMB2 file server, screen demonstrations, sieves, the native
+novi, rz/sz and transfer utilities, the read-only RA seek exerciser, the SMB2 file server, screen demonstrations, sieves, the native
 socket client and diagnostics, sudo, top, wget, and the web helpers. The
 MACRO11 sample produces a bare-metal image; building it does not run it.
 Foreign socket clients, kernel source examples, archived websites and the
@@ -50,7 +50,7 @@ make SUBDIRS=novi clean
 
 On macOS, the same command builds all portable programs and the MACRO11
 assembly sample. It reports skips for the native assembly sieve, attention
-program, `top`, and `webtop`, which require PDP-11 assembly or 2.11BSD kernel
+program, `seektest`, `top`, and `webtop`, which require PDP-11 assembly or 2.11BSD kernel
 interfaces. The other web helpers and HTTP servers still build, and the socket
 client is selected for the running system. The complete set builds on the PDP.
 `make clean` cleans every subproject on either host, including native-only

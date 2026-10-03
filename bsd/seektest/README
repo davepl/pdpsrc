@@ -1,0 +1,53 @@
+seektest - read-only DEC RA seek sweep, 2.11BSD/PDP-11
+
+Build: make
+Install (as root, create BINDIR first): make install
+Default BINDIR is /usr/local; override with make BINDIR=/some/path install.
+
+Usage: seektest [-n] unit [step [delay_ms]]
+  seektest 1           sweep RA unit 1, step 1 cylinder, no delay
+  seektest ra1 8       sweep in 8-cylinder steps
+  seektest 1 0         alternate the two extremes continuously
+  seektest rra1 16 20  16-cylinder steps, 20ms pause after each read
+  seektest -n 1        inspect label/device only, no sweep reads
+  seektest -h          help
+Stop with Ctrl-C. Raw device permissions normally require root.
+Unit means the BSD device number (0..31), not the KDA50 cable port.
+
+The sweep reads cylinder 0, last cylinder, cylinder X, last-X, etc.
+After the endpoints cross it restarts. A meeting cylinder is read once.
+Step 0 repeats the outer/inner pair indefinitely. Each target performs
+lseek followed by one word-aligned 512-byte raw character-device read.
+The program opens O_RDONLY and issues only the label-get ioctl; no writes.
+
+DIOCGDINFO supplies sector size, sectors per cylinder and total sectors.
+An existing raw partition covering the entire disk at offset zero is
+selected from the label; partition c is not assumed to cover the disk.
+The last target is the first sector of the last (possibly partial)
+logical cylinder, derived from total sectors, so it stays inside the pack.
+The RA driver default label has no total-sector field; in that case the
+size comes from its largest zero-offset partition (the MSCP drive size),
+and a synthetic-geometry notice is printed. An invalid label, missing
+whole-disk partition or unsupported
+32-bit byte-offset range is rejected. No RA60/RA82 geometry is hard-coded.
+
+MSCP addresses logical blocks. Label geometry may be synthetic, and drive
+remapping/controller caching can affect the physical movement heard.
+Raw reads bypass the UNIX buffer cache; every target requests disk I/O.
+Delays use select with long timeval fields (not the inconsistent native
+usleep prototype). Resolution is approximately one clock tick; short
+requested delays may produce no pause. This generates sustained read load
+until interrupted and may compete with normal disk activity.
+
+The source uses K&R function definitions and 32-bit long offset arithmetic.
+Build natively on 2.11BSD; macOS lacks this disk-label interface.
+
+The Makefile uses the existing ../tools/cpp and ../tools/c1 wrappers for
+the installed compiler issues. Override PDPFLAGS for another installation.
+
+On mentec the stock passes also have a stack-growth fault. Build with:
+  /bin/sh ./build-mentec.sh
+This selects the existing sibling ksh/native-tools/c0 and c1, plus the
+preprocessor wrapper, through a generated compiler/ directory. Override
+PDP_COMPILER_PASSES if those private passes live elsewhere. For a clean
+rebuild: make clean; /bin/sh ./build-mentec.sh
