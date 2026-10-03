@@ -1,0 +1,47 @@
+CPPFLAGS = -I.
+CFLAGS = -O
+LD = cc
+LDFLAGS =
+DEFS =
+LIBS =	-lbsd
+
+OBJS = 	alloc.o bsdstrl.o c_ksh.o c_sh.o c_test.o c_ulimit.o edit.o \
+	emacs.o eval.o exec.o expr.o history.o io.o jobs.o lex.o \
+	mail.o main.o misc.o path.o shf.o sigact.o syn.o table.o \
+	trap.o tree.o tty.o var.o version.o vi.o
+
+DPSRCS = emacs.gen.out siglist.out config.h
+
+all:	ksh ksh.0
+
+ksh:	$(DPSRCS) $(OBJS)
+	$(LD) $(LDFLAGS) -o ksh $(CRT) $(OBJS) $(LIBS)
+
+# two steps to prevent the creation of a bogus siglist.out
+siglist.out: config.h sh.h siglist.linux.in siglist.sh
+	./siglist.sh "$(CC) -E $(CPPFLAGS) $(DEFS) -I." < siglist.linux.in > siglist.out.tmp \
+	    && mv siglist.out.tmp siglist.out
+
+# two steps to prevent the creation of a bogus emacs.gen.out
+emacs.gen.out: emacs-gen.sh emacs.c
+	./emacs-gen.sh emacs.c > emacs.gen.out.tmp \
+	    && mv emacs.gen.out.tmp emacs.gen.out
+
+# config.h for Linux
+config.h:	config.linux.h
+	-rm -f config.h
+	ln -s config.linux.h config.h
+
+ksh.1: ksh.Man mkman.sh
+	./mkman.sh ksh ksh.Man > ksh.1.tmp && mv ksh.1.tmp ksh.1
+
+ksh.0:	ksh.1
+	tbl ksh.1 | nroff -man -h > ksh.0
+
+clean:
+	-rm -f ksh *.o *.out *.tmp config.h ksh.[01]
+
+depend:	$(DPSRCS)
+	mkdep $(CFLAGS) `echo $(OBJS) | sed -e 's/\.o/.c/g'`
+
+include .depend

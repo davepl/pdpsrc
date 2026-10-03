@@ -1,0 +1,29 @@
+Provenance of native compiler/runtime support
+=============================================
+
+The shell's LICENSE.txt does not replace the notices for these BSD/UNIX
+components. Original file notices have been retained.
+
+crt0-stack.s: /usr/src/lib/libc/pdp/csu/crt0.s, with local stack prefaulting.
+csv-stack.s: /usr/src/lib/libc/pdp/crt/csv.s, with local stack prefaulting.
+DEFS.h: unchanged /usr/src/lib/libc/pdp/crt/DEFS.h.
+from-host/: source and existing compiler objects from /usr/src/lib/ccom.
+All were obtained from the tested 2.11BSD patch-level-498 system.
+The SHA256 manifest records the unchanged compiler snapshot, including objects.
+
+The runtime carries copyright notices of the Regents of the University
+of California. The compiler is derived from the historical UNIX C compiler
+with 2.11BSD changes. See the accompanying historical license documents
+in licenses/ and the original notices in each file.
+
+Acknowledgment: This product includes software developed by the University
+of California, Berkeley and its contributors. This product includes software
+developed or owned by Caldera International, Inc.
+
+Historical sources and licensing references:
+https://www.tuhs.org/Archive/Caldera-license.pdf
+https://www.tuhs.org/Archive/Distributions/UCB/
+
+The BSD text accompanies the original Regents notices in the runtime files.
+Its standard text was obtained from the SPDX BSD-4-Clause license template:
+https://github.com/spdx/license-list-data/blob/main/text/BSD-4-Clause.txt

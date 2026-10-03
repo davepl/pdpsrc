@@ -1,0 +1,72 @@
+Mentec ksh build verification - 2026-09-28
+=======================================
+
+Target: Mentec, 2.11BSD patch level 498
+Remote source directory: /home/dave/source/repos/ksh
+Source and generated files owned by dave (uid/gid 1002).
+Shell: PD KSH v5.2.14 99/07/13.2 (NetBSD-derived PDP-11 port)
+Upstream commit: a7a376b650e1015afa044cbf3576ed78cfac5bd3
+
+Result: /bin/sh ./mentec-build.sh completed with exit status 0.
+This rebuilds local compiler/runtime support, cleans and recompiles ksh,
+regenerates dependencies and manual pages, and runs the regression suite.
+Result: 67 passed, 0 failed.
+Two independent clean builds produced byte-identical executables.
+SHA256: 65ecac6c3fbb2762e69561ffd82d34e9aeba755c278fdc64284445569ed93664
+
+Interactive tests passed on this exact executable:
+- Emacs editing and history recall
+- Filename completion
+- vi editing
+- Job stop, listing, background resume, and termination
+- Foreground job control and Ctrl-C (exit status 130)
+- History saved and loaded across shell sessions
+
+The automated suite covers functions, recursion (including a 12-level
+stack-growth test), scope, arrays, 32-bit arithmetic, substitutions,
+quoting, patterns, loops, pipelines, redirections, here documents, traps,
+background jobs, source/autoload, getopts, aliases, coprocesses, and 200
+iterations of parser/evaluator/executor overlay switching.
+
+Executable size reported by native size:
+Base text 42944 bytes; data 16384; bss 6182; total text 146752.
+Eight overlays: 12416, 13120, 14656, 12736, 12736, 14848, 14208, 9088.
+Largest compiled shell stack allocation: 1038 bytes.
+
+Local runtime support prefaults stack space to avoid the observed
+Mentec stack-boundary call failure. The private compiler passes use the
+same support. Installed system compilers, libraries, /bin/sh, and login
+shell settings were not changed. See README.mentec and native-tools/README.
+
+Run on Mentec:
+    cd /home/dave/source/repos/ksh
+    ./ksh
+
+Clean rebuild and test:
+    /bin/sh ./mentec-build.sh
+
+The archive includes complete shell source, the native compiler bootstrap
+snapshot and its source, local runtime changes, the verified executable,
+manual pages, and build/test logs. mentec.patch records the shell/runtime
+changes; the bootstrap snapshot is supplied separately inside the archive.
+
+Publication packaging preserves the tested C and runtime sources and bootstrap
+objects. The tested Makefile is now Makefile.mentec; Makefile.2bsd is the
+upstream version. The build entry point now works from any source directory.
+
+Public checkout reproduction check - 2026-09-28
+----------------------------------------------
+A plain tar generated solely from the staged Git tree was extracted into
+/home/dave/source/repos/ksh-publish-check and built as dave with the
+published mentec-build.sh entry point. This was a fresh source directory,
+with no generated objects or helpers carried over from the original build.
+The new executable has the same SHA256 recorded above (byte-identical).
+A fresh HTTPS clone of https://github.com/davepl/ksh.git matched the local
+commit and all 28 files in the compiler snapshot passed SHA256 validation.
+
+During this check the original autoload test was found to accept printed
+output even when its fixture did not define the expected function. The
+fixture now defines a function, and the test checks successful loading as
+well as output. The corrected suite ran against the freshly built shell:
+67 passed, 0 failed, with no autoload diagnostic.
+No C source, runtime code, or compiler inputs changed for this correction.

@@ -1,0 +1,75 @@
+Korn shell on Mentec, 2.11BSD patch level 498
+========================================================
+
+Source: https://github.com/jdbruner/ksh
+Revision: a7a376b650e1015afa044cbf3576ed78cfac5bd3
+This is the PDP-11 port of NetBSD 5.0.2's pdksh 5.2.14, not ksh93.
+The full upstream configuration is retained: Korn syntax, functions,
+arrays, arithmetic, job control, Emacs and vi editing, brace expansion,
+and history. Eight separate-I/D overlays fit the PDP-11.
+
+After building, run from your source directory as an ordinary user:
+
+    ./ksh
+    ./ksh -c 'print "$KSH_VERSION"; print $((6*7))'
+
+Choose interactive editing with set -o emacs or set -o vi.
+For persistent history, set HISTFILE in ksh, for example:
+
+    HISTFILE=$HOME/.ksh_history
+    export HISTFILE
+
+The upstream simple history implementation saves on exit. It does not
+merge simultaneous sessions as the optional complex-history backend does.
+
+Clean native build and regression test:
+
+    /bin/sh ./mentec-build.sh
+
+This cleans generated shell outputs, rebuilds the local runtime and
+compiler helpers, regenerates dependencies, compiles with native tools,
+and runs mentec-tests.ksh using the new executable. Logs are build.log,
+depend.log, and tests.log. Builds take several minutes on this machine.
+The script selects Makefile.mentec if Makefile is absent. If you have
+another Makefile selected, move it aside first. Run from the source
+directory; no particular user name or absolute path is required.
+For an incremental build and test: make; ./ksh mentec-tests.ksh
+
+Local compatibility support
+---------------------------
+
+An initially linked shell failed during startup; native compiler runs
+also produced inconsistent errors and crashes. Debugging c0 showed it
+unexpectedly reaching address zero (the C startup entry) while parsing
+line 74 of table.c. Its stack was at an allocation boundary; the later
+"Arg count" message was startup running again with a bogus argc, rather
+than an actual source argument-count error. Changing argument filenames
+changed where the stack boundary was encountered.
+
+native-tools/crt0-stack.s prefaults startup stack space using a simple
+memory access. native-tools/csv-stack.s similarly prefaults 4096 bytes
+before each C routine body, for both direct and overlay calls. This keeps
+call instructions from encountering the observed stack-growth failure.
+It preserves the standard register/overlay frame layout. These are local
+copies of the host's runtime sources; installed libraries are untouched.
+
+The same runtime is linked into private c0 and c1 compiler passes using
+native compiler object files saved from /usr/src/lib/ccom. The stock cc
+driver selects these passes with -B./native-tools/ -t01, retaining -O.
+The shell links the local startup and register-save objects as well.
+See native-tools/README for provenance and bootstrap details.
+
+Two small source compatibility changes are retained: misc.c copies
+option letters through an existing integer temporary, and jobs.c uses a
+K&R declaration for its internal kill_job function. Neither removes a
+shell feature. Their necessity has not been retested after the runtime
+fix; they are retained to preserve the validated shell source.
+
+This pdksh parses an entire -c string before executing it. Defining and
+calling an alias within that same string requires a later parse, such as
+eval. Aliases on separate lines in scripts and interactive input work.
+
+The source tree does not change the login shell or replace /bin/sh.
+Run the executable here. The upstream make install is a separate
+administrative step that installs /bin/ksh, its manual page, and an
+/etc/shells entry.

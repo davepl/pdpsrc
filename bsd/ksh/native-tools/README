@@ -1,0 +1,34 @@
+Local native compiler and runtime support for Mentec
+===================================================
+
+crt0-stack.s and csv-stack.s derive from the host's 2.11BSD libc sources:
+    /usr/src/lib/libc/pdp/csu/crt0.s
+    /usr/src/lib/libc/pdp/crt/csv.s
+DEFS.h is copied from /usr/src/lib/libc/pdp/crt/DEFS.h.
+The original copyright notices are retained.
+
+The compiled shell has a largest immediate stack allocation of 1038
+bytes; the compiler snapshots have maxima of 3072 (c0) and 2048 (c1).
+These are below the 4096-byte prefault interval.
+
+The additions prefault 4096 bytes with sub/tst/add (or restore sp at
+startup). A plain memory-access fault grows the stack before a call can
+cross the boundary. The csv additions run after saved registers and the
+overlay number have been recorded and retain the standard frame layout.
+
+from-host/ contains a snapshot of /usr/src/lib/ccom source files and its
+existing native compiler object files. They bootstrap the local passes
+without needing a reliable compiler to build a replacement compiler.
+The object files are input artifacts, not temporary ksh build outputs.
+Their source files are retained for inspection and future rebuilding.
+The Makefile deliberately disables implicit rules so the snapshot object
+files are not accidentally rebuilt by the affected stock compiler.
+
+make builds the runtime objects using the native preprocessor/assembler
+and relinks c0 (-i) and c1 (-n) with the native linker and libc. make clean
+removes only these generated helpers, never the bootstrap snapshot.
+The separate-I/D choice differs intentionally: c1's upstream table.o has
+its instruction-selection data in text and requires the shared format.
+
+No files in /lib, /bin, or /usr/src are changed. The top-level Makefile
+selects these private passes and links ksh with the same local runtime.

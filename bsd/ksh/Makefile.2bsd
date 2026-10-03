@@ -1,0 +1,375 @@
+CPPFLAGS = -I.
+CFLAGS = -O
+LD = ld
+LDFLAGS = -i -x
+DEFS =
+CRT = /lib/crt0.o
+LIBS = -lc
+
+OCORE =	alloc.o bsdstrl.o io.o mail.o main.o \
+	misc.o path.o shf.o sigact.o table.o tree.o \
+	tty.o version.o
+
+O1 =	c_ksh.o c_test.o
+
+O2 =	c_sh.o c_ulimit.o var.o
+
+O3 = 	edit.o emacs.o
+
+O4 =	vi.o
+
+O5 =	jobs.o history.o
+
+O6 =	eval.o expr.o trap.o
+
+O7 =	syn.o lex.o
+
+O8 =	exec.o
+
+OBJS =	$(OCORE) $(O1) $(O2) $(O3) $(O4) $(O5) $(O6) $(O7) $(O8)
+
+DPSRCS = emacs.gen.out siglist.out config.h
+
+all:	ksh ksh.0
+
+ksh:	$(DPSRCS) $(OBJS)
+	$(LD) $(LDFLAGS) -o ksh $(CRT) $(OCORE) \
+	-Z $(O1) -Z $(O2) -Z $(O3) -Z $(O4) -Z $(O5) \
+	-Z $(O6) -Z $(O7) -Z $(O8) -Y $(LIBS)
+
+# two steps to prevent the creation of a bogus siglist.out
+siglist.out: config.h sh.h siglist.2bsd.in siglist.sh
+	./siglist.sh "$(CC) -E $(CPPFLAGS) $(DEFS) -I." < siglist.2bsd.in > siglist.out.tmp \
+	    && mv siglist.out.tmp siglist.out
+
+# two steps to prevent the creation of a bogus emacs.gen.out
+emacs.gen.out: emacs-gen.sh emacs.c
+	./emacs-gen.sh emacs.c > emacs.gen.out.tmp \
+	    && mv emacs.gen.out.tmp emacs.gen.out
+
+# config.h for 2.11BSD
+config.h:	config.2bsd.h
+	-rm -f config.h
+	ln -s config.2bsd.h config.h
+
+ksh.1:	ksh.Man mkman.sh
+	./mkman.sh ksh ksh.Man > ksh.1.tmp && mv ksh.1.tmp ksh.1
+
+ksh.0:	ksh.1
+	tbl ksh.1 | nroff -man -h > ksh.0
+
+# install executable and man page, add to list of login shells
+install:	ksh ksh.0
+	install -m 755 ksh /bin
+	install -c -m 444 ksh.0 /usr/man/cat1
+	-if grep -s /bin/ksh /etc/shells; then :; else echo /bin/ksh >> /etc/shells; fi
+
+clean:
+	-rm -f ksh *.o *.out *.tmp config.h ksh.[01]
+
+depend:	$(DPSRCS)
+	mkdep $(CFLAGS) `echo $(OBJS) | sed -e 's/\.o/.c/g'`
+
+# DO NOT DELETE THIS LINE -- mkdep uses it.
+# DO NOT PUT ANYTHING AFTER THIS LINE, IT WILL GO AWAY.
+
+alloc.o: alloc.c sh.h config.h conf-end.h /usr/include/stdio.h
+alloc.o: /usr/include/sys/types.h /usr/include/sys/select.h
+alloc.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+alloc.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+alloc.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+alloc.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+alloc.o: /usr/include/sys/types.h /usr/include/limits.h
+alloc.o: /usr/include/machine/limits.h /usr/include/signal.h
+alloc.o: /usr/include/paths.h shf.h table.h tree.h expand.h lex.h proto.h
+bsdstrl.o: bsdstrl.c /usr/include/sys/types.h /usr/include/sys/select.h
+bsdstrl.o: /usr/include/sys/types.h /usr/include/string.h
+bsdstrl.o: /usr/include/sys/types.h
+io.o: io.c /usr/include/ctype.h sh.h config.h conf-end.h /usr/include/stdio.h
+io.o: /usr/include/sys/types.h /usr/include/sys/select.h
+io.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+io.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+io.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+io.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+io.o: /usr/include/sys/types.h /usr/include/limits.h
+io.o: /usr/include/machine/limits.h /usr/include/signal.h /usr/include/paths.h
+io.o: shf.h table.h tree.h expand.h lex.h proto.h ksh_stat.h
+io.o: /usr/include/sys/stat.h
+mail.o: mail.c config.h conf-end.h sh.h config.h /usr/include/stdio.h
+mail.o: /usr/include/sys/types.h /usr/include/sys/select.h
+mail.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+mail.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+mail.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+mail.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+mail.o: /usr/include/sys/types.h /usr/include/limits.h
+mail.o: /usr/include/machine/limits.h /usr/include/signal.h
+mail.o: /usr/include/paths.h shf.h table.h tree.h expand.h lex.h proto.h
+mail.o: ksh_stat.h /usr/include/sys/stat.h ksh_time.h /usr/include/sys/time.h
+mail.o: /usr/include/sys/types.h /usr/include/time.h /usr/include/sys/types.h
+main.o: main.c sh.h config.h conf-end.h /usr/include/stdio.h
+main.o: /usr/include/sys/types.h /usr/include/sys/select.h
+main.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+main.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+main.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+main.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+main.o: /usr/include/sys/types.h /usr/include/limits.h
+main.o: /usr/include/machine/limits.h /usr/include/signal.h
+main.o: /usr/include/paths.h shf.h table.h tree.h expand.h lex.h proto.h
+main.o: ksh_stat.h /usr/include/sys/stat.h ksh_time.h /usr/include/sys/time.h
+main.o: /usr/include/sys/types.h /usr/include/time.h /usr/include/sys/types.h
+misc.o: misc.c sh.h config.h conf-end.h /usr/include/stdio.h
+misc.o: /usr/include/sys/types.h /usr/include/sys/select.h
+misc.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+misc.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+misc.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+misc.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+misc.o: /usr/include/sys/types.h /usr/include/limits.h
+misc.o: /usr/include/machine/limits.h /usr/include/signal.h
+misc.o: /usr/include/paths.h shf.h table.h tree.h expand.h lex.h proto.h
+misc.o: /usr/include/ctype.h /usr/include/limits.h /usr/include/sys/param.h
+misc.o: /usr/include/sys/localopts.h /usr/include/sys/stddef.h
+misc.o: /usr/include/machine/machparam.h /usr/include/sys/types.h
+misc.o: /usr/include/signal.h /usr/include/sys/types.h
+path.o: path.c sh.h config.h conf-end.h /usr/include/stdio.h
+path.o: /usr/include/sys/types.h /usr/include/sys/select.h
+path.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+path.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+path.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+path.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+path.o: /usr/include/sys/types.h /usr/include/limits.h
+path.o: /usr/include/machine/limits.h /usr/include/signal.h
+path.o: /usr/include/paths.h shf.h table.h tree.h expand.h lex.h proto.h
+path.o: ksh_stat.h /usr/include/sys/stat.h
+shf.o: shf.c sh.h config.h conf-end.h /usr/include/stdio.h
+shf.o: /usr/include/sys/types.h /usr/include/sys/select.h
+shf.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+shf.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+shf.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+shf.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+shf.o: /usr/include/sys/types.h /usr/include/limits.h
+shf.o: /usr/include/machine/limits.h /usr/include/signal.h /usr/include/paths.h
+shf.o: shf.h table.h tree.h expand.h lex.h proto.h ksh_stat.h
+shf.o: /usr/include/sys/stat.h ksh_limval.h
+sigact.o: sigact.c sh.h config.h conf-end.h /usr/include/stdio.h
+sigact.o: /usr/include/sys/types.h /usr/include/sys/select.h
+sigact.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+sigact.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+sigact.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+sigact.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+sigact.o: /usr/include/sys/types.h /usr/include/limits.h
+sigact.o: /usr/include/machine/limits.h /usr/include/signal.h
+sigact.o: /usr/include/paths.h shf.h table.h tree.h expand.h lex.h proto.h
+table.o: table.c sh.h config.h conf-end.h /usr/include/stdio.h
+table.o: /usr/include/sys/types.h /usr/include/sys/select.h
+table.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+table.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+table.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+table.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+table.o: /usr/include/sys/types.h /usr/include/limits.h
+table.o: /usr/include/machine/limits.h /usr/include/signal.h
+table.o: /usr/include/paths.h shf.h table.h tree.h expand.h lex.h proto.h
+tree.o: tree.c sh.h config.h conf-end.h /usr/include/stdio.h
+tree.o: /usr/include/sys/types.h /usr/include/sys/select.h
+tree.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+tree.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+tree.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+tree.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+tree.o: /usr/include/sys/types.h /usr/include/limits.h
+tree.o: /usr/include/machine/limits.h /usr/include/signal.h
+tree.o: /usr/include/paths.h shf.h table.h tree.h expand.h lex.h proto.h
+tty.o: tty.c sh.h config.h conf-end.h /usr/include/stdio.h
+tty.o: /usr/include/sys/types.h /usr/include/sys/select.h
+tty.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+tty.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+tty.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+tty.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+tty.o: /usr/include/sys/types.h /usr/include/limits.h
+tty.o: /usr/include/machine/limits.h /usr/include/signal.h /usr/include/paths.h
+tty.o: shf.h table.h tree.h expand.h lex.h proto.h ksh_stat.h
+tty.o: /usr/include/sys/stat.h tty.h /usr/include/sys/ioctl.h
+tty.o: /usr/include/sys/ttychars.h /usr/include/sys/ttydev.h
+version.o: version.c sh.h config.h conf-end.h /usr/include/stdio.h
+version.o: /usr/include/sys/types.h /usr/include/sys/select.h
+version.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+version.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+version.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+version.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+version.o: /usr/include/sys/types.h /usr/include/limits.h
+version.o: /usr/include/machine/limits.h /usr/include/signal.h
+version.o: /usr/include/paths.h shf.h table.h tree.h expand.h lex.h proto.h
+c_ksh.o: c_ksh.c sh.h config.h conf-end.h /usr/include/stdio.h
+c_ksh.o: /usr/include/sys/types.h /usr/include/sys/select.h
+c_ksh.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+c_ksh.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+c_ksh.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+c_ksh.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+c_ksh.o: /usr/include/sys/types.h /usr/include/limits.h
+c_ksh.o: /usr/include/machine/limits.h /usr/include/signal.h
+c_ksh.o: /usr/include/paths.h shf.h table.h tree.h expand.h lex.h proto.h
+c_ksh.o: ksh_stat.h /usr/include/sys/stat.h /usr/include/ctype.h
+c_test.o: c_test.c sh.h config.h conf-end.h /usr/include/stdio.h
+c_test.o: /usr/include/sys/types.h /usr/include/sys/select.h
+c_test.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+c_test.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+c_test.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+c_test.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+c_test.o: /usr/include/sys/types.h /usr/include/limits.h
+c_test.o: /usr/include/machine/limits.h /usr/include/signal.h
+c_test.o: /usr/include/paths.h shf.h table.h tree.h expand.h lex.h proto.h
+c_test.o: ksh_stat.h /usr/include/sys/stat.h c_test.h
+c_sh.o: c_sh.c sh.h config.h conf-end.h /usr/include/stdio.h
+c_sh.o: /usr/include/sys/types.h /usr/include/sys/select.h
+c_sh.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+c_sh.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+c_sh.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+c_sh.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+c_sh.o: /usr/include/sys/types.h /usr/include/limits.h
+c_sh.o: /usr/include/machine/limits.h /usr/include/signal.h
+c_sh.o: /usr/include/paths.h shf.h table.h tree.h expand.h lex.h proto.h
+c_sh.o: ksh_stat.h /usr/include/sys/stat.h ksh_time.h /usr/include/sys/time.h
+c_sh.o: /usr/include/sys/types.h /usr/include/time.h /usr/include/sys/types.h
+c_sh.o: ksh_times.h ksh_time.h /usr/include/sys/times.h
+c_ulimit.o: c_ulimit.c sh.h config.h conf-end.h /usr/include/stdio.h
+c_ulimit.o: /usr/include/sys/types.h /usr/include/sys/select.h
+c_ulimit.o: /usr/include/sys/types.h /usr/include/setjmp.h
+c_ulimit.o: /usr/include/stdlib.h /usr/include/unistd.h
+c_ulimit.o: /usr/include/sys/types.h /usr/include/stdint.h
+c_ulimit.o: /usr/include/string.h /usr/include/sys/types.h
+c_ulimit.o: /usr/include/memory.h /usr/include/stdarg.h /usr/include/errno.h
+c_ulimit.o: /usr/include/fcntl.h /usr/include/sys/types.h /usr/include/limits.h
+c_ulimit.o: /usr/include/machine/limits.h /usr/include/signal.h
+c_ulimit.o: /usr/include/paths.h shf.h table.h tree.h expand.h lex.h proto.h
+c_ulimit.o: ksh_time.h /usr/include/sys/time.h /usr/include/sys/types.h
+c_ulimit.o: /usr/include/time.h /usr/include/sys/types.h
+c_ulimit.o: /usr/include/sys/resource.h
+var.o: var.c sh.h config.h conf-end.h /usr/include/stdio.h
+var.o: /usr/include/sys/types.h /usr/include/sys/select.h
+var.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+var.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+var.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+var.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+var.o: /usr/include/sys/types.h /usr/include/limits.h
+var.o: /usr/include/machine/limits.h /usr/include/signal.h /usr/include/paths.h
+var.o: shf.h table.h tree.h expand.h lex.h proto.h ksh_time.h
+var.o: /usr/include/sys/time.h /usr/include/sys/types.h /usr/include/time.h
+var.o: /usr/include/sys/types.h ksh_limval.h ksh_stat.h /usr/include/sys/stat.h
+var.o: /usr/include/ctype.h
+edit.o: edit.c config.h conf-end.h sh.h config.h /usr/include/stdio.h
+edit.o: /usr/include/sys/types.h /usr/include/sys/select.h
+edit.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+edit.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+edit.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+edit.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+edit.o: /usr/include/sys/types.h /usr/include/limits.h
+edit.o: /usr/include/machine/limits.h /usr/include/signal.h
+edit.o: /usr/include/paths.h shf.h table.h tree.h expand.h lex.h proto.h tty.h
+edit.o: /usr/include/sys/ioctl.h /usr/include/sys/ttychars.h
+edit.o: /usr/include/sys/ttydev.h edit.h /usr/include/sys/ioctl.h
+edit.o: /usr/include/ctype.h ksh_stat.h /usr/include/sys/stat.h
+emacs.o: emacs.c config.h conf-end.h sh.h config.h /usr/include/stdio.h
+emacs.o: /usr/include/sys/types.h /usr/include/sys/select.h
+emacs.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+emacs.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+emacs.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+emacs.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+emacs.o: /usr/include/sys/types.h /usr/include/limits.h
+emacs.o: /usr/include/machine/limits.h /usr/include/signal.h
+emacs.o: /usr/include/paths.h shf.h table.h tree.h expand.h lex.h proto.h
+emacs.o: ksh_stat.h /usr/include/sys/stat.h ksh_dir.h /usr/include/sys/dir.h
+emacs.o: /usr/include/ctype.h edit.h emacs.gen.out
+vi.o: vi.c config.h conf-end.h sh.h config.h /usr/include/stdio.h
+vi.o: /usr/include/sys/types.h /usr/include/sys/select.h
+vi.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+vi.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+vi.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+vi.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+vi.o: /usr/include/sys/types.h /usr/include/limits.h
+vi.o: /usr/include/machine/limits.h /usr/include/signal.h /usr/include/paths.h
+vi.o: shf.h table.h tree.h expand.h lex.h proto.h /usr/include/ctype.h
+vi.o: ksh_stat.h /usr/include/sys/stat.h edit.h
+jobs.o: jobs.c sh.h config.h conf-end.h /usr/include/stdio.h
+jobs.o: /usr/include/sys/types.h /usr/include/sys/select.h
+jobs.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+jobs.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+jobs.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+jobs.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+jobs.o: /usr/include/sys/types.h /usr/include/limits.h
+jobs.o: /usr/include/machine/limits.h /usr/include/signal.h
+jobs.o: /usr/include/paths.h shf.h table.h tree.h expand.h lex.h proto.h
+jobs.o: ksh_stat.h /usr/include/sys/stat.h ksh_wait.h /usr/include/sys/wait.h
+jobs.o: ksh_times.h ksh_time.h /usr/include/sys/time.h /usr/include/sys/types.h
+jobs.o: /usr/include/time.h /usr/include/sys/types.h /usr/include/sys/times.h
+jobs.o: tty.h /usr/include/sys/ioctl.h /usr/include/sys/ttychars.h
+jobs.o: /usr/include/sys/ttydev.h
+history.o: history.c sh.h config.h conf-end.h /usr/include/stdio.h
+history.o: /usr/include/sys/types.h /usr/include/sys/select.h
+history.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+history.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+history.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+history.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+history.o: /usr/include/sys/types.h /usr/include/limits.h
+history.o: /usr/include/machine/limits.h /usr/include/signal.h
+history.o: /usr/include/paths.h shf.h table.h tree.h expand.h lex.h proto.h
+history.o: ksh_stat.h /usr/include/sys/stat.h
+eval.o: eval.c sh.h config.h conf-end.h /usr/include/stdio.h
+eval.o: /usr/include/sys/types.h /usr/include/sys/select.h
+eval.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+eval.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+eval.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+eval.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+eval.o: /usr/include/sys/types.h /usr/include/limits.h
+eval.o: /usr/include/machine/limits.h /usr/include/signal.h
+eval.o: /usr/include/paths.h shf.h table.h tree.h expand.h lex.h proto.h
+eval.o: /usr/include/pwd.h ksh_dir.h /usr/include/sys/dir.h ksh_stat.h
+eval.o: /usr/include/sys/stat.h
+expr.o: expr.c sh.h config.h conf-end.h /usr/include/stdio.h
+expr.o: /usr/include/sys/types.h /usr/include/sys/select.h
+expr.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+expr.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+expr.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+expr.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+expr.o: /usr/include/sys/types.h /usr/include/limits.h
+expr.o: /usr/include/machine/limits.h /usr/include/signal.h
+expr.o: /usr/include/paths.h shf.h table.h tree.h expand.h lex.h proto.h
+expr.o: /usr/include/ctype.h
+trap.o: trap.c sh.h config.h conf-end.h /usr/include/stdio.h
+trap.o: /usr/include/sys/types.h /usr/include/sys/select.h
+trap.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+trap.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+trap.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+trap.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+trap.o: /usr/include/sys/types.h /usr/include/limits.h
+trap.o: /usr/include/machine/limits.h /usr/include/signal.h
+trap.o: /usr/include/paths.h shf.h table.h tree.h expand.h lex.h proto.h
+trap.o: siglist.out
+syn.o: syn.c sh.h config.h conf-end.h /usr/include/stdio.h
+syn.o: /usr/include/sys/types.h /usr/include/sys/select.h
+syn.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+syn.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+syn.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+syn.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+syn.o: /usr/include/sys/types.h /usr/include/limits.h
+syn.o: /usr/include/machine/limits.h /usr/include/signal.h /usr/include/paths.h
+syn.o: shf.h table.h tree.h expand.h lex.h proto.h c_test.h
+syn.o: /usr/include/assert.h
+lex.o: lex.c sh.h config.h conf-end.h /usr/include/stdio.h
+lex.o: /usr/include/sys/types.h /usr/include/sys/select.h
+lex.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+lex.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+lex.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+lex.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+lex.o: /usr/include/sys/types.h /usr/include/limits.h
+lex.o: /usr/include/machine/limits.h /usr/include/signal.h /usr/include/paths.h
+lex.o: shf.h table.h tree.h expand.h lex.h proto.h /usr/include/ctype.h
+exec.o: exec.c sh.h config.h conf-end.h /usr/include/stdio.h
+exec.o: /usr/include/sys/types.h /usr/include/sys/select.h
+exec.o: /usr/include/sys/types.h /usr/include/setjmp.h /usr/include/stdlib.h
+exec.o: /usr/include/unistd.h /usr/include/sys/types.h /usr/include/stdint.h
+exec.o: /usr/include/string.h /usr/include/sys/types.h /usr/include/memory.h
+exec.o: /usr/include/stdarg.h /usr/include/errno.h /usr/include/fcntl.h
+exec.o: /usr/include/sys/types.h /usr/include/limits.h
+exec.o: /usr/include/machine/limits.h /usr/include/signal.h
+exec.o: /usr/include/paths.h shf.h table.h tree.h expand.h lex.h proto.h
+exec.o: c_test.h /usr/include/ctype.h ksh_stat.h /usr/include/sys/stat.h
+
+# IF YOU PUT ANYTHING HERE IT WILL GO AWAY
