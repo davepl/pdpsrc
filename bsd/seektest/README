@@ -45,8 +45,12 @@ until interrupted and may compete with normal disk activity.
 The source uses K&R function definitions and 32-bit long offset arithmetic.
 Build natively on 2.11BSD; macOS lacks this disk-label interface.
 
-The Makefile uses the existing ../tools/cpp and ../tools/c1 wrappers for
-the installed compiler issues. Override PDPFLAGS for another installation.
+Plain make reuses compiler/c0 and compiler/c1 when present, or prepares
+private passes from the sibling ksh/native-tools when they are built.
+Otherwise it uses ../tools/cpp and ../tools/c1 with the stock compiler.
+Explicit PDPFLAGS overrides automatic selection. Selection runs in a
+separate shell because the native make shell enables -e, which wrongly
+exits on false conditions on this installation.
 
 On mentec the stock passes also have a stack-growth fault. Build with:
   /bin/sh ./build-mentec.sh
@@ -62,3 +66,4 @@ drive; inspect its fault indication and controller diagnostics first.
 
 Host regression checks (simulated devices; no raw disk access):
   python3 tests/test_seektest.py
+  python3 tests/test_build.py

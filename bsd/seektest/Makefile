@@ -1,12 +1,13 @@
 CC=cc
 CFLAGS=-O
-PDPFLAGS=-t1p -B../tools/
+# Empty means automatic compiler selection; explicit PDPFLAGS overrides it.
+PDPFLAGS=
 BINDIR=/usr/local
 
 all: seektest
 
-seektest: seektest.c
-	${CC} ${PDPFLAGS} ${CFLAGS} -o seektest seektest.c
+seektest: seektest.c Makefile build-mentec.sh compile.sh
+	/bin/sh ./compile.sh "${CC}" "${CFLAGS}" "${PDPFLAGS}"
 
 install: seektest
 	install -c -m 755 seektest ${BINDIR}/seektest
