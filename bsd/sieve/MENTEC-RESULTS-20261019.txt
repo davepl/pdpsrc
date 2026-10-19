@@ -1,0 +1,80 @@
+Mentec M1 integer-only sieve - 2026-10-19
+
+Target: mentec, 192.168.1.29, user dave
+Source/build directory: /usr/dave/source/repos/pdpsrc/bsd/sieve
+OS: 2.11BSD, kernel #45, pdp11
+Build: native make sieve (cc -O -o sieve sieve.c)
+The target's calendar was October 7; the host recording date is October 19.
+
+Cause and implementation
+------------------------
+2.11BSD user-space long division uses floating-point instructions in ldiv.s.
+The old sieve's long division/remainder therefore invoked FPSIM repeatedly.
+32-bit addition, shifts, and integer printf conversion do not require FP.
+
+The bitmap loops now use unsigned 16-bit byte/bit offsets, integer shifts,
+and additions. Eight fixed-mask lanes mark odd composites without long
+multiply, divide, or remainder in the loops. The maximum bitmap is 31250
+bytes at limit 500000. Timing and decimal formatting use integer arithmetic
+and shift/subtract division; average time is displayed in milliseconds.
+
+Prime counts use long results (41538 exceeds signed 16-bit range). Limits
+outside 2..500000 and durations outside 1..32767 are rejected. Allocation
+failure is fatal; limits without a reference count print UNKNOWN.
+
+Native measurements
+-------------------
+Every timed command used /bin/time, foreground, normal priority, serially.
+Before: saved original v2.02 binary, source identical to local original.
+After: final native v2.03 binary, including millisecond reporting.
+Command at limit 1000: /bin/time ./sieve -l 1000 -s 5
+Before used ./sieve.pre-nofp-20261019 with the same arguments.
+
+Run                   Passes   Program sec   Real sec   User sec   Sys sec
+Before, limit 1000          2          7.38        7.4        0.1       7.1
+After 1, limit 1000      1574          5.00        5.0        4.6       0.2
+After 2, limit 1000      1631          5.00        5.1        4.6       0.4
+After 3, limit 1000      1574          5.00        5.0        4.6       0.2
+After, limit 10000        189          5.00        5.1        4.9       0.1
+After, limit 500000         1          1.40        1.4        1.4       0.0
+
+The 10000 run used -l 10000 -s 5; the 500000 run used -1 -l 500000.
+All runs returned zero and reported validator PASS.
+
+Limit 1000 throughput: 0.27027 -> 314.80 passes per real second.
+Observed speedup: 1164.76x (median of three after rates / one before rate).
+The comparison includes both removal of FP emulation and loop improvements.
+External wall times have 0.1-second resolution; measurements vary with load.
+
+Validation
+----------
+Native optimized assembly: 774 instruction lines checked, no FP opcodes.
+Native object: no long-division/remainder or floating-point helper calls.
+Remaining ulsh/ualsh helpers use integer ROR/ASHC. Native printf's long
+integer conversion uses integer DIV. Linked stdio retains unused floating
+formatting routines; the sieve does not select those formats.
+
+Native one-shot counts passed at limits 2, 10, 49, 100, 1000, 10000, 32768,
+65536, 100000, 131072, and 500000. At 500000 the count is 41538.
+Exact prime output through 30, UNKNOWN validation, quiet output, and invalid
+limit/duration failure checks passed. All native build statuses were zero.
+
+Host: strict C89 -Wall -Wextra -Werror -O2 build passed; all 12 regression
+tests passed in 1.972 seconds. Tests include 35 independently calculated
+counts, prime squares and word boundaries, forced allocation failures,
+argument errors, exact printed primes, and a real one-second timed run.
+Additional ASan/UBSan review covered 2062 sieve limits, 100000 random
+32-bit divisions, boundary divisions, parsers, and decimal formatting.
+Host suite: python3 bsd/sieve/tests/test_sieve.py (requires a modern host).
+
+Deployment and backups
+----------------------
+Updated native files: sieve.c and sieve
+Native original files retained, with original permissions/timestamps:
+  sieve.c.pre-nofp-20261019
+  sieve.pre-nofp-20261019
+Raw native logs and optimized assembly: results-nofp-20261019/
+All maintenance Telnet sessions and temporary transport scripts were closed.
+
+Final source: 11871 bytes, BSD sum 41378
+SHA-256: d337fd56235b1531a82a15491737fb3dcb6b68123d4951da092980021c8c68a6

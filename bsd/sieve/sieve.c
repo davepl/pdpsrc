@@ -6,6 +6,7 @@
    This program calculates prime numbers using the Sieve of Eratosthenes
    algorithm.  It follows the basic rules of the Primes competition in 
    Dave's Garage, but it is limited to a 500K limit due to available ram.
+   The sieve and timing use integer arithmetic for machines without an FPU.
 
 */
 
@@ -15,7 +16,7 @@
 #include <string.h>
 #include <sys/time.h>
 /* getopt is in stdlib.h on 2.11BSD, but in getopt.h on modern systems */
-#ifdef __pdp11__
+#if defined(pdp11) || defined(__pdp11__)
 /* getopt already included via stdlib.h on 2.11BSD */
 #else
 #include <getopt.h>
@@ -23,26 +24,23 @@
 
 #define DEFAULT_LIMIT 1000L
 #define DEFAULT_SECONDS 5
-#define BITSPERBYTE 8
-
-/* Macros for bit manipulation */
-#define GET_BIT(array, n) ((array[(n) / BITSPERBYTE] >> ((n) % BITSPERBYTE)) & 1)
-#define SET_BIT(array, n) (array[(n) / BITSPERBYTE] |= (1 << ((n) % BITSPERBYTE)))
+#define MAX_LIMIT 500000L
+#define MAX_SECONDS 32767L
 
 /* Structure to hold the expected results for a given limit */
 struct Result {
     long limit;
-    int count;
+    long count;
 };
 
 struct Result resultsDictionary[] = {
-    {10L, 4},
-    {100L, 25},
-    {1000L, 168},
-    {10000L, 1229},
-    {100000L, 9592},
-    {500000L, 41538},
-    {1000000L, 78498},
+    {10L, 4L},
+    {100L, 25L},
+    {1000L, 168L},
+    {10000L, 1229L},
+    {100000L, 9592L},
+    {500000L, 41538L},
+    {1000000L, 78498L},
 };
 
 /* Program Help */
@@ -50,7 +48,9 @@ void print_help(char *progname) {
     printf("Usage: %s [-l limit] [-s seconds] [-1] [-p] [-q] [-h|-?]\n", progname);
     printf("Options:\n");
     printf("  -l limit    Specify the upper limit for prime calculation (default: 1000)\n");
+    printf("              Supported limits: 2 through 500000\n");
     printf("  -s seconds  Specify the duration to run the sieve (default: 5 seconds)\n");
+    printf("              Supported durations: 1 through 32767 seconds\n");
     printf("  -1          Run the sieve only once (oneshot mode)\n");
     printf("  -p          Print the primes as they are found\n");
     printf("  -q          Suppress banners and extraneous output\n");
@@ -59,7 +59,7 @@ void print_help(char *progname) {
 
 /* Validate a limit versus an expected result */
 int validate_results(long limit, long count) {
-    int i;
+    size_t i;
     for (i = 0; i < sizeof(resultsDictionary) / sizeof(resultsDictionary[0]); i++) {
         if (resultsDictionary[i].limit == limit) {
             return resultsDictionary[i].count == count;
@@ -68,62 +68,186 @@ int validate_results(long limit, long count) {
     return -1;  /* No matching limit found */
 }
 
-void sieve_of_eratosthenes(long limit, int print_primes, long *count_ptr) {
-    long i, j, count;
-    size_t size;
-    char *sieve;
+int sieve_of_eratosthenes(long limit, int print_primes, long *count_ptr) {
+    unsigned int size, last_byte, last_bit, count;
+    unsigned int prime, square_byte, square_bit, delta;
+    unsigned int first_byte, first_bit, step_byte, step_bit, lane;
+    unsigned int bit, bits, end;
+    register unsigned int byte, mask;
+    unsigned char *sieve;
+    long value;
 
-    size = (limit + 1) / 2 / BITSPERBYTE + 1;
-    count = 1;  /* 2 is a prime number */
-    sieve = (char *) calloc(size, 1);
-
-    if (sieve == NULL) {
-        printf("Memory allocation failed\n");
-        return;
+    if (limit < 2L || limit > MAX_LIMIT) {
+        return 0;
     }
 
-    for (i = 3; i * i <= limit; i += 2) {
-        if (!GET_BIT(sieve, i / 2)) {
-            for (j = i * i; j <= limit; j += 2 * i) {
-                SET_BIT(sieve, j / 2);
+    /* Each bit represents an odd number; the final byte may be partial. */
+    last_byte = (unsigned int) ((limit - 1L) >> 4);
+    last_bit = (unsigned int) ((limit - 1L) >> 1) & 7;
+    size = last_byte + 1;
+    sieve = (unsigned char *) calloc(size, 1);
+    if (sieve == NULL) {
+        fprintf(stderr, "Memory allocation failed\n");
+        return 0;
+    }
+
+    /* floor(3 * 3 / 2) is bit 4 of byte 0.  Advancing an odd prime
+       candidate by 2 advances its square's bit index by 2 * prime + 2.
+       Byte/bit pairs avoid long multiply and divide on the PDP-11. */
+    prime = 3;
+    square_byte = 0;
+    square_bit = 4;
+    while (square_byte < last_byte ||
+           (square_byte == last_byte && square_bit <= last_bit)) {
+        if (!(sieve[prime >> 4] & (1U << ((prime >> 1) & 7)))) {
+            first_byte = square_byte;
+            first_bit = square_bit;
+            step_byte = prime >> 3;
+            step_bit = prime & 7;
+
+            /* Eight interleaved lanes keep each lane's bit mask fixed.
+               Its next multiple is exactly prime bytes away.  Even at
+               limit 500000, byte + prime remains below 32768. */
+            for (lane = 0; lane < 8; lane++) {
+                mask = 1U << first_bit;
+                for (byte = first_byte; byte < size; byte += prime) {
+                    sieve[byte] |= mask;
+                }
+                first_byte += step_byte;
+                first_bit += step_bit;
+                if (first_bit >= 8) {
+                    first_bit -= 8;
+                    first_byte++;
+                }
             }
+        }
+        delta = prime + prime + 2;
+        square_byte += delta >> 3;
+        square_bit += delta & 7;
+        if (square_bit >= 8) {
+            square_bit -= 8;
+            square_byte++;
+        }
+        prime += 2;
+    }
+
+    /* The unused bit for 1 stands in for prime 2 while counting.
+       The maximum count, 41538, fits an unsigned 16-bit integer. */
+    count = 0;
+    for (byte = 0; byte < size; byte++) {
+        bits = sieve[byte];
+        end = byte == last_byte ? last_bit + 1 : 8;
+        mask = 1;
+        for (bit = 0; bit < end; bit++) {
+            if (!(bits & mask)) {
+                count++;
+            }
+            mask <<= 1;
         }
     }
 
     if (print_primes) {
         printf("2 ");
-    }
-
-    for (i = 3; i <= limit; i += 2) {
-        if (!GET_BIT(sieve, i / 2)) {
-            count++;
-            if (print_primes) {
-                printf("%ld ", i);
+        value = 3L;
+        for (byte = 0; byte < size; byte++) {
+            end = byte == last_byte ? last_bit + 1 : 8;
+            bit = byte == 0 ? 1 : 0;
+            mask = 1U << bit;
+            for (; bit < end; bit++) {
+                if (!(sieve[byte] & mask)) {
+                    printf("%ld ", value);
+                }
+                value += 2L;
+                mask <<= 1;
             }
         }
-    }
-
-    if (print_primes) {
         printf("\n");
     }
 
     free(sieve);
+    *count_ptr = (long) count;
+    return 1;
+}
 
-    *count_ptr = count;
+/* Do not use long / or % here: 2.11BSD's user-space helpers use FP.
+   Shift/subtract division is only needed when formatting the final times. */
+static unsigned long divide_integer(unsigned long value,
+                                    unsigned long divisor) {
+    unsigned long quotient, bit;
+
+    quotient = 0;
+    bit = 1;
+    if (divisor == 0) {
+        return 0;
+    }
+    while (divisor <= (value >> 1)) {
+        divisor <<= 1;
+        bit <<= 1;
+    }
+    while (bit != 0) {
+        if (value >= divisor) {
+            value -= divisor;
+            quotient |= bit;
+        }
+        divisor >>= 1;
+        bit >>= 1;
+    }
+    return quotient;
+}
+
+static int parse_number(char *text, long maximum, long *number) {
+    long value;
+
+    value = 0;
+    if (*text == '\0') {
+        return 0;
+    }
+    while (*text != '\0') {
+        if (*text < '0' || *text > '9') {
+            return 0;
+        }
+        /* The previous value is bounded by maximum, at most 500000. */
+        value = (value << 3) + (value << 1) + (*text++ - '0');
+        if (value > maximum) {
+            return 0;
+        }
+    }
+    *number = value;
+    return 1;
+}
+
+static void print_centiseconds(unsigned long value) {
+    unsigned long seconds, fraction;
+
+    seconds = divide_integer(value, 100UL);
+    fraction = value - ((seconds << 6) + (seconds << 5) +
+                        (seconds << 2));
+    printf("%lu.%02u", seconds, (unsigned int) fraction);
+}
+
+static void print_milliseconds(unsigned long value) {
+    unsigned long seconds, fraction;
+
+    seconds = divide_integer(value, 1000UL);
+    fraction = value - ((seconds << 9) + (seconds << 8) +
+                        (seconds << 7) + (seconds << 6) +
+                        (seconds << 5) + (seconds << 3));
+    printf("%lu.%03u", seconds, (unsigned int) fraction);
 }
 
 /* Main program - parses args and runs sieve */
 int main(int argc, char *argv[]) {
-    long limit;
+    long limit, argument;
     int oneshot;
     int print_primes;
     int quiet;
     int seconds;
     int opt;
-    int passes;
+    int validation;
+    unsigned long passes, centiseconds, average;
+    unsigned int hundredths;
     struct timeval start_time, current_time;
-    double elapsed_time, total_time;
-    long prime_count;
+    long elapsed_seconds, elapsed_useconds, prime_count;
 
     limit = DEFAULT_LIMIT;
     oneshot = 0;
@@ -131,16 +255,25 @@ int main(int argc, char *argv[]) {
     quiet = 0;
     seconds = DEFAULT_SECONDS;
     passes = 0;
-    total_time = 0;
+    elapsed_seconds = 0;
+    elapsed_useconds = 0;
     prime_count = 0;
 
     while ((opt = getopt(argc, argv, "l:s:1pq?h")) != -1) {
         switch (opt) {
             case 'l':
-                limit = atol(optarg);
+                if (!parse_number(optarg, MAX_LIMIT, &limit) || limit < 2L) {
+                    fprintf(stderr, "Limit must be an integer from 2 to 500000\n");
+                    return 1;
+                }
                 break;
             case 's':
-                seconds = atoi(optarg);
+                if (!parse_number(optarg, MAX_SECONDS, &argument) ||
+                    argument == 0) {
+                    fprintf(stderr, "Seconds must be an integer from 1 to 32767\n");
+                    return 1;
+                }
+                seconds = (int) argument;
                 break;
             case '1':
                 oneshot = 1;
@@ -152,19 +285,25 @@ int main(int argc, char *argv[]) {
                 quiet = 1;
                 break;
             case 'h':
-            case '?':
                 print_help(argv[0]);
                 return 0;
+            case '?':
+                print_help(argv[0]);
+                return strcmp(argv[optind - 1], "-?") == 0 ? 0 : 1;
             default:
                 print_help(argv[0]);
                 return 1;
         }
     }
+    if (optind < argc) {
+        fprintf(stderr, "Unexpected argument: %s\n", argv[optind]);
+        return 1;
+    }
 
     if (!quiet) {
         printf("------------------------------------\n");
         printf("Sieve of Eratosthenes by Davepl 2024\n");
-        printf("v2.02 for the PDP-11 running 211-BSD\n");
+        printf("v2.03 integer-only for the PDP-11 running 211-BSD\n");
         printf("------------------------------------\n");
     }
 
@@ -173,22 +312,62 @@ int main(int argc, char *argv[]) {
         printf("------------------------------------\n");
     }
 
+    if (gettimeofday(&start_time, NULL) < 0) {
+        perror("gettimeofday");
+        return 1;
+    }
     do {
-        gettimeofday(&start_time, NULL);
-        sieve_of_eratosthenes(limit, print_primes, &prime_count);
+        if (!sieve_of_eratosthenes(limit, print_primes, &prime_count)) {
+            return 1;
+        }
         passes++;
-        gettimeofday(&current_time, NULL);
-        elapsed_time = (current_time.tv_sec - start_time.tv_sec) + 
-                       (current_time.tv_usec - start_time.tv_usec) / 1000000.0;
-        total_time += elapsed_time;
-    } while (!oneshot && total_time < (double) seconds);
+        if (gettimeofday(&current_time, NULL) < 0) {
+            perror("gettimeofday");
+            return 1;
+        }
+        elapsed_seconds = current_time.tv_sec - start_time.tv_sec;
+        elapsed_useconds = current_time.tv_usec - start_time.tv_usec;
+        if (elapsed_useconds < 0) {
+            elapsed_useconds += 1000000L;
+            elapsed_seconds--;
+        }
+        if (elapsed_seconds < 0) {
+            fprintf(stderr, "Clock moved backwards during measurement\n");
+            return 1;
+        }
+    } while (!oneshot && elapsed_seconds < seconds);
+
+    validation = validate_results(limit, prime_count);
 
     if (!quiet) {
-        printf("Total time taken      : %.2f seconds\n", total_time);
-        printf("Number of passes      : %d\n", passes);
-        printf("Time per pass         : %.2f seconds\n", total_time/passes);
+        /* Round to hundredths without long division or floating point.
+           At most 100 subtractions are required, once after the timed loop. */
+        elapsed_useconds += 5000L;
+        if (elapsed_useconds >= 1000000L) {
+            elapsed_useconds -= 1000000L;
+            elapsed_seconds++;
+        }
+        hundredths = 0;
+        while (elapsed_useconds >= 10000L) {
+            elapsed_useconds -= 10000L;
+            hundredths++;
+        }
+        centiseconds = ((unsigned long) elapsed_seconds << 6) +
+                       ((unsigned long) elapsed_seconds << 5) +
+                       ((unsigned long) elapsed_seconds << 2) + hundredths;
+        /* Milliseconds keep fast passes visible in the final report. */
+        average = divide_integer((centiseconds << 3) +
+                                 (centiseconds << 1) + (passes >> 1), passes);
+        printf("Total time taken      : ");
+        print_centiseconds(centiseconds);
+        printf(" seconds\n");
+        printf("Number of passes      : %lu\n", passes);
+        printf("Time per pass         : ");
+        print_milliseconds(average);
+        printf(" seconds\n");
         printf("Count of primes found : %ld\n", prime_count);
-        printf("Prime validator       : %s\n", validate_results(limit, prime_count) ? "PASS" : "FAIL");
+        printf("Prime validator       : %s\n",
+               validation < 0 ? "UNKNOWN" : validation ? "PASS" : "FAIL");
     }
-    return 0;
+    return validation == 0 ? 1 : 0;
 }
