@@ -2,15 +2,22 @@
 CC=cc
 CFLAGS=-O
 LDFLAGS=-i
-BINDIR=/usr/local
+BINDIR=/usr/bin
+DESTDIR=
+INSTALL=install
 
 all: pdpfetch
 
 pdpfetch: pdpfetch.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o pdpfetch pdpfetch.c
 
-install: pdpfetch
-	install -c -s -m 755 pdpfetch $(BINDIR)/pdpfetch
+install: FORCE
+	@/bin/sh -c 'if test -f pdpfetch; then \
+		test -d "${DESTDIR}${BINDIR}" || mkdir -p "${DESTDIR}${BINDIR}" || exit 1; \
+		${INSTALL} -c -m 755 pdpfetch "${DESTDIR}${BINDIR}/pdpfetch" || exit 1; \
+	else echo "pdpfetch not built; skipped"; fi'
+
+FORCE:
 
 clean:
 	rm -f pdpfetch pdpfetch.o

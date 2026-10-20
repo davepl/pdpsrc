@@ -2,9 +2,22 @@
 CC=cc
 CFLAGS=-O
 LDFLAGS=
+BINDIR=/usr/bin
+DESTDIR=
+INSTALL=install
 OBJS=smbd.o wire.o fs.o metadata.o metaio.o rpc.o auth.o session.o crypto.o revoke.o transport.o
 
 all: smbd smbpwd
+
+install: FORCE
+	@/bin/sh -c 'test -d "${DESTDIR}${BINDIR}" || mkdir -p "${DESTDIR}${BINDIR}" || exit 1'
+	@/bin/sh -c 'for prog in smbd smbpwd; do \
+		if test -f "$$prog"; then \
+			${INSTALL} -c -m 755 "$$prog" "${DESTDIR}${BINDIR}/$$prog" || exit 1; \
+		else echo "$$prog not built; skipped"; fi; \
+	done'
+
+FORCE:
 
 smbd: $(OBJS)
 	@if test "`uname -m`" = pdp11; then \

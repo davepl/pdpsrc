@@ -69,7 +69,9 @@ This pdksh parses an entire -c string before executing it. Defining and
 calling an alias within that same string requires a later parse, such as
 eval. Aliases on separate lines in scripts and interactive input work.
 
-The source tree does not change the login shell or replace /bin/sh.
-Run the executable here. The upstream make install is a separate
-administrative step that installs /bin/ksh, its manual page, and an
-/etc/shells entry.
+The build does not change the login shell or replace /bin/sh.
+Run the executable here, or use make install to copy an already built
+ksh to /usr/bin/ksh. BINDIR selects another destination directory;
+DESTDIR adds a staging prefix. This install target skips an unbuilt ksh.
+The separate make install-system administrative target installs /bin/ksh,
+its manual page, and an /etc/shells entry.

@@ -3,7 +3,8 @@ CC=cc
 CFLAGS=-O
 LDFLAGS=-i
 LIBS=-ltermcap
-BINDIR=/usr/local
+BINDIR=/usr/bin
+DESTDIR=
 INSTALL=install
 
 # Keep symbols for debugging, but compare/deploy the stripped executable.
@@ -23,8 +24,13 @@ screen.o: screen.c screen.h
 	$(CC) $(CFLAGS) -c screen.c
 
 # Run these targets as root. Use only group read access to kernel memory.
-install: top
-	$(INSTALL) -c -o root -g kmem -m 2755 top $(BINDIR)/top
+install: FORCE
+	@/bin/sh -c 'if test -f top; then \
+		test -d "${DESTDIR}${BINDIR}" || mkdir -p "${DESTDIR}${BINDIR}" || exit 1; \
+		$(INSTALL) -c -o root -g kmem -m 2755 top "${DESTDIR}${BINDIR}/top" || exit 1; \
+	else echo "top not built; skipped"; fi'
+
+FORCE:
 
 # For developers who run ./top in the source directory; repeat after rebuilds.
 install-local: top

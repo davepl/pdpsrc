@@ -1,3 +1,7 @@
+BINDIR = /usr/bin
+DESTDIR =
+INSTALL = install
+
 CPPFLAGS = -I.
 CFLAGS = -O
 LD = cc
@@ -37,6 +41,17 @@ ksh.1: ksh.Man mkman.sh
 
 ksh.0:	ksh.1
 	tbl ksh.1 | nroff -man -h > ksh.0
+
+# Copy the finished executable without rebuilding it.
+install: FORCE
+	@/bin/sh -c 'if test -f ksh; then \
+		test -d "$(DESTDIR)$(BINDIR)" || mkdir -p "$(DESTDIR)$(BINDIR)" || exit 1; \
+		$(INSTALL) -c -m 755 ksh "$(DESTDIR)$(BINDIR)/ksh" || exit 1; \
+	else \
+		echo "Skipping ksh (not built)"; \
+	fi'
+
+FORCE:
 
 clean:
 	-rm -f ksh *.o *.out *.tmp config.h ksh.[01]

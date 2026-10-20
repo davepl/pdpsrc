@@ -1,3 +1,8 @@
+# Install already compiled programs without rebuilding them.
+BINDIR=/usr/bin
+DESTDIR=
+INSTALL=install
+
 # Portable makefile for 2.11BSD/pdp11 and modern Unix/macOS
 
 TARGET=basic
@@ -26,4 +31,16 @@ $(TARGET): $(SRCS)
 clean:
 	rm -f $(TARGET)
 
-.PHONY: all clean
+.PHONY: all clean install FORCE
+
+install: FORCE
+	@/bin/sh -c 'test -d "${DESTDIR}${BINDIR}" || mkdir -p "${DESTDIR}${BINDIR}" || exit 1; \
+	for prog in $(TARGET); do \
+		if test -f "$$prog"; then \
+			${INSTALL} -c -m 755 "$$prog" "${DESTDIR}${BINDIR}/$$prog" || exit 1; \
+		else \
+			echo "$$prog not built; skipped"; \
+		fi; \
+	done'
+
+FORCE:

@@ -1,8 +1,8 @@
 seektest - read-only DEC RA seek sweep, 2.11BSD/PDP-11
 
 Build: make
-Install (as root, create BINDIR first): make install
-Default BINDIR is /usr/local; override with make BINDIR=/some/path install.
+Install (as root): make install
+Default BINDIR is /usr/bin; override with make BINDIR=/some/path install.
 
 Usage: seektest [-n] unit [step [delay_ms]]
   seektest 1           sweep RA unit 1, step 1 cylinder, no delay

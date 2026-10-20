@@ -5,7 +5,10 @@
 # Original version available at:
 # https://github.com/AaronJackson/2.11BSDhttpd
 
-DESTDIR= /usr/libexec
+BINDIR= /usr/bin
+DESTDIR=
+INSTALL=install
+INSTNAME=www-httpd
 CFLAGS= -O
 PROGRAM=	httpd
 SRCS=		httpd.c
@@ -20,8 +23,16 @@ ${OBJS}: ${SRCS} ../../pdp11_unistd.h
 ${PROGRAM}:	${OBJS}
 	${CC} ${CFLAGS} -o $@ ${OBJS} ${LIBS}
 
-install: ${PROGRAM}
-	install -s -m 755 ${PROGRAM} ${DESTDIR}
+install: FORCE
+	@/bin/sh -c 'if test -f ${PROGRAM}; then \
+		test -d "${DESTDIR}${BINDIR}" || mkdir -p "${DESTDIR}${BINDIR}" || exit 1; \
+		${INSTALL} -c -m 755 ${PROGRAM} "${DESTDIR}${BINDIR}/${INSTNAME}" || exit 1; \
+	else echo "${PROGRAM} not built; skipped"; fi'
+
+FORCE:
+
+install-service: ${PROGRAM}
+	install -c -s -m 755 ${PROGRAM} /usr/libexec/httpd
 	touch ${LOGFILE}
 	chown www ${LOGFILE}
 	chgrp staff ${LOGFILE}

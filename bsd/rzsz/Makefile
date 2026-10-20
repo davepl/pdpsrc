@@ -1,3 +1,8 @@
+# Install already compiled programs without rebuilding them.
+BINDIR=/usr/bin
+DESTDIR=
+INSTALL=install
+
 MAKE=make
 # Makefile for Unix/Xenix rz and sz programs
 # Some targets may not be up to date
@@ -432,3 +437,15 @@ undos:	undos.c ../pdp11_unistd.h
 lint:
 	lint -DUSG -DSV -DOLD sz.c >/tmp/sz.fluff
 	lint -DUSG -DSV -DOLD rz.c >/tmp/rz.fluff
+
+install: FORCE
+	@/bin/sh -c 'test -d "${DESTDIR}${BINDIR}" || mkdir -p "${DESTDIR}${BINDIR}" || exit 1; \
+	for prog in rz sz undos crc minirb ${RZLINKS} ${SZLINKS} ${TEXTLINKS}; do \
+		if test -f "$$prog"; then \
+			${INSTALL} -c -m 755 "$$prog" "${DESTDIR}${BINDIR}/$$prog" || exit 1; \
+		else \
+			echo "$$prog not built; skipped"; \
+		fi; \
+	done'
+
+FORCE:

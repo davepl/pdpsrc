@@ -6,8 +6,7 @@ Build on the PDP-11:
 
 Install (as root):
     make install
-The default destination is /usr/local/pdpfetch, matching the traditional
-2.11BSD PATH. Override with: make install BINDIR=/some/existing/directory
+The default destination is /usr/bin/pdpfetch. Override with: make install BINDIR=/some/existing/directory
 
 Options:
     -n, --no-color   ASCII logo, without ANSI escapes
