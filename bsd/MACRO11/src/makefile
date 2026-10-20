@@ -6,6 +6,9 @@ LDFLAGS=
 LIBM=-lm
 PORTCHECK_CFLAGS=-std=c89 -pedantic -Wdeclaration-after-statement
 SMALLCPP=-DSMALL_MEMORY
+BINDIR=/usr/bin
+DESTDIR=
+INSTALL=install
 
 MACRO11_OBJS= \
 	macro11.o \
@@ -38,6 +41,18 @@ OBJ2BSD_OBJS= \
 	obj2bsd_main.o
 
 all: macro11 dumpobj obj2bin obj2bsd
+
+install: FORCE
+	@/bin/sh -c 'for prog in macro11 dumpobj obj2bin obj2bsd; do \
+		if test -f "$$prog"; then \
+			test -d "${DESTDIR}${BINDIR}" || mkdir -p "${DESTDIR}${BINDIR}" || exit 1; \
+			${INSTALL} -c -m 755 "$$prog" "${DESTDIR}${BINDIR}/$$prog" || exit 1; \
+		else \
+			echo "$$prog not built; skipped"; \
+		fi; \
+	done'
+
+FORCE:
 
 memtrace:
 	make clean

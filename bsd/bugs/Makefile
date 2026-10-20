@@ -1,3 +1,8 @@
+# Install already compiled programs without rebuilding them.
+BINDIR=/usr/bin
+DESTDIR=
+INSTALL=install
+
 # Makefile for 2.11BSD
 
 # List all .c files and their corresponding executable targets
@@ -30,3 +35,15 @@ bug7: bug7.c
 
 clean:
 	rm -f ${PROGS} *.o
+
+install: FORCE
+	@/bin/sh -c 'test -d "${DESTDIR}${BINDIR}" || mkdir -p "${DESTDIR}${BINDIR}" || exit 1; \
+	for prog in ${PROGS}; do \
+		if test -f "$$prog"; then \
+			${INSTALL} -c -m 755 "$$prog" "${DESTDIR}${BINDIR}/$$prog" || exit 1; \
+		else \
+			echo "$$prog not built; skipped"; \
+		fi; \
+	done'
+
+FORCE:

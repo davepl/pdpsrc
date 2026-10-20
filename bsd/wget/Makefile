@@ -1,3 +1,8 @@
+# Install already compiled programs without rebuilding them.
+BINDIR=/usr/bin
+DESTDIR=
+INSTALL=install
+
 #
 # Makefile for building 'wget' from wget.c
 #
@@ -21,3 +26,14 @@ wget: wget.c ../pdp11_unistd.h
 clean:
 	rm -f wget
 
+install: FORCE
+	@/bin/sh -c 'test -d "${DESTDIR}${BINDIR}" || mkdir -p "${DESTDIR}${BINDIR}" || exit 1; \
+	for prog in wget; do \
+		if test -f "$$prog"; then \
+			${INSTALL} -c -m 755 "$$prog" "${DESTDIR}${BINDIR}/$$prog" || exit 1; \
+		else \
+			echo "$$prog not built; skipped"; \
+		fi; \
+	done'
+
+FORCE:

@@ -1,3 +1,8 @@
+# Install already compiled programs without rebuilding them.
+BINDIR=/usr/bin
+DESTDIR=
+INSTALL=install
+
 # Makefile for Dhrystone 2.2 benchmark
 # Simplified for 2.9BSD and modern systems
 
@@ -37,4 +42,16 @@ compare: dry29 dry
 clean:
 	rm -f dry dry29 *.o core
 
-.PHONY: all test test-long compare clean
+.PHONY: all test test-long compare clean install FORCE
+
+install: FORCE
+	@/bin/sh -c 'test -d "${DESTDIR}${BINDIR}" || mkdir -p "${DESTDIR}${BINDIR}" || exit 1; \
+	for prog in dry29 dry; do \
+		if test -f "$$prog"; then \
+			${INSTALL} -c -m 755 "$$prog" "${DESTDIR}${BINDIR}/$$prog" || exit 1; \
+		else \
+			echo "$$prog not built; skipped"; \
+		fi; \
+	done'
+
+FORCE:

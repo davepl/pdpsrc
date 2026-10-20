@@ -138,10 +138,23 @@ ln -s Makefile.2bsd Makefile
 make depend
 make
 ```
-To install the executable (in /bin) and the manual page, and add
-/bin/ksh to /etc/shells so that ksh can be used as a login shell:
+To copy the finished executable to `/usr/bin/ksh`:
 ```
 make install
+```
+This copies an existing `ksh` without rebuilding it, preserves the source
+binary, and skips it if it has not been built. Override `BINDIR` to choose
+another directory, or use `DESTDIR` to stage the installation, for example
+`make install DESTDIR=/tmp/ksh-stage BINDIR=/usr/bin`.
+The same install target is available with `Makefile.mentec` and
+`Makefile.linux`. The parent `bsd` install target also copies a built `ksh`
+when no platform makefile has been selected in this directory.
+
+To install the executable in `/bin`, install the manual page, and add
+`/bin/ksh` to `/etc/shells` for use as a login shell, use the separate
+administrative target from `Makefile.2bsd` or `Makefile.mentec`:
+```
+make install-system
 ```
 
 ### Build on Linux

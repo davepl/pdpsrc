@@ -1,4 +1,6 @@
-DESTDIR= /usr/libexec
+BINDIR= /usr/bin
+DESTDIR=
+INSTALL=install
 CFLAGS= -O
 LDFLAGS= -O
 PROGRAM=	httpd
@@ -20,8 +22,13 @@ ${OBJS}: ${SRCS} ../pdp11_unistd.h
 ${PROGRAM}:	${OBJS}
 	${CC} ${LDFLAGS} -o $@ ${OBJS} ${LIBS}
 
-install: ${PROGRAM}
-	install -s -m 755 ${PROGRAM} ${DESTDIR}
+install: FORCE
+	@/bin/sh -c 'if test -f ${PROGRAM}; then \
+		test -d "${DESTDIR}${BINDIR}" || mkdir -p "${DESTDIR}${BINDIR}" || exit 1; \
+		${INSTALL} -c -m 755 ${PROGRAM} "${DESTDIR}${BINDIR}/${PROGRAM}" || exit 1; \
+	else echo "${PROGRAM} not built; skipped"; fi'
+
+FORCE:
 
 tags:
 	ctags -tdw *.c

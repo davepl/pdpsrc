@@ -1,9 +1,13 @@
 MAKE=make
+BINDIR=/usr/bin
+DESTDIR=
+INSTALL=install
 # Build the native 2.11BSD tree, or its portable programs on macOS.
 # Keep this compatible with the system make and /bin/sh on the PDP-11.
 # Recurse sequentially: the PDP has limited memory and swap space.
 SUBDIRS=29bsd MACRO11 asmsieve attn basic bsdbasic bugs dry httpd \
 	menu mqtt novi rzsz screensavers seektest sieve smbd socket sudo top wget www
+INSTALLDIRS=${SUBDIRS} pdpfetch ksh
 
 all: FORCE
 	@machine=`uname -m`; \
@@ -21,5 +25,13 @@ clean: FORCE
 		echo "===> $$dir (clean)"; \
 		(cd $$dir && ${MAKE} clean) || exit 1; \
 	done
+
+install: FORCE
+	@/bin/sh -c 'for dir in ${INSTALLDIRS}; do \
+		echo "===> $$dir (install)"; \
+		case "$$dir" in ksh) mf="-f Makefile.2bsd" ;; *) mf= ;; esac; \
+		(cd $$dir && ${MAKE} $$mf install BINDIR="${BINDIR}" \
+		    DESTDIR="${DESTDIR}" INSTALL="${INSTALL}") || exit 1; \
+	done'
 
 FORCE:

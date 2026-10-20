@@ -2,8 +2,25 @@ MAKE=make
 # Build only the client for the running system, plus the portable server.
 CC=cc
 CFLAGS=-O
+BINDIR=/usr/bin
+DESTDIR=
+INSTALL=install
 
 all: client server
+
+install: FORCE
+	@/bin/sh -c 'for prog in client server; do \
+		if test -f "$$prog"; then \
+			test -d "${DESTDIR}${BINDIR}" || mkdir -p "${DESTDIR}${BINDIR}" || exit 1; \
+			${INSTALL} -c -m 755 "$$prog" "${DESTDIR}${BINDIR}/$$prog" || exit 1; \
+		else \
+			echo "$$prog not built; skipped"; \
+		fi; \
+	done'
+	@/bin/sh -c 'case "`uname -m`" in \
+	pdp11|pdp-11) \
+		(cd arch/211BSD && ${MAKE} install-diagnostics BINDIR="${BINDIR}" DESTDIR="${DESTDIR}" INSTALL="${INSTALL}") || exit 1 ;; \
+	esac'
 
 client: FORCE
 	@case "`uname -m`:`uname -s`" in \

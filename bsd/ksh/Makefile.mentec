@@ -1,3 +1,7 @@
+BINDIR = /usr/bin
+DESTDIR =
+INSTALL = install
+
 CPPFLAGS = -I.
 CFLAGS = -O
 LD = ld
@@ -58,10 +62,21 @@ ksh.1:	ksh.Man mkman.sh
 ksh.0:	ksh.1
 	tbl ksh.1 | nroff -man -h > ksh.0
 
-# install executable and man page, add to list of login shells
-install:	ksh ksh.0
-	install -m 755 ksh /bin
-	install -c -m 444 ksh.0 /usr/man/cat1
+# Copy the finished executable without rebuilding it.
+install: FORCE
+	@/bin/sh -c 'if test -f ksh; then \
+		test -d "$(DESTDIR)$(BINDIR)" || mkdir -p "$(DESTDIR)$(BINDIR)" || exit 1; \
+		$(INSTALL) -c -m 755 ksh "$(DESTDIR)$(BINDIR)/ksh" || exit 1; \
+	else \
+		echo "Skipping ksh (not built)"; \
+	fi'
+
+FORCE:
+
+# Install the login shell and documentation into the running system.
+install-system:	ksh ksh.0
+	$(INSTALL) -c -m 755 ksh /bin
+	$(INSTALL) -c -m 444 ksh.0 /usr/man/cat1
 	-if grep -s /bin/ksh /etc/shells; then :; else echo /bin/ksh >> /etc/shells; fi
 
 clean:

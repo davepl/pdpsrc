@@ -1,3 +1,8 @@
+# Install already compiled programs without rebuilding them.
+BINDIR=/usr/bin
+DESTDIR=
+INSTALL=install
+
 # Makefile for compiling simple C programs
 
 CC = cc
@@ -66,3 +71,16 @@ graphics/graphics: graphics/graphics.c
 # Clean target
 clean:
 	rm -f $(PROGRAMS) *.o
+
+install: FORCE
+	@/bin/sh -c 'test -d "${DESTDIR}${BINDIR}" || mkdir -p "${DESTDIR}${BINDIR}" || exit 1; \
+	for prog in $(PROGRAMS); do \
+		if test -f "$$prog"; then \
+			name=`basename "$$prog"`; \
+			${INSTALL} -c -m 755 "$$prog" "${DESTDIR}${BINDIR}/$$name" || exit 1; \
+		else \
+			echo "$$prog not built; skipped"; \
+		fi; \
+	done'
+
+FORCE:

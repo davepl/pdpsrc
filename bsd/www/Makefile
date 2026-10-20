@@ -2,6 +2,9 @@ MAKE=make
 # Build with the native 2.11BSD compiler and running kernel's headers.
 CC=cc
 CFLAGS=-O
+BINDIR=/usr/bin
+DESTDIR=
+INSTALL=install
 
 all: native-webtop webtop-cgi visit-counter visit-proxy visit-total-proxy httpd
 
@@ -29,7 +32,16 @@ visit-proxy: visit-proxy.c ../pdp11_unistd.h
 visit-total-proxy: visit-proxy.c ../pdp11_unistd.h
 	$(CC) $(CFLAGS) -DREAD_ONLY -o visit-total-proxy visit-proxy.c
 
-install: all
+install: FORCE
+	@/bin/sh -c 'test -d "${DESTDIR}${BINDIR}" || mkdir -p "${DESTDIR}${BINDIR}" || exit 1'
+	@/bin/sh -c 'for prog in webtop webtop-cgi visit-counter visit-proxy visit-total-proxy; do \
+		if test -f "$$prog"; then \
+			${INSTALL} -c -m 755 "$$prog" "${DESTDIR}${BINDIR}/$$prog" || exit 1; \
+		else echo "$$prog not built; skipped"; fi; \
+	done'
+	@/bin/sh -c 'cd server && ${MAKE} install BINDIR="${BINDIR}" DESTDIR="${DESTDIR}" INSTALL="${INSTALL}"'
+
+install-site: all
 	sh install.sh
 
 backup:

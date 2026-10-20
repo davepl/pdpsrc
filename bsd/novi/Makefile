@@ -1,3 +1,8 @@
+# Install already compiled programs without rebuilding them.
+BINDIR=/usr/bin
+DESTDIR=
+INSTALL=install
+
 CC=cc
 CFLAGS=-O
 LDFLAGS=
@@ -38,3 +43,15 @@ terminal.o: terminal.c terminal.h pdp11_compat.h
 
 clean:
 	rm -f novi test_buffer test_buffer.o test_terminal test_terminal.o $(OBJS)
+
+install: FORCE
+	@/bin/sh -c 'test -d "${DESTDIR}${BINDIR}" || mkdir -p "${DESTDIR}${BINDIR}" || exit 1; \
+	for prog in novi; do \
+		if test -f "$$prog"; then \
+			${INSTALL} -c -m 755 "$$prog" "${DESTDIR}${BINDIR}/$$prog" || exit 1; \
+		else \
+			echo "$$prog not built; skipped"; \
+		fi; \
+	done'
+
+FORCE:

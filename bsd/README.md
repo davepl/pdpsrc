@@ -60,7 +60,49 @@ Generated executables are ignored by Git so a checkout
 cannot accidentally use Mac binaries on the PDP. Keep source files synchronized
 between machines; compile the executables on their destination machine.
 
-These targets build and clean only. Installation, running services, kernel
-changes and publishing website content remain separate operations. The bug
-examples intentionally demonstrate faulty C code; building them does not run
-them or remove their teaching examples.
+After building, install the finished programs as root:
+
+```
+make install
+```
+
+From `bsd`, this visits every subproject, including separately built
+`pdpfetch` and `ksh`, and copies existing binaries to `/usr/bin`. Each
+subproject also accepts `make install` (for `ksh`, select its platform
+makefile as for building). Missing binaries are reported and skipped;
+installation never rebuilds or removes the source-directory executables.
+An installation error stops the recursive command. Install recipes run
+in a fresh native shell and check failures explicitly, because make's
+implicit error-exit option otherwise aborts on conditions used to skip files. The repository-root
+`make install` delegates here as well.
+
+Override `BINDIR` to choose another directory, or use an absolute `DESTDIR`
+to stage the same layout elsewhere. For example:
+
+```
+make install BINDIR=/usr/local/bin
+make install DESTDIR=/tmp/pdp-install
+make install INSTALLDIRS=novi BINDIR=/usr/bin
+```
+
+Runtime tools, transfer aliases and the native socket diagnostics are included;
+test executables, compiler helpers and the MACRO11 bare-metal sample are not
+installed. To keep distinct programs from overwriting one another, the
+assembly sieve installs as `asmsieve`, the 2.9BSD sieve as `krsieve29`, and
+the website's HTTP server as `www-httpd`. The other programs keep their
+binary names; `graphics/graphics` installs as `graphics`.
+
+`sudo` is installed root-owned with mode 4755, and `top` retains its
+root:kmem ownership and mode 2755. Other binaries use mode 755. These
+privileged ownership settings also require root when staging those programs.
+For the existing SMB service's directory, use
+`cd smbd && make install BINDIR=/usr/local/sbin`.
+
+Publishing website content remains an explicit `cd www && make install-site`
+operation. The server's separate `install-service` target installs
+`/usr/libexec/httpd` and prepares its log. The ksh `install-system` target
+retains installation into `/bin` with its manual and login-shell registration.
+Ordinary `make install` copies binaries only; it does not start services,
+publish website content or change kernel configuration. The bug examples
+intentionally demonstrate faulty C code; building or installing them does
+not run them or remove their teaching examples.

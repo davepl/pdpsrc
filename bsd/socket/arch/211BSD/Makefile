@@ -5,9 +5,29 @@ CC = cc
 CFLAGS = -O -D__pdp11__
 LDFLAGS = 
 LIBS = 
+BINDIR=/usr/bin
+DESTDIR=
+INSTALL=install
+DIAGNOSTICS=paneldump symboltest memtest endiantest clocktest allcounters memdiag udptest
 
 # Targets
 all: client paneldump symboltest memtest endiantest clocktest allcounters memdiag udptest
+
+install install-diagnostics: FORCE
+	@/bin/sh -c 'case "$@" in \
+	install) progs="client ${DIAGNOSTICS}" ;; \
+	*) progs="${DIAGNOSTICS}" ;; \
+	esac; \
+	for prog in $$progs; do \
+		if test -f "$$prog"; then \
+			test -d "${DESTDIR}${BINDIR}" || mkdir -p "${DESTDIR}${BINDIR}" || exit 1; \
+			${INSTALL} -c -m 755 "$$prog" "${DESTDIR}${BINDIR}/$$prog" || exit 1; \
+		else \
+			echo "$$prog not built; skipped"; \
+		fi; \
+	done'
+
+FORCE:
 
 client: client.o wait_for_panel.o
 	$(CC) $(CFLAGS) -o client client.o wait_for_panel.o $(LDFLAGS) $(LIBS)
