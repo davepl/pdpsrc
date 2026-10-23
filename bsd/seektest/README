@@ -4,17 +4,27 @@ Build: make
 Install (as root): make install
 Default BINDIR is /usr/bin; override with make BINDIR=/some/path install.
 
-Usage: seektest [-n] unit [step [delay_ms]]
+Usage: seektest [-n] [-l lowercyl] [-u uppercyl] unit [step [delay_ms]]
   seektest 1           sweep RA unit 1, step 1 cylinder, no delay
   seektest ra1 8       sweep in 8-cylinder steps
   seektest 1 0         alternate the two extremes continuously
   seektest rra1 16 20  16-cylinder steps, 20ms pause after each read
   seektest -n 1        inspect label/device only, no sweep reads
+  seektest -l 100 -u 300 ra1 8 100
+                      sweep cylinders 100..300, step 8, 100ms delay
+  seektest -n -l 100 -u 300 ra1
+                      validate limits and show geometry without sweep reads
   seektest -h          help
 Stop with Ctrl-C. Raw device permissions normally require root.
 Unit means the BSD device number (0..31), not the KDA50 cable port.
 
-The sweep reads cylinder 0, last cylinder, cylinder X, last-X, etc.
+Limits are inclusive; lower defaults to 0 and upper to the last usable
+logical cylinder. Options precede the unit and may appear in any order.
+Values must be unsigned decimal integers within the disk's usable range,
+with lower <= upper. Missing values, overflow and repeated limits are
+rejected. A single-cylinder interval is permitted. -n validates limits too.
+
+The sweep reads the lower cylinder, upper cylinder, lower+X, upper-X, etc.
 After the endpoints cross it restarts. A meeting cylinder is read once.
 Step 0 repeats the outer/inner pair indefinitely. Each target performs
 lseek followed by one word-aligned 512-byte raw character-device read.
@@ -67,3 +77,13 @@ drive; inspect its fault indication and controller diagnostics first.
 Host regression checks (simulated devices; no raw disk access):
   python3 tests/test_seektest.py
   python3 tests/test_build.py
+
+Mentec MSCP error reporting:
+  Enable immediately as root with the driver's supported sysctl:
+    /bin/sysctl -w machdep.mscp.printf=3
+  Verify with: /bin/sysctl machdep.mscp.printf
+  This enables existing error reports plus MSCP error datagrams. It does
+  not require a reboot or any change to kern.securelevel. Install
+  rc.mscp-reporting as /etc/rc.mscp-reporting and call it from /etc/rc.local
+  to retain the setting across boots. The utility does not send an MSCP
+  AVAILABLE/spin-down command; the driver's close routine only drains I/O.

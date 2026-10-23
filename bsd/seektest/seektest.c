@@ -21,11 +21,14 @@ static struct disklabel label;
 static void
 usage()
 {
-        fprintf(stderr, "usage: seektest [-n] unit [step [delay_ms]]\n");
+        fprintf(stderr, "usage: seektest [-n] [-l lowercyl] [-u uppercyl]\n");
+        fprintf(stderr, "                unit [step [delay_ms]]\n");
         fprintf(stderr, "  unit: 1, ra1, or rra1 (BSD unit number, 0..31)\n");
         fprintf(stderr, "  step: cylinders per pair, default 1; 0 = full stroke\n");
         fprintf(stderr, "  delay_ms: 0..60000, default 0 (clock-tick resolution)\n");
         fprintf(stderr, "  -n: show device/geometry only, no sector reads\n");
+        fprintf(stderr, "  -l: inclusive lower cylinder, default 0\n");
+        fprintf(stderr, "  -u: inclusive upper cylinder, default last usable\n");
         fprintf(stderr, "  -h: help; Ctrl-C stops the sweep\n");
 }
 
@@ -104,21 +107,51 @@ int argc;
 char **argv;
 {
         char device[32], *arg;
-        int unit, fd, part, chosen, info, first;
-        long n, step, delay, spc, last, low, high;
+        int unit, fd, part, chosen, info, first, haveupper, havelower;
+        long n, step, delay, spc, last, low, high, lower, upper;
         unsigned long total, span;
         struct stat st;
 
         info = 0;
         first = 1;
-        if (argc > 1 && (!strcmp(argv[1], "-h") ||
-            !strcmp(argv[1], "--help"))) {
+        lower = 0L;
+        upper = -1L;
+        haveupper = havelower = 0;
+        while (first < argc && argv[first][0] == '-') {
+                arg = argv[first++];
+                if (!strcmp(arg, "-h") || !strcmp(arg, "--help")) {
+                        usage();
+                        return (0);
+                }
+                if (!strcmp(arg, "-n")) {
+                        info = 1;
+                        continue;
+                }
+                if ((!strcmp(arg, "-l") || !strcmp(arg, "-u")) &&
+                    first < argc) {
+                        n = number(argv[first++], 2147483647L);
+                        if (n < 0) {
+                                fprintf(stderr, "invalid cylinder for %s\n", arg);
+                                return (1);
+                        }
+                        if (!strcmp(arg, "-l") && !havelower) {
+                                lower = n;
+                                havelower = 1;
+                                continue;
+                        }
+                        if (!strcmp(arg, "-u") && !haveupper) {
+                                upper = n;
+                                haveupper = 1;
+                                continue;
+                        }
+                }
+                fprintf(stderr, "unknown, repeated, or incomplete option: %s\n", arg);
                 usage();
-                return (0);
+                return (1);
         }
-        if (argc > 1 && !strcmp(argv[1], "-n")) {
-                info = 1;
-                first++;
+        if (haveupper && lower > upper) {
+                fprintf(stderr, "lower cylinder must not exceed upper cylinder\n");
+                return (1);
         }
         if (argc < first + 1 || argc > first + 3) {
                 usage();
@@ -222,8 +255,17 @@ char **argv;
                 close(fd);
                 return (1);
         }
+        if (!haveupper)
+                upper = last;
+        if (lower > last || upper > last || lower > upper) {
+                fprintf(stderr, "cylinder limits must satisfy 0 <= lower <= upper <= %ld\n",
+                    last);
+                close(fd);
+                return (1);
+        }
         printf("%s: %lu sectors, %ld sectors/cylinder, cylinders 0..%ld\n",
             device, total, spc, last);
+        printf("selected cylinders %ld..%ld (inclusive)\n", lower, upper);
         printf("step %ld cylinders, delay %ld ms; read-only%s\n",
             step, delay, info ? " (geometry only)" : "; Ctrl-C to stop");
         fflush(stdout);
@@ -232,8 +274,8 @@ char **argv;
                 return (0);
         }
         for (;;) {
-                low = 0;
-                high = last;
+                low = lower;
+                high = upper;
                 while (low <= high) {
                         if (readcyl(fd, low, spc, delay, total) < 0 ||
                             (high != low && readcyl(fd, high, spc, delay, total) < 0)) {
