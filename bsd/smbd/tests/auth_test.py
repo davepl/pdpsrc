@@ -20,7 +20,7 @@ root = Path(__file__).resolve().parents[1]
 cc = shlex.split(os.environ.get("CC", "cc"))
 flags = ["-std=c89", "-Wno-deprecated-non-prototype"]
 sources = [str(root / p) for p in
-           ("tests/auth_harness.c", "auth.c", "crypto.c", "wire.c")]
+           ("tests/auth_harness.c", "auth.c", "accounts.c", "crypto.c", "wire.c")]
 
 with tempfile.TemporaryDirectory(prefix="smbd-auth-tests-") as work:
     work = Path(work)
