@@ -1,7 +1,8 @@
 # smbd for 2.11BSD
 
 A small native SMB **2.0.2** server for transferring files between a PDP-11
-and modern desktops. One configured SMB account accesses one disk share.
+and modern desktops. One disk share is served with either a single configured
+SMB identity or an explicit table of up to eight SMB-to-Unix account mappings.
 NTLMv2 through SPNEGO and HMAC-SHA256 signing are required by default.
 All filesystem and protocol processing runs on the serving machine, using its
 C library and BSD interfaces; there is no Samba, OpenSSL, or gateway dependency.
@@ -73,6 +74,42 @@ native launch, choose an existing non-root Unix account with `-U` (default
 `nobody`). Give it read/search permissions on the export, and ownership/write
 permissions when using `-w`. Root workers chroot to the export, clear extra
 groups, and drop to that account before serving requests.
+
+For multiple users, use `-F /etc/smbd/accounts` instead of `-u`, `-U`, `-H`,
+`-P`, or `-g`. Each newline-terminated ASCII record contains:
+
+```
+smb-username:unix-username:32-hex-character-NT-password-hash
+```
+
+There are no blank lines, comments, or whitespace. SMB and Unix names are
+1–64 characters; SMB names must be unique without regard to ASCII case. The
+file must be a regular, singly linked file, mode 0600, owned by the launching
+user (root on 2.11BSD), and its path must be absolute. Store it in a protected
+directory outside the export. Unix users must already exist. Run `smbpwd` for
+each user's protected temporary hash file, then combine those hashes into the
+account table as root without displaying them; remove temporary hash copies.
+SMB passwords are independent of Unix login passwords. Restart to load changes.
+
+For example, records named `dave` and `root` can map to Unix accounts `dave`
+and `root`, respectively. This explicit table is the only mode permitting a
+root worker. Root SMB credentials grant root's access to the entire export,
+including protected files, so restrict this credential accordingly. A typical
+launch exporting `/usr` with normal Unix permissions is:
+
+```
+./smbd -r /usr -s usr -F /etc/smbd/accounts -a SERVER_IPV4 -p 445 \
+    -R /etc/smbd/random -T /usr/tmp -M /etc/smbd/times -C 16 -w
+```
+
+Mappings and hashes are validated before listening. Each root worker chroots
+and clears supplementary groups before authentication; only after the NTLMv2
+proof and MIC are verified does it select the mapped UID/GID and initialize
+filesystem access. It then erases all account hashes from its private memory.
+Authenticated reconnects can replace only the same SMB account's previous
+session. Modern non-root development allows mappings only to the launching
+UID and primary GID. The original single-account mode continues dropping
+privileges before authentication and continues rejecting `-U root`.
 
 2.11BSD has no assumed cryptographic random device. Generate a fresh pool on
 a trusted modern host, transfer it to `/etc/smbd/random`, and make it root-owned

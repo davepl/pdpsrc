@@ -1,4 +1,4 @@
-/* Single local account, NTLMv2 over SPNEGO. See MS-NLMP sections
+/* Configured local accounts, NTLMv2 over SPNEGO. See MS-NLMP sections
  * 2.2.1, 3.2.5.2 and 3.3.2, and RFC 4178. No LM/NTLMv1 fallback.
  * Credentials deliberately use printable ASCII (password up to 256 bytes,
  * username up to 64); filename encoding is handled separately. */
@@ -49,6 +49,7 @@ int auth_load()
  u8 password[258],pair[2],extra;
  struct hashctx h;
  wipe(cfg.nthash,16);
+ if(cfg.accounts_file) return accounts_load();
  if(cfg.guest) return 1;
  if(!cfg.user || (!cfg.password_file && !cfg.hash_file) ||
     (cfg.password_file && cfg.hash_file)) return 0;
@@ -313,6 +314,8 @@ unsigned *out_n;
  const char *reason;
  unsigned nt_n,user_n,domain_n,encrypted_n,unused_n,i,off,len,id,mic_at;
  int mic,ended,ok;
+ unsigned account;
+ const u8 *nthash;
  u32 flags,negflags;
  u8 responsekey[16],proof[16],session[16],calcmic[16],pair[2],zeros[16];
  struct hmacctx hm;
@@ -337,9 +340,16 @@ unsigned *out_n;
   return auth_reject("negotiated flags");
  if((user_n&1) || (domain_n&1) || user_n==0 || user_n>128 || domain_n>512 ||
     nt_n<48 || nt_n>2048) return auth_reject("credential field lengths");
- if(user_n/2!=strlen(cfg.user)) return auth_reject("account name");
- for(i=0;i<user_n;i+=2) if(user[i+1] || upper(user[i])!=upper((u8)cfg.user[i/2]))
-  return auth_reject("account name");
+ account=0; nthash=cfg.nthash;
+ if(cfg.accounts_file) {
+  account=accounts_find(user,user_n);
+  nthash=accounts_hash(account);
+  if(!nthash) return auth_reject("account name");
+ } else {
+  if(user_n/2!=strlen(cfg.user)) return auth_reject("account name");
+  for(i=0;i<user_n;i+=2) if(user[i+1] || upper(user[i])!=upper((u8)cfg.user[i/2]))
+   return auth_reject("account name");
+ }
  /* NTLMv2 version and all fixed reserved fields. Reject NTLMv1 outright. */
  if(nt[16]!=1 || nt[17]!=1 || get16(nt+18)!=0 || get32(nt+20)!=0 || get32(nt+40)!=0)
   return auth_reject("NTLMv2 response format");
@@ -359,7 +369,7 @@ unsigned *out_n;
    if(get16(p+i) && get32(p+i+4)<(u32)(mic_at+16)) return ST_INVALID;
   }
  }
- hmac_init(&hm,5,cfg.nthash,16); pair[1]=0;
+ hmac_init(&hm,5,nthash,16); pair[1]=0;
  for(i=0;i<user_n;i+=2) { pair[0]=upper(user[i]); hmac_update(&hm,pair,2); }
  hmac_update(&hm,domain,domain_n); hmac_final(&hm,responsekey);
  hmac_init(&hm,5,responsekey,16); hmac_update(&hm,auth.challenge,8);
@@ -388,7 +398,7 @@ unsigned *out_n;
  wipe(responsekey,16); wipe(proof,16); wipe(session,16); wipe(calcmic,16);
  wipe(pair,2); wipe(&hm,sizeof(hm));
  if(!ok) { wipe(auth.key,16); return auth_reject(reason); }
- auth.authenticated=1; auth.phase=2; auth.guest=0;
+ auth.account=account; auth.authenticated=1; auth.phase=2; auth.guest=0;
  memcpy(out,complete,9); *out_n=9;
  return ST_OK;
 }
