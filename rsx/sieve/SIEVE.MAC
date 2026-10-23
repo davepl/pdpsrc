@@ -1,0 +1,304 @@
+        .TITLE  SIEVE   SIEVE OF ERATOSTHENES FOR RSX-11M-PLUS
+        .IDENT  /V2.03/
+;
+; PORT OF DAVEPL'S SIEVE.C (V2.03, INTEGER-ONLY, 2.11BSD) TO MACRO-11.
+; SAME ALGORITHM: ONE BIT PER ODD NUMBER, MARKING FROM EACH PRIME'S
+; SQUARE IN EIGHT LANES WHOSE BIT MASK STAYS FIXED. LIMIT 500000.
+; PASSES REPEAT UNTIL AT LEAST 5 SECONDS HAVE ELAPSED, THEN THE SAME
+; REPORT AS THE C VERSION IS PRINTED. TIMES COME FROM GTIM$ (CLOCK
+; TICKS). NEEDS EIS (MUL, DIV, ASH, SOB), AS ON THE 11/73.
+;
+; BUILD:  MAC SIEVE,SIEVE/-SP=SIEVE
+;         TKB SIEVE,SIEVE/-SP=SIEVE
+; RUN:    RUN SIEVE
+;
+        .MCALL  QIOW$S,GTIM$S,EXIT$S
+;
+SIZE    = 31250.                ; BYTES: ((LIMIT-1)>>4)+1
+LASTBY  = 31249.                ; (LIMIT-1)>>4; ALL 8 BITS USED
+SECS    = 5                     ; MINIMUM RUN TIME
+EXPECT  = 41538.                ; PRIMES BELOW 500000
+TIHR    = 6                     ; GTIM$ BUFFER: HOUR
+TIMI    = 10                    ;   MINUTE
+TISC    = 12                    ;   SECOND
+TICT    = 14                    ;   TICK OF SECOND
+TICP    = 16                    ;   TICKS PER SECOND
+;
+        .PSECT  $DATA,D,RW
+        .EVEN
+SIEVE:  .BLKB   SIZE
+        .EVEN
+TSTART: .BLKW   8.
+TNOW:   .BLKW   8.
+TPS:    .WORD   0
+PASSES: .WORD   0
+COUNT:  .WORD   0
+ELAPS:  .WORD   0               ; ELAPSED TICKS
+CENTI:  .WORD   0               ; ELAPSED HUNDREDTHS
+AVGMS:  .WORD   0               ; MILLISECONDS PER PASS
+PRIME:  .WORD   0
+SQBYTE: .WORD   0
+SQBIT:  .WORD   0
+LANE:   .WORD   0
+OUTBUF: .BLKB   80.
+        .EVEN
+MASKS:  .BYTE   1,2,4,10,20,40,100,200
+;
+        .PSECT  $TEXT,D,RO
+DASHES: .ASCIZ  /------------------------------------/
+TITLE:  .ASCIZ  /SIEVE OF ERATOSTHENES BY DAVEPL 2024/
+VERS:   .ASCIZ  /V2.03 INTEGER-ONLY, MACRO-11 FOR RSX-11M-PLUS/
+SOLVE:  .ASCIZ  /SOLVING PRIMES UP TO 500000/
+TTOTAL: .ASCIZ  /TOTAL TIME TAKEN      : /
+TPASS:  .ASCIZ  /NUMBER OF PASSES      : /
+TPER:   .ASCIZ  /TIME PER PASS         : /
+TCOUNT: .ASCIZ  /COUNT OF PRIMES FOUND : /
+TVALID: .ASCIZ  /PRIME VALIDATOR       : /
+TSECS:  .ASCIZ  / SECONDS/
+TOK:    .ASCIZ  /PASS/
+TBAD:   .ASCIZ  /FAIL/
+        .EVEN
+;
+        .PSECT  $CODE,I,RO
+START:  MOV     #DASHES,R1
+        CALL    LINE
+        MOV     #TITLE,R1
+        CALL    LINE
+        MOV     #VERS,R1
+        CALL    LINE
+        MOV     #DASHES,R1
+        CALL    LINE
+        MOV     #SOLVE,R1
+        CALL    LINE
+        MOV     #DASHES,R1
+        CALL    LINE
+;
+        GTIM$S  #TSTART
+        MOV     TSTART+TICP,TPS
+        CLR     PASSES
+1$:     CALL    DOPASS
+        INC     PASSES
+        GTIM$S  #TNOW
+        CALL    ELAPSD
+        MOV     TPS,R1
+        MUL     #SECS,R1                ; R1 = TICKS IN SECS SECONDS
+        CMP     ELAPS,R1
+        BLO     1$
+;
+; HUNDREDTHS = ROUND(TICKS * 100 / TPS)
+; MS PER PASS = ROUND(10 * HUNDREDTHS / PASSES)
+        MOV     ELAPS,R0
+        MUL     #100.,R0                ; R0:R1 = TICKS * 100
+        MOV     TPS,R3
+        ASR     R3
+        ADD     R3,R1
+        ADC     R0
+        DIV     TPS,R0
+        MOV     R0,CENTI
+        MUL     #10.,R0                 ; R0:R1 = HUNDREDTHS * 10
+        MOV     PASSES,R3
+        ASR     R3
+        ADD     R3,R1
+        ADC     R0
+        DIV     PASSES,R0
+        MOV     R0,AVGMS
+;
+        MOV     #OUTBUF,R2
+        MOV     #TTOTAL,R1
+        CALL    PUTS
+        MOV     CENTI,R1
+        CLR     R0
+        DIV     #100.,R0                ; R0 = SECONDS, R1 = HUNDREDTHS
+        MOV     R1,-(SP)
+        MOV     R0,R1
+        CALL    PUTDEC
+        MOVB    #'.,(R2)+
+        MOV     (SP)+,R1
+        CALL    PUT2
+        MOV     #TSECS,R1
+        CALL    PUTS
+        CALL    FLUSH
+;
+        MOV     #TPASS,R1
+        CALL    PUTS
+        MOV     PASSES,R1
+        CALL    PUTDEC
+        CALL    FLUSH
+;
+        MOV     #TPER,R1
+        CALL    PUTS
+        MOV     AVGMS,R1
+        CLR     R0
+        DIV     #1000.,R0               ; R0 = SECONDS, R1 = MS
+        MOV     R1,-(SP)
+        MOV     R0,R1
+        CALL    PUTDEC
+        MOVB    #'.,(R2)+
+        MOV     (SP)+,R1
+        CALL    PUT3
+        MOV     #TSECS,R1
+        CALL    PUTS
+        CALL    FLUSH
+;
+        MOV     #TCOUNT,R1
+        CALL    PUTS
+        MOV     COUNT,R1
+        CALL    PUTDEC
+        CALL    FLUSH
+;
+        MOV     #TVALID,R1
+        CALL    PUTS
+        MOV     #TOK,R1
+        CMP     COUNT,#EXPECT
+        BEQ     2$
+        MOV     #TBAD,R1
+2$:     CALL    PUTS
+        CALL    FLUSH
+        EXIT$S
+;
+; ONE PASS OF THE SIEVE; THE PRIME COUNT IS LEFT IN COUNT.
+DOPASS: MOV     #SIEVE,R0               ; CLEAR, AS CALLOC DOES
+        MOV     #SIZE/2,R1
+1$:     CLR     (R0)+
+        SOB     R1,1$
+        MOV     #3,PRIME                ; 3*3/2 IS BIT 4 OF BYTE 0
+        CLR     SQBYTE
+        MOV     #4,SQBIT
+PLOOP:  CMP     SQBYTE,#LASTBY          ; WHILE THE SQUARE IS IN RANGE
+        BHI     PDONE
+        MOV     PRIME,R0                ; IS PRIME STILL UNMARKED?
+        MOV     R0,R1
+        ASH     #-4,R1                  ; BYTE OF PRIME
+        ASR     R0
+        BIC     #177770,R0              ; BIT OF PRIME
+        MOVB    SIEVE(R1),R3
+        BITB    MASKS(R0),R3
+        BNE     PNEXT
+        MOV     SQBYTE,R3               ; FIRST BYTE OF THE LANE
+        MOV     SQBIT,R4                ; FIRST BIT OF THE LANE
+        MOV     PRIME,R2
+        MOV     #8.,LANE
+LANE1:  MOVB    MASKS(R4),R1            ; THE LANE'S FIXED MASK
+        MOV     R3,R0
+2$:     CMP     R0,#SIZE                ; MARK EVERY PRIME-TH BYTE
+        BHIS    3$
+        BISB    R1,SIEVE(R0)
+        ADD     R2,R0
+        BR      2$
+3$:     MOV     R2,R5                   ; NEXT LANE: + PRIME BITS
+        ASH     #-3,R5
+        ADD     R5,R3
+        MOV     R2,R5
+        BIC     #177770,R5
+        ADD     R5,R4
+        CMP     R4,#8.
+        BLO     4$
+        SUB     #8.,R4
+        INC     R3
+4$:     DEC     LANE
+        BNE     LANE1
+PNEXT:  MOV     PRIME,R0                ; SQUARE MOVES 2*PRIME+2 BITS
+        ASL     R0
+        ADD     #2,R0
+        MOV     R0,R1
+        ASH     #-3,R1
+        ADD     R1,SQBYTE
+        BIC     #177770,R0
+        ADD     R0,SQBIT
+        CMP     SQBIT,#8.
+        BLO     5$
+        SUB     #8.,SQBIT
+        INC     SQBYTE
+5$:     ADD     #2,PRIME
+        BR      PLOOP
+PDONE:  CLR     R4                      ; COUNT THE CLEAR BITS; THE BIT
+        MOV     #SIEVE,R0               ; FOR 1 STANDS IN FOR PRIME 2
+        MOV     #SIZE,R3
+6$:     MOVB    (R0)+,R1
+        MOV     #8.,R2
+7$:     ASR     R1
+        BCS     8$
+        INC     R4
+8$:     SOB     R2,7$
+        SOB     R3,6$
+        MOV     R4,COUNT
+        RETURN
+;
+; ELAPSED TICKS FROM TSTART TO TNOW INTO ELAPS (HANDLES MIDNIGHT).
+ELAPSD: MOV     #TNOW,R5
+        CALL    SOD
+        MOV     R0,-(SP)
+        MOV     R1,-(SP)
+        MOV     #TSTART,R5
+        CALL    SOD
+        MOV     (SP)+,R3                ; NOW, LOW
+        MOV     (SP)+,R2                ; NOW, HIGH
+        SUB     R1,R3                   ; NOW - START, 32 BITS
+        SBC     R2
+        SUB     R0,R2
+        BPL     1$
+        ADD     #20864.,R3              ; + 86400 SECONDS
+        ADC     R2
+        ADD     #1,R2
+1$:     MUL     TPS,R3                  ; R3 = SECONDS * TPS
+        ADD     TNOW+TICT,R3
+        SUB     TSTART+TICT,R3
+        MOV     R3,ELAPS
+        RETURN
+;
+; SECONDS OF DAY OF THE GTIM$ BUFFER AT R5 INTO R0:R1.
+SOD:    MOV     TIHR(R5),R0
+        MUL     #3600.,R0
+        MOV     TIMI(R5),R3
+        MUL     #60.,R3
+        ADD     TISC(R5),R3
+        ADD     R3,R1
+        ADC     R0
+        RETURN
+;
+; PRINT THE ASCIZ STRING AT R1 AS ONE LINE.
+LINE:   MOV     #OUTBUF,R2
+        CALL    PUTS
+        CALL    FLUSH
+        RETURN
+;
+; COPY THE ASCIZ STRING AT R1 TO (R2)+.
+PUTS:   MOVB    (R1)+,(R2)+
+        BNE     PUTS
+        DEC     R2
+        RETURN
+;
+; UNSIGNED DECIMAL OF R1 TO (R2)+.
+PUTDEC: MOV     R3,-(SP)
+        CLR     R3
+1$:     CLR     R0
+        DIV     #10.,R0
+        ADD     #'0,R1
+        MOV     R1,-(SP)
+        INC     R3
+        MOV     R0,R1
+        BNE     1$
+2$:     MOV     (SP)+,R0
+        MOVB    R0,(R2)+
+        SOB     R3,2$
+        MOV     (SP)+,R3
+        RETURN
+;
+; R1 AS TWO OR THREE DIGITS WITH LEADING ZEROS.
+PUT3:   CMP     R1,#100.
+        BHIS    PUT2
+        MOVB    #'0,(R2)+
+PUT2:   CMP     R1,#10.
+        BHIS    1$
+        MOVB    #'0,(R2)+
+1$:     CALL    PUTDEC
+        RETURN
+;
+; WRITE OUTBUF UP TO R2 TO THE TERMINAL AS ONE LINE.
+FLUSH:  MOV     R2,R3
+        SUB     #OUTBUF,R3
+        QIOW$S  #IO.WVB,#5,#1,,,,<#OUTBUF,R3,#40>
+        MOV     #OUTBUF,R2
+        RETURN
+;
+        .END    START
