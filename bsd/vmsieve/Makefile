@@ -6,8 +6,11 @@ INSTALL=install
 
 all: vmsieve
 
-vmsieve: vmsieve.c ../sieve/sieve.c
-	$(CC) $(CFLAGS) -DVMSIEVE -o vmsieve ../sieve/sieve.c vmsieve.c
+vmsieve: vmsieve.c sieve.c
+	$(CC) $(CFLAGS) -o vmsieve sieve.c vmsieve.c -lvmf
+
+test: vmsieve
+	/bin/sh tests/check.sh
 
 clean:
 	rm -f vmsieve *.o

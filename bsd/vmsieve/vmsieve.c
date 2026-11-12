@@ -1,115 +1,135 @@
-/* Segmented odd-only sieve for 2.11BSD. Bit k represents 2*k + 1. */
+/* File-backed odd-only sieve for 2.11BSD. Bit k represents 2*k + 1. */
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <vmf.h>
 
-#define SEG_BYTES 4096
-#define SEG_BITS 32768U
-/* floor(sqrt(50,000,000)) is 7071. There are 907 odd primes through it. */
-#define ROOT_LIMIT 7071
-#define MAX_PRIMES 907
+#define PAGE_BITS (8U * BYTESPERSEG)
+#define CACHE_PAGES 8
+#define BATCH_SIZE 128
 
 struct strike {
-    unsigned short prime;
-    unsigned short next;
+    long next;                   /* absolute bit index of the next multiple */
+    unsigned int prime;
 };
 
-static struct strike active[MAX_PRIMES];
-static unsigned char seed[ROOT_LIMIT / 16 + 1];
 static unsigned char mask[8] = {1, 2, 4, 8, 16, 32, 64, 128};
-static unsigned char pop4[16] = {0,1,1,2,1,2,2,3,1,2,2,3,2,3,3,4};
+static unsigned char pop4[16] = {
+    0, 1, 1, 2, 1, 2, 2, 3,
+    1, 2, 2, 3, 2, 3, 3, 4
+};
 
-/* All positions, including the first strike beyond the segment, fit in
-   an unsigned 16-bit int: the largest possible sum is 32767 + 7071. */
-static unsigned int mark(unsigned char *bits, unsigned int n,
-                         unsigned int j, unsigned int p)
+/* Translate a flat byte offset into a 512-page VM space and a page in it. */
+static struct vseg *map_page(struct vspace *spaces, VADDR address)
 {
-    unsigned int lane, carry;
-    register unsigned int byte, lane_mask;
-
-    /* For dense strikes, use the original sieve's eight fixed-mask lanes.
-       The first lane's overshoot is at most eight strides; reducing it
-       gives the next strike for all lanes without a divide. */
-    if (n == SEG_BITS && p < 64) {
-        carry = 0;
-        for (lane = 0; lane < 8; lane++, j += p) {
-            lane_mask = mask[j & 7];
-            for (byte = j >> 3; byte < SEG_BYTES; byte += p)
-                bits[byte] |= lane_mask;
-            if (lane == 0)
-                carry = ((byte - SEG_BYTES) << 3) + (j & 7);
-        }
-        while (carry >= p)
-            carry -= p;
-        return carry;
-    }
-
-    while (j < n) {
-        bits[j >> 3] |= mask[j & 7];
-        j += p;
-    }
-    return j - n;
+    unsigned int page = VSEG(address);
+    return vmmapseg(&spaces[page / MAXSEGNO], page % MAXSEGNO);
 }
 
-int sieve_of_eratosthenes(long limit, int print_primes, long *count_ptr)
+/* Mark multiples within one mapped page. Even the overshoot fits in 16 bits. */
+static unsigned int mark(unsigned char *bits, unsigned int n,
+                         unsigned int bit, unsigned int prime)
 {
-    unsigned char *bits, *seed_bits;
-    unsigned int n, bytes, p, used, i, b, composites;
-    long total, base, end, square, count;
+    for (; bit < n; bit += prime)
+        bits[bit >> 3] |= mask[bit & 7];
+    return bit;
+}
 
-    total = (limit + 1L) >> 1;
-    bytes = total < SEG_BITS ? (unsigned int)((total + 7) >> 3) : SEG_BYTES;
-    bits = (unsigned char *)calloc(bytes, 1);
-    if (bits == NULL) {
-        fprintf(stderr, "Memory allocation failed\n");
-        return 0;
+/* Each batch makes a sweep of the same bitmap. Grouping primes amortizes
+   each disk access while leaving their positions in flat coordinates. */
+static void strike_batch(struct vspace *spaces, long total,
+                         struct strike *batch, int used)
+{
+    long base, end;
+    struct vseg *page;
+    unsigned int n, bit;
+    int i;
+
+    base = batch[0].next;
+    for (i = 1; i < used; i++)
+        if (batch[i].next < base)
+            base = batch[i].next;
+    base &= ~((long)PAGE_BITS - 1L);
+    for (; base < total; base = end) {
+        end = base + PAGE_BITS;
+        if (end > total)
+            end = total;
+        n = (unsigned int)(end - base);
+        page = map_page(spaces, base >> 3);
+        for (i = 0; i < used; i++) {
+            if (batch[i].next < end) {
+                bit = (unsigned int)(batch[i].next - base);
+                bit = mark((unsigned char *)page->s_cinfo, n, bit, batch[i].prime);
+                batch[i].next = base + bit;
+            }
+        }
+        VMMODIFY(page);
     }
+}
 
-    count = 1;                    /* 2 is the only even prime. */
+static void fill_bitmap(struct vspace *spaces, long total)
+{
+    struct strike batch[BATCH_SIZE];
+    struct vseg *first;
+    unsigned char *bits;
+    unsigned int n, p;
+    long square, next;
+    int used;
+
+    /* At the 50M limit every sieving prime is in page zero (p <= 7071).
+       Pin it so its candidate bits survive mappings made by strike_batch. */
+    first = map_page(spaces, 0L);
+    vmlock(first);
+    bits = (unsigned char *)first->s_cinfo;
+    bits[0] = 1;                 /* exclude 1 */
+    VMMODIFY(first);
+    n = total < PAGE_BITS ? (unsigned int)total : PAGE_BITS;
+    used = 0;
+    p = 3;
+    square = 4;                  /* bit index of p*p */
+    while (square < total) {
+        if (!(bits[p >> 4] & mask[(p >> 1) & 7])) {
+            next = square;
+            if (square < n)
+                next = mark(bits, n, (unsigned int)square, p);
+            if (next < total) {
+                batch[used].prime = p;
+                batch[used].next = next;
+                used++;
+                if (used == BATCH_SIZE) {
+                    strike_batch(spaces, total, batch, used);
+                    used = 0;
+                }
+            }
+        }
+        square += p + p + 2;
+        p += 2;
+    }
+    vmunlock(first);
+    if (used)
+        strike_batch(spaces, total, batch, used);
+}
+
+static long count_bitmap(struct vspace *spaces, long total, int print_primes)
+{
+    struct vseg *page;
+    unsigned char *bits;
+    unsigned int n, bytes, i, b, composites;
+    long base, count;
+
+    count = 1;                   /* 2 is the only even prime */
     if (print_primes)
         printf("2 ");
-    bits[0] = 1;                  /* Exclude 1. */
-    p = 3;
-    square = 4;                   /* odd-bit index of p*p */
-    used = 0;
-    seed_bits = bits;
-
-    for (base = 0; base < total; base = end) {
-        n = total - base < SEG_BITS ? (unsigned int)(total - base) : SEG_BITS;
-        end = base + n;
+    for (base = 0; base < total; base += PAGE_BITS) {
+        page = map_page(spaces, base >> 3);
+        bits = (unsigned char *)page->s_cinfo;
+        n = total - base < PAGE_BITS ? (unsigned int)(total - base) : PAGE_BITS;
         bytes = (n + 7U) >> 3;
-        if (base != 0)
-            memset(bits, 0, bytes);
-
-        for (i = 0; i < used; i++)
-            active[i].next = mark(bits, n, active[i].next, active[i].prime);
-
-        /* Activate each prime in the segment containing its square.
-           Advancing p by two advances the odd-bit index by 2*p + 2. */
-        while (square < end) {
-            if (!(seed_bits[p >> 4] & mask[(p >> 1) & 7])) {
-                active[used].prime = p;
-                active[used].next = mark(bits, n, (unsigned int)(square - base), p);
-                used++;
-            }
-            square += p + p + 2;
-            p += 2;
-        }
-
-        /* Every possible base prime is in segment zero. Preserve just
-           that prefix before reusing the bitmap for subsequent segments. */
-        if (base == 0 && end < total) {
-            memcpy(seed, bits, sizeof(seed));
-            seed_bits = seed;
-        }
-
         composites = 0;
         for (i = 0; i < bytes; i++) {
             b = bits[i];
             composites += pop4[b & 15] + pop4[b >> 4];
         }
-        count += n - composites;  /* unused bits in the tail are zero */
-
+        count += n - composites; /* unused bits in the last byte are zero */
         if (print_primes) {
             for (i = 0; i < n; i++)
                 if (!(bits[i >> 3] & mask[i & 7]))
@@ -118,7 +138,44 @@ int sieve_of_eratosthenes(long limit, int print_primes, long *count_ptr)
     }
     if (print_primes)
         printf("\n");
-    free(bits);
-    *count_ptr = count;
-    return 1;
+    return count;
+}
+
+int sieve_of_eratosthenes(long limit, int print_primes, long *count_ptr)
+{
+    static int initialized;
+    struct vspace *spaces;
+    long total, last_byte;
+    int nspaces, opened, ok;
+
+    if (!initialized) {
+        if (vminit(CACHE_PAGES) < 0) {
+            perror("vminit");
+            return 0;
+        }
+        initialized = 1;
+    }
+    total = (limit + 1L) >> 1;
+    last_byte = (total - 1L) >> 3;
+    nspaces = VSEG(last_byte) / MAXSEGNO + 1;
+    spaces = (struct vspace *)calloc(nspaces, sizeof(*spaces));
+    if (spaces == NULL) {
+        perror("calloc");
+        return 0;
+    }
+    for (opened = 0; opened < nspaces; opened++) {
+        if (vmopen(&spaces[opened], (char *)0) < 0) {
+            perror("vmopen");
+            break;
+        }
+    }
+    ok = opened == nspaces;
+    if (ok) {
+        fill_bitmap(spaces, total);
+        *count_ptr = count_bitmap(spaces, total, print_primes);
+    }
+    while (opened > 0)
+        vmclose(&spaces[--opened]);
+    free(spaces);
+    return ok;
 }

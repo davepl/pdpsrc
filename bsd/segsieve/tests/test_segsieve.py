@@ -11,15 +11,15 @@ import unittest
 BSD = Path(__file__).resolve().parents[2]
 
 
-class VMSieveTests(unittest.TestCase):
+class SegSieveTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         scratch = tempfile.TemporaryDirectory()
         cls.addClassCleanup(scratch.cleanup)
-        cls.exe = Path(scratch.name) / "vmsieve"
+        cls.exe = Path(scratch.name) / "segsieve"
         subprocess.run(shlex.split(os.environ.get("CC", "cc")) + [
-            "-std=c89", "-O2", "-Wall", "-Wextra", "-Werror", "-DVMSIEVE",
-            str(BSD / "sieve/sieve.c"), str(BSD / "vmsieve/vmsieve.c"),
+            "-std=c89", "-O2", "-Wall", "-Wextra", "-Werror",
+            str(BSD / "segsieve/sieve.c"), str(BSD / "segsieve/segsieve.c"),
             "-o", str(cls.exe)
         ], check=True)
 
