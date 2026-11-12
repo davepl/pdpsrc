@@ -6,7 +6,7 @@ INSTALL=install
 # Keep this compatible with the system make and /bin/sh on the PDP-11.
 # Recurse sequentially: the PDP has limited memory and swap space.
 SUBDIRS=29bsd MACRO11 asmsieve attn basic bsdbasic bugs dry httpd \
-	menu mqtt novi rzsz screensavers seektest sieve smbd socket sudo top wget www
+	menu mqtt novi rzsz screensavers seektest sieve smbd socket sudo top vmsieve wget www
 INSTALLDIRS=${SUBDIRS} pdpfetch ksh
 
 all: FORCE

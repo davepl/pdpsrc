@@ -24,7 +24,11 @@
 
 #define DEFAULT_LIMIT 1000L
 #define DEFAULT_SECONDS 5
+#ifdef VMSIEVE
+#define MAX_LIMIT 50000000L
+#else
 #define MAX_LIMIT 500000L
+#endif
 #define MAX_SECONDS 32767L
 
 /* Structure to hold the expected results for a given limit */
@@ -41,6 +45,12 @@ struct Result resultsDictionary[] = {
     {100000L, 9592L},
     {500000L, 41538L},
     {1000000L, 78498L},
+#ifdef VMSIEVE
+    {5000000L, 348513L},
+    {10000000L, 664579L},
+    {25000000L, 1565927L},
+    {50000000L, 3001134L},
+#endif
 };
 
 /* Program Help */
@@ -48,7 +58,7 @@ void print_help(char *progname) {
     printf("Usage: %s [-l limit] [-s seconds] [-1] [-p] [-q] [-h|-?]\n", progname);
     printf("Options:\n");
     printf("  -l limit    Specify the upper limit for prime calculation (default: 1000)\n");
-    printf("              Supported limits: 2 through 500000\n");
+    printf("              Supported limits: 2 through %ld\n", MAX_LIMIT);
     printf("  -s seconds  Specify the duration to run the sieve (default: 5 seconds)\n");
     printf("              Supported durations: 1 through 32767 seconds\n");
     printf("  -1          Run the sieve only once (oneshot mode)\n");
@@ -68,6 +78,10 @@ int validate_results(long limit, long count) {
     return -1;  /* No matching limit found */
 }
 
+#ifdef VMSIEVE
+/* The segmented project supplies the pass; both programs use this driver. */
+extern int sieve_of_eratosthenes(long, int, long *);
+#else
 int sieve_of_eratosthenes(long limit, int print_primes, long *count_ptr) {
     unsigned int size, last_byte, last_bit, count;
     unsigned int prime, square_byte, square_bit, delta;
@@ -169,6 +183,8 @@ int sieve_of_eratosthenes(long limit, int print_primes, long *count_ptr) {
     return 1;
 }
 
+#endif
+
 /* Do not use long / or % here: 2.11BSD's user-space helpers use FP.
    Shift/subtract division is only needed when formatting the final times. */
 static unsigned long divide_integer(unsigned long value,
@@ -206,7 +222,7 @@ static int parse_number(char *text, long maximum, long *number) {
         if (*text < '0' || *text > '9') {
             return 0;
         }
-        /* The previous value is bounded by maximum, at most 500000. */
+        /* Ten times either supported maximum fits in a signed 32-bit long. */
         value = (value << 3) + (value << 1) + (*text++ - '0');
         if (value > maximum) {
             return 0;
@@ -263,7 +279,7 @@ int main(int argc, char *argv[]) {
         switch (opt) {
             case 'l':
                 if (!parse_number(optarg, MAX_LIMIT, &limit) || limit < 2L) {
-                    fprintf(stderr, "Limit must be an integer from 2 to 500000\n");
+                    fprintf(stderr, "Limit must be an integer from 2 to %ld\n", MAX_LIMIT);
                     return 1;
                 }
                 break;
@@ -303,7 +319,11 @@ int main(int argc, char *argv[]) {
     if (!quiet) {
         printf("------------------------------------\n");
         printf("Sieve of Eratosthenes by Davepl 2024\n");
+#ifdef VMSIEVE
+        printf("vmsieve: segmented integer-only sieve for 2.11BSD\n");
+#else
         printf("v2.03 integer-only for the PDP-11 running 211-BSD\n");
+#endif
         printf("------------------------------------\n");
     }
 
