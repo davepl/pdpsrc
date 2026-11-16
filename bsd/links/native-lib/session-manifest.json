@@ -1,0 +1,330 @@
+[
+  {
+    "file": "session_000.c",
+    "function": "DATA"
+  },
+  {
+    "file": "session_001.c",
+    "function": "are_there_downloads"
+  },
+  {
+    "file": "session_002.c",
+    "function": "free_strerror_buf"
+  },
+  {
+    "file": "session_003.c",
+    "function": "get_err_msg"
+  },
+  {
+    "file": "session_004.c",
+    "function": "add_xnum_to_str"
+  },
+  {
+    "file": "session_005.c",
+    "function": "add_time_to_str"
+  },
+  {
+    "file": "session_006.c",
+    "function": "get_stat_msg"
+  },
+  {
+    "file": "session_007.c",
+    "function": "print_screen_status"
+  },
+  {
+    "file": "session_008.c",
+    "function": "print_error_dialog"
+  },
+  {
+    "file": "session_009.c",
+    "function": "free_wtd"
+  },
+  {
+    "file": "session_010.c",
+    "function": "abort_files_load"
+  },
+  {
+    "file": "session_011.c",
+    "function": "free_files"
+  },
+  {
+    "file": "session_012.c",
+    "function": "destroy_location"
+  },
+  {
+    "file": "session_013.c",
+    "function": "ses_forward"
+  },
+  {
+    "file": "session_014.c",
+    "function": "ses_imgmap"
+  },
+  {
+    "file": "session_015.c",
+    "function": "map_selected"
+  },
+  {
+    "file": "session_016.c",
+    "function": "ses_back"
+  },
+  {
+    "file": "session_017.c",
+    "function": "get_download_ses"
+  },
+  {
+    "file": "session_018.c",
+    "function": "abort_download"
+  },
+  {
+    "file": "session_019.c",
+    "function": "kill_downloads_to_file"
+  },
+  {
+    "file": "session_020.c",
+    "function": "undisplay_download"
+  },
+  {
+    "file": "session_021.c",
+    "function": "dlg_abort_download"
+  },
+  {
+    "file": "session_022.c",
+    "function": "dlg_undisplay_download"
+  },
+  {
+    "file": "session_023.c",
+    "function": "download_abort_function"
+  },
+  {
+    "file": "session_024.c",
+    "function": "download_window_function"
+  },
+  {
+    "file": "session_025.c",
+    "function": "display_download"
+  },
+  {
+    "file": "session_026.c",
+    "function": "parse_http_date"
+  },
+  {
+    "file": "session_027.c",
+    "function": "download_data"
+  },
+  {
+    "file": "session_028.c",
+    "function": "create_download_file"
+  },
+  {
+    "file": "session_029.c",
+    "function": "get_temp_name"
+  },
+  {
+    "file": "session_030.c",
+    "function": "subst_file"
+  },
+  {
+    "file": "session_031.c",
+    "function": "start_download"
+  },
+  {
+    "file": "session_032.c",
+    "function": "continue_download"
+  },
+  {
+    "file": "session_033.c",
+    "function": "tp_free"
+  },
+  {
+    "file": "session_034.c",
+    "function": "tp_cancel"
+  },
+  {
+    "file": "session_035.c",
+    "function": "tp_save"
+  },
+  {
+    "file": "session_036.c",
+    "function": "tp_open"
+  },
+  {
+    "file": "session_037.c",
+    "function": "tp_display"
+  },
+  {
+    "file": "session_038.c",
+    "function": "type_query"
+  },
+  {
+    "file": "session_039.c",
+    "function": "ses_chktype"
+  },
+  {
+    "file": "session_040.c",
+    "function": "post_yes"
+  },
+  {
+    "file": "session_041.c",
+    "function": "post_no"
+  },
+  {
+    "file": "session_042.c",
+    "function": "post_cancel"
+  },
+  {
+    "file": "session_043.c",
+    "function": "ses_goto"
+  },
+  {
+    "file": "session_044.c",
+    "function": "do_move"
+  },
+  {
+    "file": "session_045.c",
+    "function": "request_frame"
+  },
+  {
+    "file": "session_046.c",
+    "function": "request_frameset"
+  },
+  {
+    "file": "session_047.c",
+    "function": "load_frames"
+  },
+  {
+    "file": "session_048.c",
+    "function": "display_timer"
+  },
+  {
+    "file": "session_049.c",
+    "function": "check_questions_queue"
+  },
+  {
+    "file": "session_050.c",
+    "function": "add_questions_entry"
+  },
+  {
+    "file": "session_051.c",
+    "function": "end_load"
+  },
+  {
+    "file": "session_052.c",
+    "function": "doc_end_load"
+  },
+  {
+    "file": "session_053.c",
+    "function": "file_end_load"
+  },
+  {
+    "file": "session_054.c",
+    "function": "request_additional_file"
+  },
+  {
+    "file": "session_055.c",
+    "function": "request_additional_loading_file"
+  },
+  {
+    "file": "session_056.c",
+    "function": "process_file_requests"
+  },
+  {
+    "file": "session_057.c",
+    "function": "create_session"
+  },
+  {
+    "file": "session_058.c",
+    "function": "copy_session"
+  },
+  {
+    "file": "session_059.c",
+    "function": "create_session_info"
+  },
+  {
+    "file": "session_060.c",
+    "function": "p5a5a53"
+  },
+  {
+    "file": "session_061.c",
+    "function": "pcad93f"
+  },
+  {
+    "file": "session_062.c",
+    "function": "encode_url"
+  },
+  {
+    "file": "session_063.c",
+    "function": "decode_url"
+  },
+  {
+    "file": "session_064.c",
+    "function": "read_session_info"
+  },
+  {
+    "file": "session_065.c",
+    "function": "abort_preloading"
+  },
+  {
+    "file": "session_066.c",
+    "function": "abort_loading"
+  },
+  {
+    "file": "session_067.c",
+    "function": "destroy_session"
+  },
+  {
+    "file": "session_068.c",
+    "function": "destroy_all_sessions"
+  },
+  {
+    "file": "session_069.c",
+    "function": "abort_all_downloads"
+  },
+  {
+    "file": "session_070.c",
+    "function": "reload"
+  },
+  {
+    "file": "session_071.c",
+    "function": "go_back"
+  },
+  {
+    "file": "session_072.c",
+    "function": "goto_url_w"
+  },
+  {
+    "file": "session_073.c",
+    "function": "goto_url_f"
+  },
+  {
+    "file": "session_074.c",
+    "function": "goto_url"
+  },
+  {
+    "file": "session_075.c",
+    "function": "goto_imgmap"
+  },
+  {
+    "file": "session_076.c",
+    "function": "ses_find_frame"
+  },
+  {
+    "file": "session_077.c",
+    "function": "ses_change_frame_url"
+  },
+  {
+    "file": "session_078.c",
+    "function": "win_func"
+  },
+  {
+    "file": "session_079.c",
+    "function": "get_current_url"
+  },
+  {
+    "file": "session_080.c",
+    "function": "get_current_title"
+  },
+  {
+    "file": "session_081.c",
+    "function": "get_current_link_url"
+  }
+]

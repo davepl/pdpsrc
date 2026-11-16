@@ -1,0 +1,154 @@
+# Run in upstream: make -f ../Makefile.211bsd
+# Candidate overlay partition: must be measured on the real 16-bit linker.
+CC=../tools/cc211
+CFLAGS=-O -DPDP11_NATIVE
+LD=../tools/ld211
+OBJS=helpers.pdp.o af_unix.pdp.o cache.pdp.o charsets.pdp.o connect.pdp.o cookies.pdp.o default.pdp.o dns.pdp.o error.pdp.o file.pdp.o html.pdp.o html_r.pdp.o html_tbl.pdp.o http.pdp.o https.pdp.o kbd.pdp.o kbdbind.pdp.o language.pdp.o main.pdp.o menu_compact.pdp.o os_dep.pdp.o sched.pdp.o select.pdp.o session.pdp.o terminal.pdp.o url.pdp.o view.pdp.o
+
+all: check-language links-pdp
+
+check-language:
+	@test -f language.dat || { echo "Missing language.dat; generate/copy native English sidecar first"; exit 1; }
+
+
+${OBJS}: ../tools/cc211 links.h links-native.h ../config.211bsd.h setup.h
+
+links-pdp: ../tools/ld211 ../native-tmp/libc-root.a ${OBJS} ../native-lib/libtypes.a ../native-lib/libbfu.a ../native-tmp/csv.o
+	${LD} -i -x -o links-pdp /lib/crt0.o ../native-tmp/csv.o helpers.pdp.o main.pdp.o select.pdp.o error.pdp.o 	-Z view.pdp.o -Z html.pdp.o -Z html_r.pdp.o -Z html_tbl.pdp.o 	-Z session.pdp.o -Z menu_compact.pdp.o -Z default.pdp.o 	-Z kbd.pdp.o terminal.pdp.o kbdbind.pdp.o 	-Z http.pdp.o https.pdp.o connect.pdp.o dns.pdp.o sched.pdp.o 	-Z file.pdp.o 	-Z charsets.pdp.o language.pdp.o 	-Z cookies.pdp.o url.pdp.o 	-Z os_dep.pdp.o af_unix.pdp.o cache.pdp.o 	-Z ../native-lib/libtypes.a ../native-lib/libbfu.a -Z ../native-tmp/libc-safe.a -Y ../native-tmp/libc-root.a
+	size links-pdp
+
+objects: ${OBJS}
+	size ${OBJS}
+
+clean:
+	rm -f ${OBJS} links-pdp
+
+# Separate suffix prevents accidentally linking modern-host objects.
+af_unix.pdp.o: af_unix.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_af_unix -c af_unix.native.c -o af_unix.pdp.o
+
+bfu.pdp.o: bfu.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_bfu -c bfu.native.c -o bfu.pdp.o
+
+bookmarks.pdp.o: bookmarks.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_bookmarks -c bookmarks.native.c -o bookmarks.pdp.o
+
+cache.pdp.o: cache.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_cache -c cache.native.c -o cache.pdp.o
+
+charsets.pdp.o: charsets.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_charsets -c charsets.native.c -o charsets.pdp.o
+
+connect.pdp.o: connect.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_connect -c connect.native.c -o connect.pdp.o
+
+cookies.pdp.o: cookies.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_cookies -c cookies.native.c -o cookies.pdp.o
+
+default.pdp.o: default.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_default -c default.native.c -o default.pdp.o
+
+dns.pdp.o: dns.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_dns -c dns.native.c -o dns.pdp.o
+
+error.pdp.o: error.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_error -c error.native.c -o error.pdp.o
+
+file.pdp.o: file.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_file -c file.native.c -o file.pdp.o
+
+finger.pdp.o: finger.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_finger -c finger.native.c -o finger.pdp.o
+
+ftp.pdp.o: ftp.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_ftp -c ftp.native.c -o ftp.pdp.o
+
+html.pdp.o: html.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_html -c html.native.c -o html.pdp.o
+
+html_r.pdp.o: html_r.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_html_r -c html_r.native.c -o html_r.pdp.o
+
+html_tbl.pdp.o: html_tbl.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_html_tbl -c html_tbl.native.c -o html_tbl.pdp.o
+
+http.pdp.o: http.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_http -c http.native.c -o http.pdp.o
+
+https.pdp.o: https.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_https -c https.native.c -o https.pdp.o
+
+kbd.pdp.o: kbd.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_kbd -c kbd.native.c -o kbd.pdp.o
+
+kbdbind.pdp.o: kbdbind.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_kbdbind -c kbdbind.native.c -o kbdbind.pdp.o
+
+language.pdp.o: language.native.c language-disk.inc language-data.h
+	${CC} ${CFLAGS} -DPDP11_UNIT_language -c language.native.c -o language.pdp.o
+
+mailto.pdp.o: mailto.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_mailto -c mailto.native.c -o mailto.pdp.o
+
+main.pdp.o: main.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_main -c main.native.c -o main.pdp.o
+
+menu.pdp.o: menu.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_menu -c menu.native.c -o menu.pdp.o
+
+os_dep.pdp.o: os_dep.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_os_dep -c os_dep.native.c -o os_dep.pdp.o
+
+sched.pdp.o: sched.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_sched -c sched.native.c -o sched.pdp.o
+
+select.pdp.o: select.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_select -c select.native.c -o select.pdp.o
+
+session.pdp.o: session.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_session -c session.native.c -o session.pdp.o
+
+smb.pdp.o: smb.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_smb -c smb.native.c -o smb.pdp.o
+
+# Resolve the generated per-unit guards before invoking the 16-bit cpp.
+terminal-decls.h: links-native.h
+	sed '/^#if !defined(PDP11_NATIVE)/{/PDP11_UNIT_terminal)/s/.*/#if 1/; /!defined/s/.*/#if 0/;}' links-native.h > terminal-decls.tmp
+	mv terminal-decls.tmp terminal-decls.h
+
+terminal.pdp.o: terminal.native.c terminal-decls.h
+	${CC} ${CFLAGS} -DPDP11_UNIT_terminal -c terminal.native.c -o terminal.pdp.o
+
+types.pdp.o: types.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_types -c types.native.c -o types.pdp.o
+
+url.pdp.o: url.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_url -c url.native.c -o url.pdp.o
+
+view.pdp.o: view.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_view -c view.native.c -o view.pdp.o
+
+
+helpers.pdp.o: helpers.native.c
+	${CC} ${CFLAGS} -c helpers.native.c -o helpers.pdp.o
+
+../tools/cc211: ../tools/cc211.c
+	/bin/sh -c 'if test ! -d ../native-tmp; then mkdir ../native-tmp; else :; fi'
+	cc -O -o ../tools/cc211 ../tools/cc211.c
+
+../native-tmp/csv.o:
+	/bin/sh -c 'if test ! -d ../native-tmp; then mkdir ../native-tmp; else :; fi'
+	cd ../native-tmp && ar x /lib/libc.a csv.o
+
+menu_compact.pdp.o: menu_compact.native.c
+	${CC} ${CFLAGS} -DPDP11_UNIT_menu_compact -c menu_compact.native.c -o menu_compact.pdp.o
+
+../native-lib/libtypes.a ../native-lib/libbfu.a: ../native-lib/Makefile links-native.h ../config.211bsd.h ../tools/cc211
+	make -f ../native-lib/Makefile
+
+../tools/ld211: ../tools/ld211.c ../tools/archive.h ../tools/cc211
+	${CC} -O -DNUM_VM_PAGES=20 -c ../tools/ld211.c -o ../tools/ld211.o
+	${CC} -i -o ../tools/ld211 ../tools/ld211.o -lvmf
+
+../native-tmp/libc-root.a: ../tools/prepare_libc.sh ../tools/cc211
+	sh ../tools/prepare_libc.sh

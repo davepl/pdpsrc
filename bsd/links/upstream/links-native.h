@@ -1,0 +1,4321 @@
+#ifndef __EXTENSIONS__
+#define __EXTENSIONS__
+#endif
+
+#ifdef PDP11_NATIVE
+#include "../config.211bsd.h"
+#else
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+#endif
+#ifdef HAVE_CONFIG2_H
+#include "config2.h"
+#endif
+
+#include "os_dep.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#ifdef PDP11_NATIVE
+#include "../../pdp11_unistd.h"
+#else
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif
+#endif
+#include <string.h>
+#include <errno.h>
+#ifdef HAVE_LIMITS_H
+#include <limits.h>
+#endif
+#include <sys/types.h>
+
+#ifdef TIME_WITH_SYS_TIME
+#ifdef HAVE_SYS_TIME_H
+#include <sys/time.h>
+#endif
+#ifdef HAVE_TIME_H
+#include <time.h>
+#endif
+#else
+#if defined(TM_IN_SYS_TIME) && defined(HAVE_SYS_TIME_H)
+#include <sys/time.h>
+#elif defined(HAVE_TIME_H)
+#include <time.h>
+#endif
+#endif
+
+#include <sys/stat.h>
+#ifdef HAVE_FCNTL_H
+#include <fcntl.h>
+#endif
+#ifdef HAVE_DIRENT_H
+#include <dirent.h>
+#endif
+#include <signal.h>
+/*#ifdef HAVE_SIGACTION_H
+#include <sigaction.h>
+#endif*/
+#ifdef HAVE_SYS_WAIT_H
+#include <sys/wait.h>
+#endif
+#ifdef HAVE_SYS_SELECT_H
+#include <sys/select.h>
+#endif
+#ifdef HAVE_SYS_RESOURCE_H
+#include <sys/resource.h>
+#endif
+#ifdef HAVE_SYS_CYGWIN_H
+#include <sys/cygwin.h>
+#endif
+#ifdef HAVE_IO_H
+#include <io.h>
+#endif
+#ifdef HAVE_SYS_UTSNAME_H
+#include <sys/utsname.h>
+#endif
+/*
+#ifdef HAVE_WAIT_H
+#include <wait.h>
+#endif
+*/
+
+#ifdef HAVE_NETINET_IN_SYSTM_H
+#include <netinet/in_systm.h>
+#else
+#ifdef HAVE_NETINET_IN_SYSTEM_H
+#include <netinet/in_system.h>
+#endif
+#endif
+#include <netdb.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#ifdef HAVE_NETINET_IP_H
+#include <netinet/ip.h>
+#endif
+#ifndef PDP11_NATIVE
+#include <utime.h>
+#endif
+
+#ifdef HAVE_LONG_LONG
+#define longlong long long
+#else
+#define longlong long
+#endif
+
+#ifdef PDP11_NATIVE
+#include <sgtty.h>
+#define termios sgttyb
+#define TCSANOW 0
+#include <sys/dir.h>
+#define dirent direct
+#else
+#include <termios.h>
+#endif
+
+#ifdef HAVE_SSL
+#include <openssl/ssl.h>
+#include <openssl/rand.h>
+#endif
+
+#include "os_depx.h"
+
+#include "setup.h"
+
+#define LINKS_COPYRIGHT "(C) 1999 - 2004 Mikulas Patocka"
+#define LINKS_COPYRIGHT_8859_1 "(C) 1999 - 2004 Mikulás Patocka"
+#define LINKS_COPYRIGHT_8859_2 "(C) 1999 - 2004 Mikulá¹ Patoèka"
+
+#define DUMMY ((void *)-1L)
+
+#define RET_OK		0
+#define RET_ERROR	1
+#define RET_SIGNAL	2
+#define RET_SYNTAX	3
+#define RET_FATAL	4
+
+#ifndef HAVE_MEMMOVE
+void *memmove(void *, const void *, size_t);
+#endif
+#ifndef HAVE_RAISE
+int raise(int);
+#endif
+#ifndef HAVE_STRTOUL
+unsigned long strtoul(const char *, char **, int);
+#endif
+#ifndef HAVE_STRERROR
+char *strerror(int);
+#endif
+#ifndef HAVE_GETTIMEOFDAY
+struct timeval {
+	long tv_sec;
+	long tv_usec;
+};
+struct timezone {
+	int tz_minuteswest;
+	int tz_dsttime;
+};
+static inline int gettimeofday(struct timeval *tv, struct timezone *tz)
+{
+	if (tv) tv->tv_sec = time(NULL), tv->tv_usec = 0;
+	if (tz) tz->tz_minuteswest = tz->tz_dsttime = 0;
+	return 0;
+}
+#endif
+#ifndef HAVE_STRCSPN
+size_t strcspn(const char *s, const char *reject)
+{
+	size_t r;
+	for (r = 0; *s; r++, s++) {
+		const char *rj;
+		for (rj = reject; *rj; rj++) if (*s == *rj) goto brk;
+	}
+	brk:
+	return r;
+}
+#endif
+#ifndef HAVE_STRSTR
+char *strstr(const char *haystack, const char *needle)
+{
+	size_t hs = strlen(haystack);
+	size_t ns = strlen(needle);
+	while (hs >= ns) {
+		if (!memcmp(haystack, needle, ns)) return haystack;
+		haystack++, hs--;
+	}
+	return NULL;
+}
+#endif
+
+#define option option_dirty_workaround_for_name_clash_with_include_on_cygwin
+#define table table_dirty_workaround_for_name_clash_with_libraries_on_macos
+#define scroll scroll_dirty_workaround_for_name_clash_with_libraries_on_macos
+
+/* error.c */
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_view)
+void do_not_optimize_here(void *p);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_main)
+void check_memory_leaks();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+void error(unsigned char *, ...);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_error)
+void debug_msg(unsigned char *, ...);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+void int_error(unsigned char *, ...);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+extern int errline;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+extern unsigned char *errfile;
+#endif
+
+
+#ifdef PDP11_NATIVE
+#ifndef PDP11_SOURCE_FILE
+#define PDP11_SOURCE_FILE "native"
+#endif
+static unsigned char pdp_source_file[] = PDP11_SOURCE_FILE;
+#define internal while (1) errfile = pdp_source_file, errline = __LINE__, int_error
+#define debug errfile = pdp_source_file, errline = __LINE__, debug_msg
+#else
+#define internal while (1) errfile = __FILE__, errline = __LINE__, int_error
+#define debug errfile = __FILE__, errline = __LINE__, debug_msg
+#endif
+
+#ifdef SPECIAL_MALLOC
+
+void *sp_malloc(size_t);
+void sp_free(void *);
+void *sp_realloc(void *, size_t);
+
+#define xmalloc sp_malloc
+#define xfree sp_free
+#define xrealloc sp_realloc
+
+#else
+
+#define xmalloc malloc
+#define xfree free
+#define xrealloc realloc
+
+#endif
+
+/* inline */
+
+#ifdef LEAK_DEBUG
+
+extern long mem_amount;
+extern long last_mem_amount;
+
+#ifndef LEAK_DEBUG_LIST
+struct alloc_header {
+	int size;
+};
+#else
+struct alloc_header {
+	struct alloc_header *next;
+	struct alloc_header *prev;
+	int size;
+	int line;
+	unsigned char *file;
+	unsigned char *comment;
+};
+#endif
+
+#define L_D_S ((sizeof(struct alloc_header) + 7) & ~7)
+
+#endif
+
+/* Out-of-line on PDP-11: old cc duplicates every literal at each macro use. */
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+void allocation_too_large(void)
+{
+    error("ERROR: allocation exceeds 16-bit limit");
+    exit(RET_FATAL);
+}
+#else
+extern void allocation_too_large(void);
+#endif
+#else
+static inline void allocation_too_large(void)
+{
+    error("ERROR: allocation exceeds 16-bit limit");
+    exit(RET_FATAL);
+}
+#endif
+#endif
+
+#ifdef PDP11_NATIVE
+#define overalloc() allocation_too_large()
+#else
+#define overalloc()							\
+do {									\
+	error("ERROR: attempting to allocate too large block at %s:%d", __FILE__, __LINE__);\
+	exit(RET_FATAL);						\
+} while (1)	/* while (1) is not a type --- it's here to allow the
+	compiler that doesn't know that exit doesn't return to do better
+	optimizations */
+
+#endif
+
+#ifdef LEAK_DEBUG
+
+void *debug_mem_alloc(unsigned char *, int, size_t);
+void debug_mem_free(unsigned char *, int, void *);
+void *debug_mem_realloc(unsigned char *, int, void *, size_t);
+void set_mem_comment(void *, unsigned char *, int);
+
+#define mem_alloc(x) debug_mem_alloc(__FILE__, __LINE__, x)
+#define mem_free(x) debug_mem_free(__FILE__, __LINE__, x)
+#define mem_realloc(x, y) debug_mem_realloc(__FILE__, __LINE__, x, y)
+
+#else
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+void *mem_alloc(size_t size)
+{
+	void *p;
+	if (!size) return DUMMY;
+	if (size > MAXINT) overalloc();
+	if (!(p = malloc(size))) {
+		error("ERROR: cannot allocate %u bytes", (unsigned)size);
+		exit(RET_FATAL);
+		return NULL;
+	}
+	return p;
+}
+#else
+extern void *mem_alloc(size_t size);
+#endif
+#else
+static inline void *mem_alloc(size_t size)
+{
+	void *p;
+	if (!size) return DUMMY;
+	if (size > MAXINT) overalloc();
+	if (!(p = malloc(size))) {
+		error("ERROR: cannot allocate %u bytes", (unsigned)size);
+		exit(RET_FATAL);
+		return NULL;
+	}
+	return p;
+}
+#endif
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+void mem_free(void *p)
+{
+	if (p == DUMMY) return;
+	if (!p) {
+		internal("mem_free(NULL)");
+		return;
+	}
+	free(p);
+}
+#else
+extern void mem_free(void *p);
+#endif
+#else
+static inline void mem_free(void *p)
+{
+	if (p == DUMMY) return;
+	if (!p) {
+		internal("mem_free(NULL)");
+		return;
+	}
+	free(p);
+}
+#endif
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+void *mem_realloc(void *p, size_t size)
+{
+	if (p == DUMMY) return mem_alloc(size);
+	if (!p) {
+		internal("mem_realloc(NULL, %d)", size);
+		return NULL;
+	}
+	if (!size) {
+		mem_free(p);
+		return DUMMY;
+	}
+	if (size > MAXINT) overalloc();
+	if (!(p = realloc(p, size))) {
+		error("ERROR: cannot resize to %u bytes", (unsigned)size);
+		exit(RET_FATAL);
+		return NULL;
+	}
+	return p;
+}
+#else
+extern void *mem_realloc(void *p, size_t size);
+#endif
+#else
+static inline void *mem_realloc(void *p, size_t size)
+{
+	if (p == DUMMY) return mem_alloc(size);
+	if (!p) {
+		internal("mem_realloc(NULL, %d)", size);
+		return NULL;
+	}
+	if (!size) {
+		mem_free(p);
+		return DUMMY;
+	}
+	if (size > MAXINT) overalloc();
+	if (!(p = realloc(p, size))) {
+		error("ERROR: cannot resize to %u bytes", (unsigned)size);
+		exit(RET_FATAL);
+		return NULL;
+	}
+	return p;
+}
+#endif
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+void *debug_mem_alloc(unsigned char *f, int l, size_t s) { return mem_alloc(s); }
+#else
+extern void *debug_mem_alloc(unsigned char *f, int l, size_t s);
+#endif
+#else
+static inline void *debug_mem_alloc(unsigned char *f, int l, size_t s) { return mem_alloc(s); }
+#endif
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+void debug_mem_free(unsigned char *f, int l, void *p) { mem_free(p); }
+#else
+extern void debug_mem_free(unsigned char *f, int l, void *p);
+#endif
+#else
+static inline void debug_mem_free(unsigned char *f, int l, void *p) { mem_free(p); }
+#endif
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+void *debug_mem_realloc(unsigned char *f, int l, void *p, size_t s) { return mem_realloc(p, s); }
+#else
+extern void *debug_mem_realloc(unsigned char *f, int l, void *p, size_t s);
+#endif
+#else
+static inline void *debug_mem_realloc(unsigned char *f, int l, void *p, size_t s) { return mem_realloc(p, s); }
+#endif
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+void set_mem_comment(void *p, unsigned char *c, int l) {}
+#else
+extern void set_mem_comment(void *p, unsigned char *c, int l);
+#endif
+#else
+static inline void set_mem_comment(void *p, unsigned char *c, int l) {}
+#endif
+#endif
+
+
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+unsigned char upcase(unsigned char a)
+{
+	if (a>='a' && a<='z') a -= 0x20;
+	return a;
+}
+#else
+extern unsigned char upcase(unsigned char a);
+#endif
+#else
+static inline unsigned char upcase(unsigned char a)
+{
+	if (a>='a' && a<='z') a -= 0x20;
+	return a;
+}
+#endif
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_view)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+int xstrcmp(unsigned char *s1, unsigned char *s2)
+{
+        if (!s1 && !s2) return 0;
+        if (!s1) return -1;
+        if (!s2) return 1;
+        return strcmp(s1, s2);
+}
+#else
+extern int xstrcmp(unsigned char *s1, unsigned char *s2);
+#endif
+#else
+static inline int xstrcmp(unsigned char *s1, unsigned char *s2)
+{
+        if (!s1 && !s2) return 0;
+        if (!s1) return -1;
+        if (!s2) return 1;
+        return strcmp(s1, s2);
+}
+#endif
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_url)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+int cmpbeg(unsigned char *str, unsigned char *b)
+{
+	while (*str && upcase(*str) == upcase(*b)) str++, b++;
+	return !!*b;
+}
+#else
+extern int cmpbeg(unsigned char *str, unsigned char *b);
+#endif
+#else
+static inline int cmpbeg(unsigned char *str, unsigned char *b)
+{
+	while (*str && upcase(*str) == upcase(*b)) str++, b++;
+	return !!*b;
+}
+#endif
+#endif
+
+
+#if !(defined(LEAK_DEBUG) && defined(LEAK_DEBUG_LIST))
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+unsigned char *memacpy(const unsigned char *src, int len)
+{
+	unsigned char *m;
+	m = mem_alloc(len + 1);
+	memcpy(m, src, len);
+	m[len] = 0;
+	return m;
+}
+#else
+extern unsigned char *memacpy(const unsigned char *src, int len);
+#endif
+#else
+static inline unsigned char *memacpy(const unsigned char *src, int len)
+{
+	unsigned char *m;
+	m = mem_alloc(len + 1);
+	memcpy(m, src, len);
+	m[len] = 0;
+	return m;
+}
+#endif
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+unsigned char *stracpy(const unsigned char *src)
+{
+	return src ? memacpy(src, src != DUMMY ? strlen(src) : 0) : NULL;
+}
+#else
+extern unsigned char *stracpy(const unsigned char *src);
+#endif
+#else
+static inline unsigned char *stracpy(const unsigned char *src)
+{
+	return src ? memacpy(src, src != DUMMY ? strlen(src) : 0) : NULL;
+}
+#endif
+#endif
+
+
+#else
+
+static inline unsigned char *debug_memacpy(unsigned char *f, int l, unsigned char *src, int len)
+{
+	unsigned char *m;
+	m = debug_mem_alloc(f, l, len + 1);
+	memcpy(m, src, len);
+	m[len] = 0;
+	return m;
+}
+
+#define memacpy(s, l) debug_memacpy(__FILE__, __LINE__, s, l)
+
+static inline unsigned char *debug_stracpy(unsigned char *f, int l, unsigned char *src)
+{
+	return src ? debug_memacpy(f, l, src, src != DUMMY ? strlen(src) : 0) : NULL;
+}
+
+#define stracpy(s) debug_stracpy(__FILE__, __LINE__, s)
+
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+int snprint(unsigned char *s, int n, unsigned num)
+{
+	unsigned q = 1;
+	while (q <= num / 10) q *= 10;
+	while (n-- > 1 && q) *(s++) = num / q + '0', num %= q, q /= 10;
+	*s = 0;
+	return !!q;
+}
+#else
+extern int snprint(unsigned char *s, int n, unsigned num);
+#endif
+#else
+static inline int snprint(unsigned char *s, int n, unsigned num)
+{
+	unsigned q = 1;
+	while (q <= num / 10) q *= 10;
+	while (n-- > 1 && q) *(s++) = num / q + '0', num %= q, q /= 10;
+	*s = 0;
+	return !!q;
+}
+#endif
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+int snzprint(unsigned char *s, int n, int num)
+{
+	if (n > 1 && num < 0) *(s++) = '-', num = -num, n--;
+	return snprint(s, n, num);
+}
+#else
+extern int snzprint(unsigned char *s, int n, int num);
+#endif
+#else
+static inline int snzprint(unsigned char *s, int n, int num)
+{
+	if (n > 1 && num < 0) *(s++) = '-', num = -num, n--;
+	return snprint(s, n, num);
+}
+#endif
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+void add_to_strn(unsigned char **s, unsigned char *a)
+{
+	unsigned char *p;
+	size_t l1 = strlen(*s), l2 = strlen(a);
+	if (l1 > MAXINT - 1 || l2 > MAXINT - 1 - l1) overalloc();
+	p = mem_realloc(*s, l1 + l2 + 1);
+	strcat(p, a);
+	*s = p;
+}
+#else
+extern void add_to_strn(unsigned char **s, unsigned char *a);
+#endif
+#else
+static inline void add_to_strn(unsigned char **s, unsigned char *a)
+{
+	unsigned char *p;
+	size_t l1 = strlen(*s), l2 = strlen(a);
+	if (l1 > MAXINT - 1 || l2 > MAXINT - 1 - l1) overalloc();
+	p = mem_realloc(*s, l1 + l2 + 1);
+	strcat(p, a);
+	*s = p;
+}
+#endif
+#endif
+
+
+#ifdef PDP11_NATIVE
+#define ALLOC_GR 0x010 /* Small string batches conserve the 16-bit heap. */
+#else
+#define ALLOC_GR 0x040
+#endif /* must be power of 2 */
+
+#define init_str() init_str_x(__FILE__, __LINE__)
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_view)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+unsigned char *init_str_x(unsigned char *file, int line)
+{
+	unsigned char *s = debug_mem_alloc(file, line, ALLOC_GR);
+	*s = 0;
+	return s;
+}
+#else
+extern unsigned char *init_str_x(unsigned char *file, int line);
+#endif
+#else
+static inline unsigned char *init_str_x(unsigned char *file, int line)
+{
+	unsigned char *s = debug_mem_alloc(file, line, ALLOC_GR);
+	*s = 0;
+	return s;
+}
+#endif
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+void add_to_str(unsigned char **s, int *l, unsigned char *a)
+{
+	unsigned char *p;
+	size_t ll = strlen(a);
+	if (*l < 0 || *l > MAXINT - ALLOC_GR || ll > MAXINT - ALLOC_GR - *l) overalloc();
+	p = *s;
+	if (((size_t)*l & ~(ALLOC_GR - 1)) != ((*l + ll) & ~(ALLOC_GR - 1))) {
+		p = *s = mem_realloc(*s, (*l + ll + ALLOC_GR) & ~(ALLOC_GR - 1));
+	}
+	strcpy(p + *l, a); *l += ll;
+}
+#else
+extern void add_to_str(unsigned char **s, int *l, unsigned char *a);
+#endif
+#else
+static inline void add_to_str(unsigned char **s, int *l, unsigned char *a)
+{
+	unsigned char *p;
+	size_t ll = strlen(a);
+	if (*l < 0 || *l > MAXINT - ALLOC_GR || ll > MAXINT - ALLOC_GR - *l) overalloc();
+	p = *s;
+	if (((size_t)*l & ~(ALLOC_GR - 1)) != ((*l + ll) & ~(ALLOC_GR - 1))) {
+		p = *s = mem_realloc(*s, (*l + ll + ALLOC_GR) & ~(ALLOC_GR - 1));
+	}
+	strcpy(p + *l, a); *l += ll;
+}
+#endif
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_view)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+void add_bytes_to_str(unsigned char **s, int *l, unsigned char *a, int ll)
+{
+	unsigned char *p;
+	if (*l < 0 || ll < 0 || *l > MAXINT - ALLOC_GR || ll > MAXINT - ALLOC_GR - *l) overalloc();
+	p = *s;
+	if ((*l & ~(ALLOC_GR - 1)) != ((*l + ll) & ~(ALLOC_GR - 1))) {
+		p = *s = mem_realloc(*s, (*l + ll + ALLOC_GR) & ~(ALLOC_GR - 1));
+	}
+	memcpy(p + *l, a, ll); p[*l += ll] = 0;
+}
+#else
+extern void add_bytes_to_str(unsigned char **s, int *l, unsigned char *a, int ll);
+#endif
+#else
+static inline void add_bytes_to_str(unsigned char **s, int *l, unsigned char *a, int ll)
+{
+	unsigned char *p;
+	if (*l < 0 || ll < 0 || *l > MAXINT - ALLOC_GR || ll > MAXINT - ALLOC_GR - *l) overalloc();
+	p = *s;
+	if ((*l & ~(ALLOC_GR - 1)) != ((*l + ll) & ~(ALLOC_GR - 1))) {
+		p = *s = mem_realloc(*s, (*l + ll + ALLOC_GR) & ~(ALLOC_GR - 1));
+	}
+	memcpy(p + *l, a, ll); p[*l += ll] = 0;
+}
+#endif
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+void add_chr_to_str(unsigned char **s, int *l, unsigned char a)
+{
+	unsigned char *p;
+	if (*l < 0 || *l >= MAXINT - ALLOC_GR) overalloc();
+	p = *s;
+	if ((*l & (ALLOC_GR - 1)) == ALLOC_GR - 1) {
+		p = *s = mem_realloc(*s, (*l + 1 + ALLOC_GR) & ~(ALLOC_GR - 1));
+	}
+	*(p + *l) = a; *(p + ++(*l)) = 0;
+}
+#else
+extern void add_chr_to_str(unsigned char **s, int *l, unsigned char a);
+#endif
+#else
+static inline void add_chr_to_str(unsigned char **s, int *l, unsigned char a)
+{
+	unsigned char *p;
+	if (*l < 0 || *l >= MAXINT - ALLOC_GR) overalloc();
+	p = *s;
+	if ((*l & (ALLOC_GR - 1)) == ALLOC_GR - 1) {
+		p = *s = mem_realloc(*s, (*l + 1 + ALLOC_GR) & ~(ALLOC_GR - 1));
+	}
+	*(p + *l) = a; *(p + ++(*l)) = 0;
+}
+#endif
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+void add_num_to_str(unsigned char **s, int *l, int n)
+{
+	unsigned char a[64];
+	/*sprintf(a, "%d", n);*/
+	snzprint(a, 64, n);
+	add_to_str(s, l, a);
+}
+#else
+extern void add_num_to_str(unsigned char **s, int *l, int n);
+#endif
+#else
+static inline void add_num_to_str(unsigned char **s, int *l, int n)
+{
+	unsigned char a[64];
+	/*sprintf(a, "%d", n);*/
+	snzprint(a, 64, n);
+	add_to_str(s, l, a);
+}
+#endif
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_helpers)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+void add_knum_to_str(unsigned char **s, int *l, int n)
+{
+	unsigned char a[13];
+	if (n && n / (1024L * 1024L) * (1024L * 1024L) == n) snzprint(a, 12, n / (1024L * 1024L)), strcat(a, "M");
+	else if (n && n / 1024 * 1024 == n) snzprint(a, 12, n / 1024), strcat(a, "k");
+	else snzprint(a, 13, n);
+	add_to_str(s, l, a);
+}
+#else
+extern void add_knum_to_str(unsigned char **s, int *l, int n);
+#endif
+#else
+static inline void add_knum_to_str(unsigned char **s, int *l, int n)
+{
+	unsigned char a[13];
+	if (n && n / (1024L * 1024L) * (1024L * 1024L) == n) snzprint(a, 12, n / (1024L * 1024L)), strcat(a, "M");
+	else if (n && n / 1024 * 1024 == n) snzprint(a, 12, n / 1024), strcat(a, "k");
+	else snzprint(a, 13, n);
+	add_to_str(s, l, a);
+}
+#endif
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_helpers)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+long strtolx(unsigned char *c, unsigned char **end)
+{
+	long l = strtol(c, (char **)end, 10);
+	if (!*end) return l;
+	if (upcase(**end) == 'K') {
+		(*end)++;
+		if (l < -MAXINT / 1024) return -MAXINT;
+		if (l > MAXINT / 1024) return MAXINT;
+		return l * 1024;
+	}
+	if (upcase(**end) == 'M') {
+		(*end)++;
+		if (l < -MAXINT / (1024L * 1024L)) return -MAXINT;
+		if (l > MAXINT / (1024L * 1024L)) return MAXINT;
+		return l * (1024L * 1024L);
+	}
+	return l;
+}
+#else
+extern long strtolx(unsigned char *c, unsigned char **end);
+#endif
+#else
+static inline long strtolx(unsigned char *c, unsigned char **end)
+{
+	long l = strtol(c, (char **)end, 10);
+	if (!*end) return l;
+	if (upcase(**end) == 'K') {
+		(*end)++;
+		if (l < -MAXINT / 1024) return -MAXINT;
+		if (l > MAXINT / 1024) return MAXINT;
+		return l * 1024;
+	}
+	if (upcase(**end) == 'M') {
+		(*end)++;
+		if (l < -MAXINT / (1024L * 1024L)) return -MAXINT;
+		if (l > MAXINT / (1024L * 1024L)) return MAXINT;
+		return l * (1024L * 1024L);
+	}
+	return l;
+}
+#endif
+#endif
+
+
+/* Copies at most dst_size chars into dst. Ensures null termination of dst. */
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_session)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+unsigned char *safe_strncpy(unsigned char *dst, const unsigned char *src, size_t dst_size) {
+/*	size_t to_copy;
+
+	to_copy = strlen(src);
+
+	/ Ensure that the url size is not greater than str_size / 
+	if (dst_size < to_copy)
+		to_copy = dst_size - 1;
+
+	strncpy(dst, src, to_copy);
+
+	/ Ensure null termination /
+	dst[to_copy] = '\0';
+	
+	return dst;*/
+
+	strncpy(dst, src, dst_size);
+	if (strlen(src) >= dst_size) dst[dst_size - 1] = 0;
+	return dst;
+}
+#else
+extern unsigned char *safe_strncpy(unsigned char *dst, const unsigned char *src, size_t dst_size);
+#endif
+#else
+static inline unsigned char *safe_strncpy(unsigned char *dst, const unsigned char *src, size_t dst_size) {
+/*	size_t to_copy;
+
+	to_copy = strlen(src);
+
+	/ Ensure that the url size is not greater than str_size / 
+	if (dst_size < to_copy)
+		to_copy = dst_size - 1;
+
+	strncpy(dst, src, to_copy);
+
+	/ Ensure null termination /
+	dst[to_copy] = '\0';
+	
+	return dst;*/
+
+	strncpy(dst, src, dst_size);
+	if (strlen(src) >= dst_size) dst[dst_size - 1] = 0;
+	return dst;
+}
+#endif
+#endif
+
+
+
+struct list_head {
+	void *next;
+	void *prev;
+};
+
+struct xlist_head {
+	struct xlist_head *next;
+	struct xlist_head *prev;
+};
+
+#define init_list(x) {do_not_optimize_here(&x); (x).next=&(x); (x).prev=&(x); do_not_optimize_here(&x);}
+#define list_empty(x) ((x).next == &(x))
+#define del_from_list(x) {do_not_optimize_here(x); ((struct list_head *)(x)->next)->prev=(x)->prev; ((struct list_head *)(x)->prev)->next=(x)->next; do_not_optimize_here(x);}
+/*#define add_to_list(l,x) {(x)->next=(l).next; (x)->prev=(typeof(x))&(l); (l).next=(x); if ((l).prev==&(l)) (l).prev=(x);}*/
+
+#ifdef HAVE_TYPEOF
+#define add_at_pos(p,x) do {do_not_optimize_here(p); (x)->next=(p)->next; (x)->prev=(p); (p)->next=(x); (x)->next->prev=(x);do_not_optimize_here(p);} while(0)
+#define add_to_list(l,x) add_at_pos((typeof(x))(void *)&(l),(x))
+#define foreach(e,l) for ((e)=(l).next; (e)!=(typeof(e))(void *)&(l); (e)=(e)->next)
+#define foreachback(e,l) for ((e)=(l).prev; (e)!=(typeof(e))(void *)&(l); (e)=(e)->prev)
+#else
+#define add_at_pos(p,x) do {do_not_optimize_here(p); (x)->next=(p)->next; (x)->prev=(void *)(p); (p)->next=(x); (x)->next->prev=(x); do_not_optimize_here(p); } while(0)
+#define add_to_list(l,x) add_at_pos(&(l),(x))
+#define foreach(e,l) for ((e)=(l).next; (e)!=(void *)&(l); (e)=(e)->next)
+#define foreachback(e,l) for ((e)=(l).prev; (e)!=(void *)&(l); (e)=(e)->prev)
+#endif
+#define free_list(l) {struct xlist_head *a__;do_not_optimize_here(&l);foreach(a__,l) do_not_optimize_here(a__);foreachback(a__,l) do_not_optimize_here(a__); while ((l).next != &(l)) {a__=(l).next; del_from_list(a__); mem_free(a__); } do_not_optimize_here(&l);}
+
+#define WHITECHAR(x) ((x) == 9 || (x) == 10 || (x) == 12 || (x) == 13 || (x) == ' ')
+#define U(x) ((x) == '"' || (x) == '\'')
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+int isA(unsigned char c)
+{
+	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+	        c == '_' || c == '-';
+}
+#else
+extern int isA(unsigned char c);
+#endif
+#else
+static inline int isA(unsigned char c)
+{
+	return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') ||
+	        c == '_' || c == '-';
+}
+#endif
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+int casecmp(unsigned char *c1, unsigned char *c2, size_t len)
+{
+	size_t i;
+	for (i = 0; i < len; i++) if (upcase(c1[i]) != upcase(c2[i])) return 1;
+	return 0;
+}
+#else
+extern int casecmp(unsigned char *c1, unsigned char *c2, size_t len);
+#endif
+#else
+static inline int casecmp(unsigned char *c1, unsigned char *c2, size_t len)
+{
+	size_t i;
+	for (i = 0; i < len; i++) if (upcase(c1[i]) != upcase(c2[i])) return 1;
+	return 0;
+}
+#endif
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_select)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+int can_write(int fd)
+{
+	fd_set fds;
+	struct timeval tv;
+	tv.tv_sec = tv.tv_usec = 0;
+	FD_ZERO(&fds);
+	FD_SET(fd, &fds);
+	return select(fd + 1, NULL, &fds, NULL, &tv);
+}
+#else
+extern int can_write(int fd);
+#endif
+#else
+static inline int can_write(int fd)
+{
+	fd_set fds;
+	struct timeval tv;
+	tv.tv_sec = tv.tv_usec = 0;
+	FD_ZERO(&fds);
+	FD_SET(fd, &fds);
+	return select(fd + 1, NULL, &fds, NULL, &tv);
+}
+#endif
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+int can_read(int fd)
+{
+	fd_set fds;
+	struct timeval tv;
+	tv.tv_sec = tv.tv_usec = 0;
+	FD_ZERO(&fds);
+	FD_SET(fd, &fds);
+	return select(fd + 1, &fds, NULL, NULL, &tv);
+}
+#else
+extern int can_read(int fd);
+#endif
+#else
+static inline int can_read(int fd)
+{
+	fd_set fds;
+	struct timeval tv;
+	tv.tv_sec = tv.tv_usec = 0;
+	FD_ZERO(&fds);
+	FD_SET(fd, &fds);
+	return select(fd + 1, &fds, NULL, NULL, &tv);
+}
+#endif
+#endif
+
+
+#define CI_BYTES	1
+#define CI_FILES	2
+#define CI_LOCKED	3
+#define CI_LOADING	4
+#define CI_TIMERS	5
+#define CI_TRANSFER	6
+#define CI_CONNECTING	7
+#define CI_KEEP		8
+#define CI_LIST		9
+
+/* os_dep.c */
+
+struct terminal;
+
+struct open_in_new {
+	unsigned char *text;
+	unsigned char *hk;
+	void (*fn)(struct terminal *, unsigned char *, unsigned char *);
+};
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_smb)
+void close_fork_tty();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_os_dep)
+int get_system_env();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_os_dep)
+int is_xterm();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_os_dep)
+int can_twterm();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_os_dep)
+int get_terminal_size(int, int *, int *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_os_dep)
+void handle_terminal_resize(int, void (*)());
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_os_dep)
+void unhandle_terminal_resize(int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+void set_bin(int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_smb)
+int c_pipe(int *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_os_dep)
+int get_input_handle();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_terminal)
+int get_output_handle();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_os_dep)
+int get_ctl_handle();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_terminal)
+void want_draw();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_terminal)
+void done_draw();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_win32)
+void terminate_osdep();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_os_dep)
+void *handle_mouse(int, void (*)(void *, unsigned char *, int), void *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_os_dep)
+void unhandle_mouse(void *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_os_dep)
+int check_file_name(unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_terminal)
+int start_thread(void (*)(void *, int), void *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_view)
+char *get_clipboard_text();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_view)
+void set_clipboard_text(char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_os_dep)
+void set_window_title(unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_os_dep)
+unsigned char *get_window_title();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_session)
+int is_safe_in_shell(unsigned char);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_session)
+void check_shell_security(unsigned char **);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_os_dep)
+void block_stdin();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_os_dep)
+void unblock_stdin();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_terminal)
+int exe(char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_os_dep)
+int resize_window(int, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_os_dep)
+int can_resize_window(int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_os_dep)
+int can_open_os_shell(int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_view)
+struct open_in_new *get_open_in_new(int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_os_dep)
+void set_highpri();
+#endif
+
+#ifdef HAVE_OPEN_PREALLOC
+int open_prealloc(char *, int, int, int);
+void prealloc_truncate(int, int);
+#else
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+void prealloc_truncate(int x, int y) {}
+#else
+extern void prealloc_truncate(int x, int y);
+#endif
+#else
+static inline void prealloc_truncate(int x, int y) {}
+#endif
+#endif
+
+#endif
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_os_dep)
+void os_cfmakeraw(struct termios *t);
+#endif
+
+
+/* select.c */
+
+#ifndef FD_SETSIZE
+#ifdef PDP11_SMALL
+#define FD_SETSIZE 32
+#else
+#define FD_SETSIZE 1024
+#endif
+#endif
+
+typedef long ttime;
+typedef unsigned long uttime;
+typedef unsigned tcount;
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_terminal)
+extern int terminate;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_select)
+long select_info(int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_select)
+void select_loop(void (*)());
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session)
+int register_bottom_half(void (*)(void *), void *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_select)
+void check_bottom_halves();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session)
+int install_timer(ttime, void (*)(void *), void *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session)
+void kill_timer(int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session)
+ttime get_time();
+#endif
+
+
+#define H_READ	0
+#define H_WRITE	1
+#define H_ERROR	2
+#define H_DATA	3
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_select)
+void *get_handler(int, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal)
+void set_handlers(int, void (*)(void *), void (*)(void *), void (*)(void *), void *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_select)
+void install_signal_handler(int, void (*)(void *), void *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_select)
+void interruptible_signal(int sig, int in);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_select)
+void set_sigcld();
+#endif
+
+
+/* dns.c */
+
+#ifdef PDP11_NATIVE
+typedef unsigned long ip; /* IPv4 is32 bits even with16-bit int. */
+#else
+typedef unsigned ip;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns)
+int do_real_lookup(unsigned char *, ip *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_main)
+void shrink_dns_cache(int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_dns)
+int find_host(unsigned char *, ip *, void **, void (*)(void *, int), void *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_dns)
+int find_host_no_cache(unsigned char *, ip *, void **, void (*)(void *, int), void *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_sched)
+void kill_dns_request(void **);
+#endif
+
+
+/* cache.c */
+
+struct cache_entry {
+	struct cache_entry *next;
+	struct cache_entry *prev;
+	unsigned char *url;
+	unsigned char *head;
+	unsigned char *redirect;
+	int redirect_get;
+	int length;
+	int incomplete;
+	int tgc;
+	unsigned char *last_modified;
+	int data_size;
+	struct list_head frag;
+	tcount count;
+	int refcount;
+#ifdef HAVE_SSL
+	unsigned char *ssl_info;
+#endif
+};
+
+struct fragment {
+	struct fragment *next;
+	struct fragment *prev;
+	int offset;
+	int length;
+	int real_length;
+	unsigned char data[1];
+};
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_smb)
+extern int page_size;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_main)
+void init_cache();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_menu)
+long cache_info(int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+int find_in_cache(unsigned char *, struct cache_entry **);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_view)
+int get_cache_entry(unsigned char *, struct cache_entry **);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cache)
+int get_cache_data(struct cache_entry *e, unsigned char **, int *);
+#endif
+
+#ifdef PDP11_NATIVE
+int reserve_cache_fragment(struct cache_entry *, int);
+#endif
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_smb)
+int add_fragment(struct cache_entry *, int, unsigned char *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_session)
+void defrag_entry(struct cache_entry *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_smb)
+void truncate_entry(struct cache_entry *, int, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_sched)
+void free_entry_to(struct cache_entry *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_http)
+void delete_entry_content(struct cache_entry *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cache)
+void delete_cache_entry(struct cache_entry *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_session)
+void garbage_collection(int);
+#endif
+
+
+/* sched.c */
+
+#define PRI_MAIN	0
+#define PRI_DOWNLOAD	0
+#define PRI_FRAME	1
+#define PRI_NEED_IMG	2
+#define PRI_IMG		3
+#define PRI_PRELOAD	4
+#define PRI_CANCEL	5
+#define N_PRI		6
+
+struct remaining_info {
+	int valid;
+	int size, loaded, last_loaded, cur_loaded;
+	int pos;
+	ttime elapsed;
+	ttime last_time;
+	ttime dis_b;
+	int data_in_secs[CURRENT_SPD_SEC];
+	int timer;
+};
+
+struct connection {
+	struct connection *next;
+	struct connection *prev;
+	tcount count;
+	unsigned char *url;
+	int running;
+	int state;
+	int prev_error;
+	int from;
+	int pri[N_PRI];
+	int no_cache;
+	int sock1;
+	int sock2;
+	void *dnsquery;
+	pid_t pid;
+	int tries;
+	struct list_head statuss;
+	void *info;
+	void *buffer;
+	void (*conn_func)(void *);
+	struct cache_entry *cache;
+	int received;
+	int est_length;
+	int unrestartable;
+	struct remaining_info prg;
+	int timer;
+	int detached;
+#ifdef HAVE_SSL
+	SSL *ssl;
+	int no_tsl;
+#endif
+};
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_sched)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+int getpri(struct connection *c)
+{
+	int i;
+	for (i = 0; i < N_PRI; i++) if (c->pri[i]) return i;
+	internal("connection has no owner");
+	return N_PRI;
+}
+#else
+extern int getpri(struct connection *c);
+#endif
+#else
+static inline int getpri(struct connection *c)
+{
+	int i;
+	for (i = 0; i < N_PRI; i++) if (c->pri[i]) return i;
+	internal("connection has no owner");
+	return N_PRI;
+}
+#endif
+#endif
+
+
+#define NC_ALWAYS_CACHE	0
+#define NC_CACHE	1
+#define NC_IF_MOD	2
+#define NC_RELOAD	3
+#define NC_PR_NO_CACHE	4
+
+#define S_WAIT		0
+#define S_DNS		1
+#define S_CONN		2
+#define S_SSL_NEG	3
+#define S_SENT		4
+#define S_LOGIN		5
+#define S_GETH		6
+#define S_PROC		7
+#define S_TRANS		8
+#define S_QUESTIONS	9
+
+#define S_WAIT_REDIR		-999
+#define S_OK			-1000
+#define S_INTERRUPTED		-1001
+#define S_EXCEPT		-1002
+#define S_INTERNAL		-1003
+#define S_OUT_OF_MEM		-1004
+#define S_NO_DNS		-1005
+#define S_CANT_WRITE		-1006
+#define S_CANT_READ		-1007
+#define S_MODIFIED		-1008
+#define S_BAD_URL		-1009
+#define S_TIMEOUT		-1010
+#define S_RESTART		-1011
+#define S_STATE			-1012
+
+#define S_HTTP_ERROR		-1100
+#define S_HTTP_100		-1101
+#define S_HTTP_204		-1102
+
+#define S_FILE_TYPE		-1200
+#define S_FILE_ERROR		-1201
+
+#define S_FTP_ERROR		-1300
+#define S_FTP_UNAVAIL		-1301
+#define S_FTP_LOGIN		-1302
+#define S_FTP_PORT		-1303
+#define S_FTP_NO_FILE		-1304
+#define S_FTP_FILE_ERROR	-1305
+
+#define S_SSL_ERROR		-1400
+#define S_NO_SSL		-1401
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_session)
+extern struct s_msg_dsc {
+	int n;
+	unsigned char *msg;
+} msg_dsc[];
+#endif
+
+
+struct status {
+	struct status *next;
+	struct status *prev;
+	struct connection *c;
+	struct cache_entry *ce;
+	int state;
+	int prev_error;
+	int pri;
+	void (*end)(struct status *, void *);
+	void *data;
+	struct remaining_info *prg;
+};
+
+struct http_auth_basic {
+	struct http_auth_basic *next;
+	struct http_auth_basic *prev;
+	int valid;
+	unsigned char *url;
+	int url_len;
+	unsigned char *realm;
+	unsigned char *uid;
+	unsigned char *passwd;
+};
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_sched)
+void check_queue();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_sched)
+long connect_info(int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_sched)
+void send_connection_info(struct connection *c);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_smb)
+void setcstate(struct connection *c, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_sched)
+int get_keepalive_socket(struct connection *c);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_sched)
+void add_keepalive_socket(struct connection *c, ttime);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_sched)
+void run_connection(struct connection *c);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_smb)
+void retry_connection(struct connection *c);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_smb)
+void abort_connection(struct connection *c);
+#endif
+
+#if !defined(PDP11_NATIVE)
+void end_connection(struct connection *c);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_session)
+int load_url(unsigned char *, struct status *, int, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_session)
+void change_connection(struct status *, struct status *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_session)
+void detach_connection(struct status *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_sched)
+void abort_all_connections();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_sched)
+void abort_background_connections();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_sched)
+int is_entry_used(struct cache_entry *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_sched)
+void connection_timeout(struct connection *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_sched)
+void set_timeout(struct connection *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_sched)
+void add_blacklist_entry(unsigned char *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_sched)
+void del_blacklist_entry(unsigned char *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_sched)
+int get_blacklist_flags(unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_sched)
+void free_blacklist();
+#endif
+
+#if !defined(PDP11_NATIVE)
+void update_noproxy();
+#endif
+
+#if !defined(PDP11_NATIVE)
+void free_noproxy();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_sched)
+unsigned char *find_auth(unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_sched)
+void add_auth_entry(unsigned char*, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_sched)
+void del_auth_entry(struct http_auth_basic *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_sched)
+void free_auth();
+#endif
+
+
+#define BL_HTTP10		1
+#define BL_NO_CHARSET		2
+
+/* url.c */
+
+struct session;
+
+#define POST_CHAR 1
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+int end_of_dir(unsigned char c)
+{
+	return c == POST_CHAR || c == '#' || c == ';' || c == '?';
+}
+#else
+extern int end_of_dir(unsigned char c);
+#endif
+#else
+static inline int end_of_dir(unsigned char c)
+{
+	return c == POST_CHAR || c == '#' || c == ';' || c == '?';
+}
+#endif
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_url)
+int parse_url(unsigned char *, int *, unsigned char **, int *, unsigned char **, int *, unsigned char **, int *, unsigned char **, int *, unsigned char **, int *, unsigned char **);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_url)
+unsigned char *get_host_name(unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_url)
+unsigned char *get_host_and_pass(unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_url)
+unsigned char *get_user_name(unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_url)
+unsigned char *get_pass(unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_url)
+unsigned char *get_port_str(unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_url)
+int get_port(unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_url)
+void (*get_protocol_handle(unsigned char *))(struct connection *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_url)
+void (*get_external_protocol_function(unsigned char *))(struct session *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_url)
+unsigned char *get_url_data(unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_url)
+unsigned char *join_urls(unsigned char *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view)
+unsigned char *translate_url(unsigned char *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_url)
+unsigned char *extract_position(unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_url)
+void get_filename_from_url(unsigned char *, unsigned char **, int *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_url)
+void add_conv_str(unsigned char **s, int *l, unsigned char *b, int ll, int encode_special);
+#endif
+
+
+/* connect.c */
+
+struct read_buffer {
+	int sock;
+	int len;
+	int close;
+	void (*done)(struct connection *, struct read_buffer *);
+	unsigned char data[1];
+};
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_connect)
+void exception(struct connection *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_smb)
+void close_socket(int *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_http)
+void make_connection(struct connection *, int, int *, void (*)(struct connection *));
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_ftp)
+int get_pasv_socket(struct connection *, int, int *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_http)
+void write_to_socket(struct connection *, int, unsigned char *, int, void (*)(struct connection *));
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_http)
+struct read_buffer *alloc_read_buffer(struct connection *c);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_http)
+void read_from_socket(struct connection *, int, struct read_buffer *, void (*)(struct connection *, struct read_buffer *));
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_http)
+void kill_buffer_data(struct read_buffer *, int);
+#endif
+
+
+/* cookies.c */
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_http)
+int set_cookie(struct terminal *, unsigned char *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_http)
+void send_cookies(unsigned char **, int *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_main)
+void init_cookies();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_main)
+void cleanup_cookies();
+#endif
+
+
+/* http.c */
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_view)
+unsigned char *parse_http_header(unsigned char *, unsigned char *, unsigned char **);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_http)
+unsigned char *parse_header_param(unsigned char *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_url)
+void http_func(struct connection *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_url)
+void proxy_func(struct connection *);
+#endif
+
+
+
+/* https.c */
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_url)
+void https_func(struct connection *c);
+#endif
+
+#ifdef HAVE_SSL
+void ssl_finish(void);
+SSL *getSSL(void);
+#endif
+
+/* file.c */
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_url)
+void file_func(struct connection *);
+#endif
+
+
+/* finger.c */
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_url)
+void finger_func(struct connection *);
+#endif
+
+
+/* ftp.c */
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_menu)
+extern int fast_ftp;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_menu)
+extern int passive_ftp;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_url)
+void ftp_func(struct connection *);
+#endif
+
+
+/* smb.c */
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_url)
+void smb_func(struct connection *);
+#endif
+
+
+/* mailto.c */
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_url)
+void mailto_func(struct session *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_url)
+void telnet_func(struct session *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_url)
+void tn3270_func(struct session *, unsigned char *);
+#endif
+
+
+/* kbd.c */
+
+#define BM_BUTT		3
+#define B_LEFT		0
+#define B_MIDDLE	1
+#define B_RIGHT		2
+#define BM_ACT		12
+#define B_DOWN		0
+#define B_UP		4
+#define B_DRAG		8
+
+#define KBD_ENTER	0x100
+#define KBD_BS		0x101
+#define KBD_TAB		0x102
+#define KBD_ESC		0x103
+#define KBD_LEFT	0x104
+#define KBD_RIGHT	0x105
+#define KBD_UP		0x106
+#define KBD_DOWN	0x107
+#define KBD_INS		0x108
+#define KBD_DEL		0x109
+#define KBD_HOME	0x10a
+#define KBD_END		0x10b
+#define KBD_PAGE_UP	0x10c
+#define KBD_PAGE_DOWN	0x10d
+
+#define KBD_F1		0x120
+#define KBD_F2		0x121
+#define KBD_F3		0x122
+#define KBD_F4		0x123
+#define KBD_F5		0x124
+#define KBD_F6		0x125
+#define KBD_F7		0x126
+#define KBD_F8		0x127
+#define KBD_F9		0x128
+#define KBD_F10		0x129
+#define KBD_F11		0x12a
+#define KBD_F12		0x12b
+
+#define KBD_CTRL_C	0x200
+
+#define KBD_SHIFT	1
+#define KBD_CTRL	2
+#define KBD_ALT		4
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_main)
+void handle_trm(int, int, int, int, int, void *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_terminal)
+void free_all_itrms();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd)
+void resize_terminal();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_terminal)
+void dispatch_special(unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_main)
+void kbd_ctrl_c();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_terminal)
+int is_blocked();
+#endif
+
+
+/* terminal.c */
+
+typedef unsigned short chr;
+
+struct event {
+	long ev;
+	long x;
+	long y;
+	long b;
+};
+
+#define EV_INIT		0
+#define EV_KBD		1
+#define EV_MOUSE	2
+#define EV_REDRAW	3
+#define EV_RESIZE	4
+#define EV_ABORT	5
+
+struct window {
+	struct window *next;
+	struct window *prev;
+	void (*handler)(struct window *, struct event *, int);
+	void *data;
+	int xp, yp;
+	struct terminal *term;
+};
+
+#define MAX_TERM_LEN	32	/* this must be multiple of 8! (alignment problems) */
+
+#define MAX_CWD_LEN	256	/* this must be multiple of 8! (alignment problems) */	
+
+#define ENV_XWIN	1
+#define ENV_SCREEN	2
+#define ENV_OS2VIO	4
+#define ENV_BE		8
+#define ENV_TWIN	16
+#define ENV_WIN32	32
+
+struct terminal {
+	struct terminal *next;
+	struct terminal *prev;
+	int master;
+	int fdin;
+	int fdout;
+	int x;
+	int y;
+	int environment;
+	unsigned char term[MAX_TERM_LEN];
+	unsigned char cwd[MAX_CWD_LEN];
+	unsigned *screen;
+	unsigned *last_screen;
+	struct term_spec *spec;
+	int cx;
+	int cy;
+	int lcx;
+	int lcy;
+	int dirty;
+	int redrawing;
+	int blocked;
+	unsigned char *input_queue;
+	int qlen;
+	struct list_head windows;
+	unsigned char *title;
+};
+
+struct term_spec {
+	struct term_spec *next;
+	struct term_spec *prev;
+	unsigned char term[MAX_TERM_LEN];
+	int mode;
+	int m11_hack;
+	int restrict_852;
+	int block_cursor;
+	int col;
+	int charset;
+};
+
+#define TERM_DUMB	0
+#define TERM_VT100	1
+#define TERM_LINUX	2
+#define TERM_KOI8	3
+#define TERM_FREEBSD	4
+
+#define ATTR_FRAME	0x8000
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_terminal)
+extern struct list_head term_specs;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_terminal)
+extern struct list_head terminals;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_view)
+int hard_write(int, unsigned char *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_terminal)
+int hard_read(int, unsigned char *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_terminal)
+unsigned char *get_cwd();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_terminal)
+void set_cwd(unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_terminal)
+struct terminal *init_term(int, int, void (*)(struct window *, struct event *, int));
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_terminal)
+void sync_term_specs();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_terminal)
+struct term_spec *new_term_spec(unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_terminal)
+void free_term_specs();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_terminal)
+void destroy_terminal(struct terminal *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_terminal)
+void redraw_terminal(struct terminal *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_terminal)
+void redraw_terminal_all(struct terminal *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_terminal)
+void redraw_terminal_cls(struct terminal *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_terminal)
+void cls_redraw_all_terminals();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_view)
+void redraw_from_window(struct window *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_terminal)
+void redraw_below_window(struct window *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_terminal)
+void add_window(struct terminal *, void (*)(struct window *, struct event *, int), void *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_terminal)
+void add_window_at_pos(struct terminal *, void (*)(struct window *, struct event *, int), void *, struct window *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_view)
+void delete_window(struct window *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_terminal)
+void delete_window_ev(struct window *, struct event *ev);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_view)
+void set_window_ptr(struct window *, int, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_terminal)
+void get_parent_ptr(struct window *, int *, int *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_view)
+struct window *get_root_window(struct terminal *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_view)
+void add_empty_window(struct terminal *, void (*)(void *), void *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_terminal)
+void redraw_screen(struct terminal *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_terminal)
+void redraw_all_terminals();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_view)
+void set_char(struct terminal *, int, int, unsigned);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_view)
+unsigned get_char(struct terminal *, int, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_view)
+void set_color(struct terminal *, int, int, unsigned);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_view)
+void set_only_char(struct terminal *, int, int, unsigned);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_view)
+void set_line(struct terminal *, int, int, int, chr *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_terminal)
+void set_line_color(struct terminal *, int, int, int, unsigned);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_view)
+void fill_area(struct terminal *, int, int, int, int, unsigned);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_terminal)
+void draw_frame(struct terminal *, int, int, int, int, unsigned, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_terminal)
+void print_text(struct terminal *, int, int, int, unsigned char *, unsigned);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_view)
+void set_cursor(struct terminal *, int, int, int, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_terminal)
+void destroy_all_terminals();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_terminal)
+void block_itrm(int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_terminal)
+int unblock_itrm(int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_terminal)
+void exec_thread(unsigned char *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_terminal)
+void close_handle(void *);
+#endif
+
+
+#define TERM_FN_TITLE	1
+#define TERM_FN_RESIZE	2
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_terminal)
+void exec_on_terminal(struct terminal *, unsigned char *, unsigned char *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_terminal)
+void set_terminal_title(struct terminal *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_terminal)
+void do_terminal_function(struct terminal *, unsigned char, unsigned char *);
+#endif
+
+
+/* language.c */
+
+#include "language.h"
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+extern unsigned char dummyarray[];
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_menu)
+extern int current_language;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_main)
+void init_trans();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_main)
+void shutdown_trans();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_view)
+unsigned char *get_text_translation(unsigned char *, struct terminal *term);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_main)
+unsigned char *get_english_translation(unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_menu)
+void set_language(int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_menu)
+int n_languages();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_menu)
+unsigned char *language_name(int);
+#endif
+
+
+#define _(_x_, _y_) get_text_translation(_x_, _y_)
+#define TEXT(x) (dummyarray + x)
+
+/* af_unix.c */
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_main)
+int bind_to_af_unix();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_main)
+void af_unix_close();
+#endif
+
+
+/* main.c */
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main)
+extern int retval;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_view)
+extern unsigned char *path_to_exe;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_terminal)
+void unhandle_terminal_signals(struct terminal *term);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main)
+int attach_terminal(int, int, int, void *, int);
+#endif
+
+#if !defined(PDP11_NATIVE)
+void program_exit();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu)
+void shrink_memory(int);
+#endif
+
+
+/* types.c */
+
+struct assoc {
+	struct assoc *next;
+	struct assoc *prev;
+	tcount cnt;
+	unsigned char *label;
+	unsigned char *ct;
+	unsigned char *prog;
+	int cons;
+	int xwin;
+	int block;
+	int ask;
+	int system;
+};
+
+struct extension {
+	struct extension *next;
+	struct extension *prev;
+	tcount cnt;
+	unsigned char *ext;
+	unsigned char *ct;
+};
+
+struct protocol_program {
+	struct protocol_program *next;
+	struct protocol_program *prev;
+	unsigned char *prog;
+	int system;
+};
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+extern struct list_head assoc;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_types)
+extern struct list_head extensions;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_types)
+extern struct list_head mailto_prog;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_types)
+extern struct list_head telnet_prog;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_types)
+extern struct list_head tn3270_prog;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_view)
+unsigned char *get_content_type(unsigned char *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_types)
+struct assoc *get_type_assoc(struct terminal *term, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_types)
+void update_assoc(struct assoc *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_types)
+void update_ext(struct extension *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_types)
+void update_prog(struct list_head *, unsigned char *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_types)
+unsigned char *get_prog(struct list_head *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_types)
+void free_types();
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_types)
+void menu_add_ct(struct terminal *, void *, void *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_types)
+void menu_del_ct(struct terminal *, void *, void *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_types)
+void menu_list_assoc(struct terminal *, void *, void *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_types)
+void menu_add_ext(struct terminal *, void *, void *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_types)
+void menu_del_ext(struct terminal *, void *, void *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_types)
+void menu_list_ext(struct terminal *, void *, void *);
+#endif
+
+
+/* session.c */
+
+struct link_def {
+	unsigned char *link;
+	unsigned char *target;
+};
+
+struct line {
+	int l;
+	chr c;
+	chr *d;
+};
+
+struct point {
+#if defined(PDP11_NATIVE) || defined(PDP11_COMPACT_POINTS)
+ unsigned char x, y;
+#else
+ int x, y;
+#endif
+};
+
+/* Native link/search positions use two bytes. Reject coordinates that cannot
+ * be represented, including transient pre-wrap positions, never truncate. */
+#ifdef PDP11_NATIVE
+void set_point(struct point *, long, long);
+#else
+static inline void set_point(struct point *p, long x, long y)
+{
+#if defined(PDP11_NATIVE) || defined(PDP11_COMPACT_POINTS)
+ if (x < 0 || x > 255 || y < 0 || y > 255) {
+  error("Page exceeds native link-coordinate limit (256 columns/rows)");
+  exit(RET_FATAL);
+ }
+#endif
+ p->x = x; p->y = y;
+}
+
+#endif
+
+struct form {
+	unsigned char *action;
+	unsigned char *target;
+	int method;
+	int num;
+};
+
+#define FM_GET		0
+#define FM_POST		1
+#define FM_POST_MP	2
+
+#define FC_TEXT		1
+#define FC_PASSWORD	2
+#define FC_FILE		3
+#define FC_TEXTAREA	4
+#define FC_CHECKBOX	5
+#define FC_RADIO	6
+#define FC_SELECT	7
+#define FC_SUBMIT	8
+#define FC_IMAGE	9
+#define FC_RESET	10
+#define FC_HIDDEN	11
+
+struct form_control {
+	struct form_control *next;
+	struct form_control *prev;
+	int form_num;
+	int ctrl_num;
+	int g_ctrl_num;
+	int position;
+	int method;
+	unsigned char *action;
+	unsigned char *target;
+	int type;
+	unsigned char *name;
+	unsigned char *alt;
+	int ro;
+	unsigned char *default_value;
+	int default_state;
+	int size;
+	int cols, rows, wrap;
+	int maxlength;
+	int nvalues;
+	unsigned char **values;
+	unsigned char **labels;
+	struct menu_item *menu;
+};
+
+struct form_state {
+	int form_num;
+	int ctrl_num;
+	int g_ctrl_num;
+	int position;
+	int type;
+	unsigned char *value;
+	int state;
+	int vpos;
+	int vypos;
+};
+
+struct link {
+	int type;
+	int num;
+	unsigned char *where;
+	unsigned char *target;
+	unsigned char *where_img;
+	struct form_control *form;
+	unsigned sel_color;
+	int n;
+	struct point *pos;
+};
+
+#define L_LINK		0
+#define L_BUTTON	1
+#define L_CHECKBOX	2
+#define L_SELECT	3
+#define L_FIELD		4
+#define L_AREA		5
+
+#define SIZEOF_F_DATA sizeof(struct f_data)
+
+struct link_bg {
+	int x, y;
+	unsigned c;
+};
+
+struct tag {
+	struct tag *next;
+	struct tag *prev;
+	int x;
+	int y;
+	unsigned char name[1];
+};
+
+struct rgb {
+	unsigned char r, g, b;
+	unsigned char pad;
+};
+
+struct document_setup {
+	int assume_cp, hard_assume;
+	int tables, frames, images;
+	int margin;
+	int num_links, table_order;
+};
+
+struct document_options {
+	int xw, yw; /* size of window */
+	int xp, yp; /* pos of window */
+	int col, cp, assume_cp, hard_assume;
+	int tables, frames, images, margin;  /* if you add anything, fix it in compare_opt */
+	int plain;
+	int num_links, table_order;
+	struct rgb default_fg;
+	struct rgb default_bg;
+	struct rgb default_link;
+	struct rgb default_vlink;
+	unsigned char *framename;
+	int real_cp;    /* codepage of document. Does not really belong here. Must not be compared. Used only in get_attr_val */
+};
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_main)
+#if defined(PDP11_NATIVE)
+#ifdef PDP11_UNIT_helpers
+void ds2do(struct document_setup *ds, struct document_options *doo)
+{
+	doo->assume_cp = ds->assume_cp;
+	doo->hard_assume = ds->hard_assume;
+	doo->tables = ds->tables;
+	doo->frames = ds->frames;
+	doo->images = ds->images;
+	doo->margin = ds->margin;
+	doo->num_links = ds->num_links;
+	doo->table_order = ds->table_order;
+}
+#else
+extern void ds2do(struct document_setup *ds, struct document_options *doo);
+#endif
+#else
+static inline void ds2do(struct document_setup *ds, struct document_options *doo)
+{
+	doo->assume_cp = ds->assume_cp;
+	doo->hard_assume = ds->hard_assume;
+	doo->tables = ds->tables;
+	doo->frames = ds->frames;
+	doo->images = ds->images;
+	doo->margin = ds->margin;
+	doo->num_links = ds->num_links;
+	doo->table_order = ds->table_order;
+}
+#endif
+#endif
+
+
+struct node {
+	struct node *next;
+	struct node *prev;
+	int x, y;
+	int xw, yw;
+};
+
+struct search {
+	unsigned char c;
+	#ifdef PDP11_NATIVE
+	long n; /* A 24-bit int bitfield is invalid with 16-bit int. */
+#else
+	int n:24;	/* This structure is size-critical */
+#endif
+	int x, y;
+};
+
+struct frameset_desc;
+
+struct frame_desc {
+	struct frameset_desc *subframe;
+	unsigned char *name;
+	unsigned char *url;
+	int line;
+	int xw, yw;
+};
+
+struct frameset_desc {
+	int n;
+	int x, y;
+	int xp, yp;
+	struct frame_desc f[1];
+};
+
+struct f_data {
+	struct f_data *next;
+	struct f_data *prev;
+	int refcount;
+	unsigned char *url;
+	struct document_options opt;
+	unsigned char *title;
+	int cp, ass;
+	int x, y; /* size of document */
+	ttime time_to_get;
+	tcount use_tag;
+	int frame;
+	struct frameset_desc *frame_desc;
+	int bg;
+	struct line *data;
+	struct link *links;
+	int nlinks;
+	struct link **lines1;
+	struct link **lines2;
+	struct list_head forms;
+	struct list_head tags;
+	struct list_head nodes;
+	struct search *search;
+	int nsearch;
+	struct search **slines1;
+	struct search **slines2;
+};
+
+struct f_data_c {
+	struct f_data_c *next;
+	struct f_data_c *prev;
+	int used;
+	unsigned char *name;
+	struct f_data *f_data;
+	int xw, yw; /* size of window */
+	int xp, yp; /* pos of window */
+	int xl, yl; /* last pos of window */
+	struct link_bg *link_bg;
+	int link_bg_n;
+	unsigned char **search_word;
+	struct view_state *vs;
+	int depth;
+};
+
+struct view_state {
+	int view_pos;
+	int view_posx;
+	int current_link;
+	int plain;
+	unsigned char *goto_position;
+	struct form_state *form_info;
+	int form_info_len;
+	unsigned char url[1];
+};
+
+struct frame {
+	struct frame *next;
+	struct frame *prev;
+	unsigned char *name;
+	int redirect_cnt;
+	struct view_state vs;
+};
+
+struct location {
+	struct location *next;
+	struct location *prev;
+	struct list_head frames;
+	struct status stat;
+	struct view_state vs;
+};
+
+#define WTD_NO		0
+#define WTD_FORWARD	1
+#define WTD_IMGMAP	2
+#define WTD_RELOAD	3
+#define WTD_BACK	4
+
+#define cur_loc(x) ((struct location *)((x)->history.next))
+
+struct kbdprefix {
+	int rep;
+	int rep_num;
+	int prefix;
+};
+
+struct download {
+	struct download *next;
+	struct download *prev;
+	unsigned char *url;
+	struct status stat;
+	unsigned char *file;
+	int last_pos;
+	int handle;
+	int redirect_cnt;
+	unsigned char *prog;
+	int prog_flags;
+	time_t remotetime;
+	struct session *ses;
+	struct window *win;
+	struct window *ask;
+};
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session)
+extern struct list_head downloads;
+#endif
+
+
+struct file_to_load {
+	struct file_to_load *next;
+	struct file_to_load *prev;
+	struct session *ses;
+	int req_sent;
+	int pri;
+	struct cache_entry *ce;
+	unsigned char *url;
+	struct status stat;
+};
+
+struct session {
+	struct session *next;
+	struct session *prev;
+	struct list_head history;
+	struct terminal *term;
+	struct window *win;
+	int id;
+	struct f_data_c *screen;
+	struct list_head scrn_frames;
+	struct status loading;
+	int wtd;
+	unsigned char *wtd_target;
+	unsigned char *loading_url;
+	int display_timer;
+	struct list_head more_files;
+	unsigned char *goto_position;
+	unsigned char *imgmap_href_base;
+	unsigned char *imgmap_target_base;
+	struct document_setup ds;
+	struct kbdprefix kbdprefix;
+	int reloadlevel;
+	int redirect_cnt;
+	struct status tq;
+	unsigned char *tq_url;
+	struct cache_entry *tq_ce;
+	unsigned char *tq_goto_position;
+	unsigned char *tq_prog;
+	int tq_prog_flags;
+	unsigned char *dn_url;
+	unsigned char *search_word;
+	unsigned char *last_search_word;
+	int search_direction;
+	int exit_query;
+};
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session)
+extern struct list_head sessions;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_session)
+time_t parse_http_date(const char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+unsigned char *encode_url(unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session)
+unsigned char *decode_url(unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_session)
+unsigned char *subst_file(unsigned char *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session)
+int are_there_downloads();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_session)
+void free_strerror_buf();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_session)
+unsigned char *get_err_msg(int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+void print_screen_status(struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+void print_error_dialog(struct session *, struct status *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+void start_download(struct session *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session)
+void display_download(struct terminal *, struct download *, struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+int create_download_file(struct terminal *, unsigned char *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session)
+struct file_to_load *request_additional_file(struct session *, unsigned char *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session)
+struct file_to_load *request_additional_loading_file(struct session *, unsigned char *, struct status *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_session)
+void process_file_requests(struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session)
+int read_session_info(int, struct session *, void *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_session)
+void *create_session_info(int, unsigned char *, int *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_session)
+void win_func(struct window *, struct event *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+void goto_url_f(struct session *, unsigned char *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+void goto_url(struct session *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session)
+void abort_loading(struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+void goto_imgmap(struct session *, unsigned char *, unsigned char *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+void go_back(struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+void reload(struct session*, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_session)
+struct frame *ses_find_frame(struct session *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_session)
+struct frame *ses_change_frame_url(struct session *, unsigned char *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_session)
+void map_selected(struct terminal *, struct link_def *, struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_session)
+void load_frames(struct session *, struct f_data_c *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session)
+void destroy_session(struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_session)
+void destroy_all_sessions();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_session)
+void abort_all_downloads();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session)
+void destroy_location(struct location *);
+#endif
+
+
+/* Information about the current document */
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_session)
+unsigned char *get_current_url(struct session *, unsigned char *, size_t);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_session)
+unsigned char *get_current_title(struct session *, unsigned char *, size_t);
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+unsigned char *get_current_link_url(struct session *, unsigned char *, size_t);
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session)
+void add_questions_entry(void *);
+#endif
+
+
+/* bfu.c */
+
+struct memory_list {
+	int n;
+	void *p[1];
+};
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_view)
+struct memory_list *getml(void *, ...);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_html)
+void add_to_ml(struct memory_list **, ...);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_session)
+void freeml(struct memory_list *);
+#endif
+
+
+#define MENU_FUNC (void (*)(struct terminal *, void *, void *))
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_view)
+extern unsigned char m_bar;
+#endif
+
+
+#define M_BAR	(&m_bar)
+
+struct menu_item {
+	unsigned char *text;
+	unsigned char *rtext;
+	unsigned char *hotkey;
+	void (*func)(struct terminal *, void *, void *);
+	void *data;
+	int in_m;
+	int free_i;
+};
+
+struct menu {
+	int selected;
+	int view;
+	int xp, yp;
+	int x, y, xw, yw;
+	int ni;
+	void *data;
+	struct window *win;
+	struct menu_item *items;
+};
+
+struct mainmenu {
+	int selected;
+	int sp;
+	int ni;
+	void *data;
+	struct window *win;
+	struct menu_item *items;
+};
+
+struct history_item {
+	struct history_item *next;
+	struct history_item *prev;
+	unsigned char d[1];
+};
+
+struct history {
+	int n;
+	struct list_head items;
+};
+
+#define D_END		0
+#define D_CHECKBOX	1
+#define D_FIELD		2
+#define D_FIELD_PASS	3
+#define D_BUTTON	4
+#define D_BOX		5
+
+#define B_ENTER		1
+#define B_ESC		2
+
+struct dialog_item_data;
+struct dialog_data;
+
+struct dialog_item {
+	int type;
+	int gid, gnum; /* for buttons: gid - flags B_XXX */	/* for fields: min/max */ /* for box: gid is box height */
+	int (*fn)(struct dialog_data *, struct dialog_item_data *);
+	struct history *history;
+	int dlen;
+	unsigned char *data;
+	void *udata; /* for box: holds list */
+	unsigned char *text;
+};
+
+struct dialog_item_data {
+	int x, y, l;
+	int vpos, cpos;
+	int checked;
+	struct dialog_item *item;
+	struct list_head history;
+	struct history_item *cur_hist;
+	unsigned char *cdata;
+};
+
+#define	EVENT_PROCESSED		0
+#define EVENT_NOT_PROCESSED	1
+
+struct dialog {
+	unsigned char *title;
+	void (*fn)(struct dialog_data *);
+	int (*handle_event)(struct dialog_data *, struct event *);
+	void (*abort)(struct dialog_data *);
+	void *udata;
+	void *udata2;
+	int align;
+	void (*refresh)(void *);
+	void *refresh_data;
+	struct dialog_item items[1];
+};
+
+struct dialog_data {
+	struct window *win;
+	struct dialog *dlg;
+	int x, y, xw, yw;
+	int n;
+	int selected;
+	struct memory_list *ml;
+	struct dialog_item_data items[1];
+};
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_view)
+struct menu_item *new_menu(int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_view)
+void add_to_menu(struct menu_item **, unsigned char *, unsigned char *, unsigned char *, void (*)(struct terminal *, void *, void *), void *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_view)
+void do_menu(struct terminal *, struct menu_item *, void *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_menu)
+void do_menu_selected(struct terminal *, struct menu_item *, void *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact)
+void do_mainmenu(struct terminal *, struct menu_item *, void *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_types)
+void do_dialog(struct terminal *, struct dialog *, struct memory_list *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_view)
+int check_number(struct dialog_data *, struct dialog_item_data *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_types)
+int check_nonempty(struct dialog_data *, struct dialog_item_data *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_types)
+void max_text_width(struct terminal *, unsigned char *, int *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_types)
+void min_text_width(struct terminal *, unsigned char *, int *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_types)
+void dlg_format_text(struct terminal *, struct terminal *, unsigned char *, int, int *, int, int *, int, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_types)
+void max_buttons_width(struct terminal *, struct dialog_item_data *, int, int *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_types)
+void min_buttons_width(struct terminal *, struct dialog_item_data *, int, int *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_types)
+void dlg_format_buttons(struct terminal *, struct terminal *, struct dialog_item_data *, int, int, int *, int, int *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_menu)
+void checkboxes_width(struct terminal *, unsigned char **, int *, void (*)(struct terminal *, unsigned char *, int *));
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu)
+void dlg_format_checkbox(struct terminal *, struct terminal *, struct dialog_item_data *, int, int *, int, int *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_menu)
+void dlg_format_checkboxes(struct terminal *, struct terminal *, struct dialog_item_data *, int, int, int *, int, int *, unsigned char **);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_types)
+void dlg_format_field(struct terminal *, struct terminal *, struct dialog_item_data *, int, int *, int, int *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_types)
+void max_group_width(struct terminal *, unsigned char **, struct dialog_item_data *, int, int *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_types)
+void min_group_width(struct terminal *, unsigned char **, struct dialog_item_data *, int, int *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_types)
+void dlg_format_group(struct terminal *, struct terminal *, unsigned char **, struct dialog_item_data *, int, int, int *, int, int *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks)
+void dlg_format_box(struct terminal *, struct terminal *, struct dialog_item_data *, int, int *, int, int *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_menu)
+void checkbox_list_fn(struct dialog_data *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_menu)
+void group_fn(struct dialog_data *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_types)
+void center_dlg(struct dialog_data *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_types)
+void draw_dlg(struct dialog_data *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks)
+void display_dlg_item(struct dialog_data *, struct dialog_item_data *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_types)
+int ok_dialog(struct dialog_data *, struct dialog_item_data *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_types)
+int cancel_dialog(struct dialog_data *, struct dialog_item_data *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_view)
+void msg_box(struct terminal *, struct memory_list *, unsigned char *, int, /*unsigned char *, void *, int,*/ ...);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu)
+void input_field_fn(struct dialog_data *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_view)
+void input_field(struct terminal *, struct memory_list *, unsigned char *, unsigned char *, unsigned char *, unsigned char *, void *, struct history *, int, unsigned char *, int, int, int (*)(struct dialog_data *, struct dialog_item_data *), void (*)(void *, unsigned char *), void (*)(void *));
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_default)
+void add_to_history(struct history *, unsigned char *);
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks)
+void box_sel_move(struct dialog_item_data *, int );
+#endif
+ 
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks)
+void show_dlg_item_box(struct dialog_data *, struct dialog_item_data *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu)
+void box_sel_set_visible(struct dialog_item_data *, int );
+#endif
+ 
+
+/* menu.c */
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_view)
+void activate_bfu_technology(struct session *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_view)
+void dialog_goto_url(struct session *ses, char *url);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact)
+void dialog_save_url(struct session *ses);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact)
+void free_history_lists();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+void query_file(struct session *, unsigned char *, void (*)(struct session *, unsigned char *), void (*)(struct session *));
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_view)
+void search_dlg(struct session *, struct f_data_c *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_view)
+void search_back_dlg(struct session *, struct f_data_c *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_view)
+void exit_prog(struct terminal *, void *, struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact)
+void do_auth_dialog(struct session *);
+#endif
+
+/* charsets.c */
+
+#include "codepage.h"
+
+struct conv_table {
+	int t;
+	union {
+		unsigned char *str;
+		struct conv_table *tbl;
+	} u;
+};
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_charsets)
+unsigned char *encode_utf_8(unsigned long);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_charsets)
+void add_utf_8(struct conv_table *, unsigned long, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_view)
+struct conv_table *get_translation_table(int, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_html_r)
+unsigned char *get_entity_string(unsigned char *, int, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_view)
+unsigned char *convert_string(struct conv_table *, unsigned char *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_html_r)
+unsigned char *convert_char(struct conv_table *, unsigned char *, int, int *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_main)
+int get_cp_index(unsigned char *n);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_view)
+unsigned char *get_cp_name(int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_http)
+unsigned char *get_cp_mime_name(int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_menu)
+int is_cp_special(int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_main)
+void free_conv_table();
+#endif
+
+
+/* view.c */
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_view)
+int can_open_in_new(struct terminal *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_view)
+void open_in_new_window(struct terminal *, void (*)(struct terminal *, void (*)(struct terminal *, unsigned char *, unsigned char *), struct session *), struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_view)
+void send_open_in_new_xterm(struct terminal *term, void (*open_window)(struct terminal *, unsigned char *, unsigned char *), struct session *ses);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_view)
+void send_open_new_xterm(struct terminal *, void (*)(struct terminal *, unsigned char *, unsigned char *), struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_view)
+void destroy_fc(struct form_control *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_view)
+void sort_links(struct f_data *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_view)
+void destroy_formatted(struct f_data *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_view)
+void clear_formatted(struct f_data *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_view)
+void init_formatted(struct f_data *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+void detach_formatted(struct f_data_c *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+void init_vs(struct view_state *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+void destroy_vs(struct view_state *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+void copy_location(struct location *, struct location *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_view)
+void draw_doc(struct terminal *, struct f_data_c *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_view)
+int dump_to_file(struct f_data *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+void draw_formatted(struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+void send_event(struct session *, struct event *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_view)
+void link_menu(struct terminal *, void *, struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_view)
+void save_as(struct terminal *, void *, struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_view)
+void save_url(struct session *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_view)
+void menu_save_formatted(struct terminal *, void *, struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_view)
+void selected_item(struct terminal *, void *, struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_view)
+void toggle(struct session *, struct f_data_c *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_view)
+void do_for_frame(struct session *, void (*)(struct session *, struct f_data_c *, int), int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_view)
+int get_current_state(struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+unsigned char *print_current_link(struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+unsigned char *print_current_title(struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_view)
+void loc_msg(struct terminal *, struct location *, struct f_data_c *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_view)
+void state_msg(struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_view)
+void head_msg(struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_view)
+void search_for(struct session *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_view)
+void search_for_back(struct session *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_view)
+void find_next(struct session *, struct f_data_c *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_view)
+void find_next_back(struct session *, struct f_data_c *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_view)
+void set_frame(struct session *, struct f_data_c *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+struct f_data_c *current_frame(struct session *);
+#endif
+
+
+/* html.c */
+
+#define AT_BOLD		1
+#define AT_ITALIC	2
+#define AT_UNDERLINE	4
+#define AT_FIXED	8
+#define AT_GRAPHICS	16
+
+#define AL_LEFT		0
+#define AL_CENTER	1
+#define AL_RIGHT	2
+#define AL_BLOCK	3
+#define AL_NO		4
+
+#define AL_MASK		0x7f
+
+#define AL_EXTD_TEXT	0x80
+	/* DIRTY! for backward compatibility with old menu code */
+
+struct text_attrib_beginning {
+	int attr;
+	struct rgb fg;
+	struct rgb bg;
+};
+
+struct text_attrib {
+	int attr;
+	struct rgb fg;
+	struct rgb bg;
+	int fontsize;
+	unsigned char *link;
+	unsigned char *target;
+	unsigned char *image;
+	struct form_control *form;
+	struct rgb clink;
+	struct rgb vlink;
+	unsigned char *href_base;
+	unsigned char *target_base;
+	unsigned char *select;
+	int select_disabled;
+};
+
+#define P_NUMBER	1
+#define P_alpha		2
+#define P_ALPHA		3
+#define P_roman		4
+#define P_ROMAN		5
+#define P_STAR		1
+#define P_O		2
+#define P_PLUS		3
+#define P_LISTMASK	7
+#define P_COMPACT	8
+
+struct par_attrib {
+	int align;
+	int leftmargin;
+	int rightmargin;
+	int width;
+	int list_level;
+	unsigned list_number;
+	int dd_margin;
+	int flags;
+	struct rgb bgcolor;
+};
+
+struct html_element {
+	struct html_element *next;
+	struct html_element *prev;
+	struct text_attrib attr;
+	struct par_attrib parattr;
+	int invisible;
+	unsigned char *name;
+	int namelen;
+	unsigned char *options;
+	int linebreak;
+	int dontkill;
+	struct frameset_desc *frameset;
+};
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl)
+extern struct list_head html_stack;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r)
+extern int line_breax;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r)
+extern unsigned char *startf;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r)
+extern unsigned char *eofff;
+#endif
+
+
+#define format (((struct html_element *)html_stack.next)->attr)
+#define par_format (((struct html_element *)html_stack.next)->parattr)
+#define html_top (*(struct html_element *)html_stack.next)
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+extern void *ff;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_tbl)
+extern void (*put_chars_f)(void *, unsigned char *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_tbl)
+extern void (*line_break_f)(void *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_tbl)
+extern void (*init_f)(void *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_tbl)
+extern void *(*special_f)(void *, int, ...);
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html)
+void ln_break(int, void (*)(void *), void *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html)
+void put_chrs(unsigned char *, int, void (*)(void *, unsigned char *, int), void *);
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl)
+extern int table_level;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r)
+extern int empty_format;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+extern struct form form;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r)
+extern unsigned char *last_form_tag;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r)
+extern unsigned char *last_form_attr;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r)
+extern unsigned char *last_input_tag;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_tbl)
+int parse_element(unsigned char *, unsigned char *, unsigned char **, int *, unsigned char **, unsigned char **);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_tbl)
+unsigned char *get_attr_val(unsigned char *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_tbl)
+int has_attr(unsigned char *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_tbl)
+int get_num(unsigned char *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_tbl)
+int get_width(unsigned char *, unsigned char *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html)
+int get_color(unsigned char *, unsigned char *, struct rgb *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_tbl)
+int get_bgcolor(unsigned char *, struct rgb *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl)
+void html_stack_dup();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl)
+void kill_html_stack_item(struct html_element *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_tbl)
+unsigned char *skip_comment(unsigned char *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl)
+void parse_html(unsigned char *, unsigned char *, void (*)(void *, unsigned char *, int), void (*)(void *), void (*)(void *), void *(*)(void *, int, ...), void *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_session)
+int get_image_map(unsigned char *, unsigned char *, unsigned char *, unsigned char *a, struct menu_item **, struct memory_list **, unsigned char *, unsigned char *, int, int, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r)
+void scan_http_equiv(unsigned char *, unsigned char *, unsigned char **, int *, unsigned char **);
+#endif
+
+
+#define SP_TAG		0
+#define SP_CONTROL	1
+#define SP_TABLE	2
+#define SP_USED		3
+#define SP_FRAMESET	4
+#define SP_FRAME	5
+#define SP_NOWRAP	6
+
+struct frameset_param {
+	struct frameset_desc *parent;
+	int x, y;
+	int *xw, *yw;
+};
+
+struct frame_param {
+	struct frameset_desc *parent;
+	unsigned char *name;
+	unsigned char *url;
+};
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_view)
+void free_menu(struct menu_item *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_view)
+void do_select_submenu(struct terminal *, struct menu_item *, struct session *);
+#endif
+
+
+/* html_r.c */
+
+struct part {
+	int x, y;
+	int xp, yp;
+	int xmax;
+	int xa;
+	int cx, cy;
+	struct f_data *data;
+	int bgcolor;
+	unsigned char *spaces;
+	int spl;
+	int link_num;
+	struct list_head uf;
+};
+
+struct sizes {
+	int xmin, xmax, y;
+};
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+extern struct document_options *d_opt;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r)
+extern int last_link_to_move;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+extern int margin;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl)
+void xxpand_line(struct part *, int, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl)
+void xxpand_lines(struct part *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl)
+void xset_hchar(struct part *, int, int, unsigned);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl)
+void xset_hchars(struct part *, int, int, int, unsigned);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r)
+void align_line(struct part *, int);
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl)
+void free_table_cache();
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r)
+struct conv_table *get_convert_table(unsigned char *, int, int, int *, int *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_view)
+extern int format_cache_entries;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_menu)
+long formatted_info(int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_session)
+void shrink_format_cache(int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_menu)
+void count_format_cache();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_sched)
+void delete_unused_format_cache_entries();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_view)
+void format_cache_reactivate(struct f_data *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl)
+struct part *format_html_part(unsigned char *, unsigned char *, int, int, int, struct f_data *, int, int, unsigned char *, int);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_main)
+void cached_format_html(struct view_state *, struct f_data_c *, struct document_options *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+void html_interpret(struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_view)
+void get_search_data(struct f_data *);
+#endif
+
+
+/* html_tbl.c */
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_tbl)
+void format_table(unsigned char *, unsigned char *, unsigned char *, unsigned char **, void *);
+#endif
+
+
+/* default.c */
+
+#ifdef PDP11_NATIVE
+#define MAX_STR_LEN 256
+#else
+#define MAX_STR_LEN	1024
+#endif
+
+struct option {
+	int p;
+	unsigned char *(*rd_cmd)(struct option *, unsigned char ***, int *);
+	unsigned char *(*rd_cfg)(struct option *, unsigned char *);
+	void (*wr_cfg)(struct option *, unsigned char **, int *);
+	int min, max;
+	void *ptr;
+	unsigned char *cfg_name;
+	unsigned char *cmd_name;
+};
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_main)
+unsigned char *parse_options(int, unsigned char *[]);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_main)
+void init_home();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_kbdbind)
+unsigned char *get_token(unsigned char **line);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_main)
+void load_config();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_menu)
+void write_config(struct terminal *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_menu)
+void write_html_config(struct terminal *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_main)
+void end_config();
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_main)
+int load_url_history();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_main)
+int save_url_history();
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_view)
+extern int anonymous;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_http)
+extern unsigned char system_name[];
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_default)
+extern unsigned char *links_home;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_session)
+extern int first_use;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default)
+extern int created_home;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_main)
+extern int no_connect;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_main)
+extern int base_session;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_types)
+extern int force_html;
+#endif
+
+
+#define D_DUMP		1
+#define D_SOURCE	2
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_main)
+extern int dmp;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_menu)
+extern int async_lookup;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_session)
+extern int download_utime;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_sched)
+extern int max_connections;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_sched)
+extern int max_connections_to_host;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_sched)
+extern int max_tries;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_main)
+extern int screen_width;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_sched)
+extern int receive_timeout;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_sched)
+extern int unrestartable_receive_timeout;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_session)
+extern struct document_setup dds;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_menu)
+extern int max_format_cache_entries;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_sched)
+extern long memory_cache_size;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+extern struct rgb default_fg;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+extern struct rgb default_bg;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+extern struct rgb default_link;
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+extern struct rgb default_vlink;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_sched)
+extern unsigned char http_proxy[];
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_sched)
+extern unsigned char ftp_proxy[];
+#endif
+
+#if !defined(PDP11_NATIVE)
+extern unsigned char no_proxy_for[];
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_session)
+extern unsigned char download_dir[];
+#endif
+
+
+struct http_bugs {
+	int http10;
+	int allow_blacklist;
+	int bug_302_redirect;
+	int bug_post_no_keepalive;
+	int no_accept_charset;
+};
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_af_unix) || defined(PDP11_UNIT_beos) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_cache) || defined(PDP11_UNIT_charsets) || defined(PDP11_UNIT_connect) || defined(PDP11_UNIT_cookies) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_dns) || defined(PDP11_UNIT_error) || defined(PDP11_UNIT_file) || defined(PDP11_UNIT_finger) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_helpers) || defined(PDP11_UNIT_html) || defined(PDP11_UNIT_html_r) || defined(PDP11_UNIT_html_tbl) || defined(PDP11_UNIT_http) || defined(PDP11_UNIT_https) || defined(PDP11_UNIT_kbd) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_language) || defined(PDP11_UNIT_mailto) || defined(PDP11_UNIT_main) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_os_dep) || defined(PDP11_UNIT_sched) || defined(PDP11_UNIT_select) || defined(PDP11_UNIT_session) || defined(PDP11_UNIT_smb) || defined(PDP11_UNIT_terminal) || defined(PDP11_UNIT_types) || defined(PDP11_UNIT_url) || defined(PDP11_UNIT_view) || defined(PDP11_UNIT_win32)
+extern struct http_bugs http_bugs;
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_ftp) || defined(PDP11_UNIT_menu)
+extern unsigned char default_anon_pass[];
+#endif
+
+
+/* bookmarks.c */
+
+/* Where all bookmarks are kept */
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bookmarks)
+extern struct list_head bookmarks;
+#endif
+
+
+/* A pointer independent id that bookmarks can be identified by. Guarenteed to 
+	be unique between all bookmarks */
+typedef int bookmark_id;
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bookmarks)
+extern bookmark_id next_bookmark_id;
+#endif
+
+#define		BAD_BOOKMARK_ID		(bookmark_id)(-1)
+
+
+/* Stores display information about a box. Kept in cdata. */
+struct dlg_data_item_data_box {
+	int sel;	/* Item currently selected */	
+	int box_top;	/* Index into items of the item that is on the top line of the box */
+	struct list_head items;	/* The list being displayed */
+	int list_len;	/* Number of items in the list */
+};
+
+/* Which fields to free when zapping a box_item. Bitwise or these. */
+enum box_item_free {NOTHING = 0, TEXT = 1 , DATA = 2};
+/* An item in a box */
+struct box_item {
+	struct box_item *next;
+	struct box_item *prev;
+	unsigned char *text;	/* Text to display */
+	void (*on_hilight)(struct terminal *, struct dlg_data_item_data_box *, struct box_item *);	/* Run when this item is hilighted */
+	int (*on_selected)(struct terminal *, struct dlg_data_item_data_box *, struct box_item *);	/* Run when the user selects on this item. Returns pointer to the box_item that should be selected after execution*/
+	void *data;	/* data */
+	enum box_item_free free_i;
+};
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_bookmarks)
+void show_dlg_item_box(struct dialog_data *, struct dialog_item_data *);
+#endif
+ 
+
+#define BOX_HILIGHT_FUNC (void (*)(struct terminal *, struct dlg_data_item_data_box *, struct box_item *))
+#define BOX_ON_SELECTED_FUNC (int (*)(struct terminal *, struct dlg_data_item_data_box *, struct box_item *))
+
+/* Ops dealing with box data */
+/* */
+#define get_box_from_dlg_item_data(x) ((struct dlg_data_item_data_box *)(x->cdata))
+#define get_box_list_height(x) (x->data_len)
+
+/* V.05 bookmarks: */
+/*
+struct bookmark {
+	struct bookmark *next;
+	struct bookmark *prev;
+	bookmark_id id;	Bookmark id 
+	unsigned char *title;	 title of bookmark 
+	unsigned char *url;	 Location of bookmarked item 
+};*/
+
+struct bookmark {
+	struct bookmark *next;
+	struct bookmark *prev;
+	bookmark_id id;	/* Bookmark id */
+	unsigned char *title;	/* title of bookmark */
+	unsigned char *url;	/* Location of bookmarked item */
+	unsigned int type; /* The type of bookmark we're dealing with. */
+	void *type_data; /* Type-dependent data. */
+};
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_main)
+void finalize_bookmarks();
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_main)
+void read_bookmarks();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bookmarks)
+void write_bookmarks();
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bookmarks)
+void bookmark_menu(struct terminal *, void *, struct session *);
+#endif
+
+
+/* Launches bookmark manager */
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_view)
+void menu_bookmark_manager(struct terminal *, void *, struct session *);
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bookmarks)
+void add_bookmark(const unsigned char *, const unsigned char *);
+#endif
+
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bookmarks)
+struct bookmark *create_bookmark(const unsigned char *, const unsigned char *);
+#endif
+
+
+/* Launches add dialogs */
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bookmarks)
+void launch_bm_add_link_dialog(struct terminal *,struct dialog_data *,struct session *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bookmarks) || defined(PDP11_UNIT_menu) || defined(PDP11_UNIT_menu_compact) || defined(PDP11_UNIT_view)
+void launch_bm_add_doc_dialog(struct terminal *,struct dialog_data *,struct session *);
+#endif
+
+
+/* kbdbind.c */
+
+#define KM_MAIN		0
+#define KM_EDIT		1
+#define KM_MENU		2
+#define KM_MAX		3
+
+enum {
+	ACT_ADD_BOOKMARK,
+	ACT_AUTO_COMPLETE,
+	ACT_BACK,
+	ACT_BACKSPACE,
+	ACT_BOOKMARK_MANAGER,
+	ACT_COPY_CLIPBOARD,
+	ACT_CUT_CLIPBOARD,
+	ACT_DELETE,
+	ACT_DOCUMENT_INFO,
+	ACT_DOWN,
+	ACT_DOWNLOAD,
+	ACT_END,
+	ACT_ENTER,
+	ACT_FILE_MENU,
+	ACT_FIND_NEXT,
+	ACT_FIND_NEXT_BACK,
+	ACT_GOTO_URL,
+	ACT_GOTO_URL_CURRENT,
+	ACT_GOTO_URL_CURRENT_LINK,
+	ACT_HEADER_INFO,
+	ACT_HOME,
+	ACT_KILL_TO_BOL,
+	ACT_KILL_TO_EOL,
+	ACT_LEFT,
+	ACT_MENU,
+	ACT_NEXT_FRAME,
+	ACT_OPEN_NEW_WINDOW,
+	ACT_OPEN_LINK_IN_NEW_WINDOW,
+	ACT_PAGE_DOWN,
+	ACT_PAGE_UP,
+	ACT_PASTE_CLIPBOARD,
+	ACT_PREVIOUS_FRAME,
+	ACT_REALLYQUIT,
+	ACT_QUIT,
+	ACT_RELOAD,
+	ACT_RIGHT,
+	ACT_SCROLL_DOWN,
+	ACT_SCROLL_LEFT,
+	ACT_SCROLL_RIGHT,
+	ACT_SCROLL_UP,
+	ACT_SEARCH,
+	ACT_SEARCH_BACK,
+	ACT_TOGGLE_DISPLAY_IMAGES,
+	ACT_TOGGLE_DISPLAY_TABLES,
+	ACT_TOGGLE_HTML_PLAIN,
+	ACT_UP,
+	ACT_VIEW_IMAGE,
+	ACT_ZOOM_FRAME
+};
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_main)
+void init_keymaps();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_main)
+void free_keymaps();
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_bfu) || defined(PDP11_UNIT_kbdbind) || defined(PDP11_UNIT_view)
+int kbd_action(int, struct event *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_kbdbind)
+unsigned char *bind_rd(struct option *, unsigned char *);
+#endif
+
+#if !defined(PDP11_NATIVE) || defined(PDP11_UNIT_default) || defined(PDP11_UNIT_kbdbind)
+unsigned char *unbind_rd(struct option *, unsigned char *);
+#endif
+

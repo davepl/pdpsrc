@@ -1,0 +1,210 @@
+dnl Process this file with autoconf to produce a configure script.
+AC_INIT(main.c)
+
+AM_INIT_AUTOMAKE(links, 1.00pre12)
+AM_CONFIG_HEADER(config.h)
+
+dnl Checks for programs.
+AC_PROG_CC
+
+AC_MSG_CHECKING([for EMX])
+AC_TRY_COMPILE(, [#ifndef __EMX__
+kill me!
+#endif ], have_emx=yes, have_emx=no)
+AC_MSG_RESULT($have_emx)
+test "$have_emx" = yes && LDFLAGS=`echo "$LDFLAGS" | sed "s/-Zexe//g"`
+
+AC_MSG_CHECKING([for typeof])
+AC_TRY_COMPILE(, [int a;
+typeof(a) b;], have_typeof=yes, have_typeof=no)
+AC_MSG_RESULT($have_typeof)
+test "$have_typeof" = yes && AC_DEFINE(HAVE_TYPEOF)
+
+AC_MSG_CHECKING([for long long])
+AC_TRY_COMPILE(, [unsigned long long a; ], have_long_long=yes, have_long_long=no)
+AC_MSG_RESULT($have_long_long)
+test "$have_long_long" = yes && AC_DEFINE(HAVE_LONG_LONG)
+
+dnl Checks for header files.
+AC_HEADER_DIRENT
+AC_HEADER_STDC
+AC_HEADER_SYS_WAIT
+AC_CHECK_HEADERS(fcntl.h limits.h sys/ioctl.h sys/time.h time.h unistd.h)
+AC_CHECK_HEADERS(sigaction.h)
+AC_CHECK_HEADERS(netinet/in_systm.h)
+AC_CHECK_HEADERS(netinet/in_system.h)
+AC_CHECK_HEADERS(netinet/ip.h)
+AC_CHECK_HEADERS(sys/select.h)
+AC_CHECK_HEADERS(sys/resource.h)
+AC_CHECK_HEADERS(wait.h)
+AC_CHECK_HEADERS(sys/utsname.h)
+AC_CHECK_HEADERS(sys/un.h)
+AC_CHECK_HEADERS(sys/fmutex.h)
+AC_CHECK_HEADERS(sys/cygwin.h)
+AC_CHECK_HEADERS(io.h)
+
+dnl Checks for typedefs, structures, and compiler characteristics.
+AC_C_CONST
+AC_C_INLINE
+AC_TYPE_SIZE_T
+AC_HEADER_TIME
+AC_STRUCT_TM
+
+dnl Checks for library functions.
+AC_PROG_GCC_TRADITIONAL
+AC_FUNC_MEMCMP
+AC_TYPE_SIGNAL
+AC_FUNC_STRFTIME
+AC_FUNC_VPRINTF
+AC_HAVE_FUNCS(memmove)
+AC_HAVE_FUNCS(raise)
+AC_HAVE_FUNCS(gettimeofday mkdir select strcspn strerror strstr strtol strtoul chmod)
+AC_HAVE_FUNCS(getpid setpgid)
+AC_HAVE_FUNCS(popen)
+AC_HAVE_FUNCS(uname)
+AC_HAVE_FUNCS(getpagesize)
+
+if test "$ac_cv_func_select" != yes; then
+	AC_ERROR([select function not present])
+fi
+if test "$ac_cv_func_strtol" != yes; then
+	AC_ERROR([strtol function not present])
+fi
+
+dnl Checks for libraries.
+dnl Replace `main' with a function in -lgpm:
+AC_CHECK_LIB(gpm, Gpm_Open)
+AC_CHECK_HEADERS(gpm.h)
+
+dnl Replace `main' with a function in -lsocket:
+AC_CHECK_FUNC(socket, cf_result=yes, cf_result=no)
+if test "$cf_result" = no; then
+	AC_CHECK_LIB(socket, socket, cf_result=yes, cf_result=no)
+	if test "$cf_result" = no; then
+		AC_ERROR([socket function not present])
+	fi
+fi
+AC_CHECK_FUNC(setsockopt, cf_result=yes, cf_result=no)
+if test "$cf_result" = no; then
+	AC_CHECK_LIB(socket, setsockopt)
+fi
+
+#AC_MSG_CHECKING([for gethostbyname])
+#AC_TRY_LINK([#include <netdb.h>], [gethostbyname("")], cf_result=yes, cf_result=no)
+#AC_MSG_RESULT($cf_result)
+AC_CHECK_FUNC(gethostbyname, cf_result=yes, cf_result=no)
+if test "$cf_result" = no; then
+	AC_CHECK_LIB(socket, gethostbyname, cf_result=yes, cf_result=no)
+	if test "$cf_result" = no; then
+		AC_CHECK_LIB(nsl, gethostbyname)
+		if test "$cf_result" = no; then
+			AC_ERROR([gethostbyname function not present])
+		fi
+	else
+		test -z "`echo $LIBS | grep -- -lsocket`" && LIBS="$LIBS -lsocket"
+	fi
+fi
+
+AC_CHECK_FUNC(gethostbyaddr, AC_DEFINE(HAVE_GETHOSTBYADDR))
+
+AC_CHECK_FUNC(herror, AC_DEFINE(HAVE_HERROR))
+AC_CHECK_FUNC(cfmakeraw, AC_DEFINE(HAVE_CFMAKERAW))
+
+AC_HAVE_FUNCS(cygwin_conv_to_full_win32_path)
+
+AC_MSG_CHECKING([for OS/2 threads])
+CFLAGS_X="$CFLAGS"
+CFLAGS="$CFLAGS -Zmt"
+AC_TRY_LINK([#include <stdlib.h>], [_beginthread(NULL, NULL, 0, NULL)], cf_result=yes, cf_result=no)
+AC_MSG_RESULT($cf_result)
+if test "$cf_result" = yes; then
+	AC_DEFINE(HAVE_BEGINTHREAD)
+else
+	CFLAGS="$CFLAGS_X"
+#	AC_CHECK_FUNC(pthread_create, cf_result=yes, cf_result=no)
+#	if  test "$cf_result" = yes; then
+#		AC_DEFINE(HAVE_PTHREADS)
+#	else
+#		AC_CHECK_LIB(pthread, pthread_create, AC_DEFINE(HAVE_PTHREADS)
+#		LDFLAGS="$LDFLAGS -lpthread" )
+#	fi
+fi
+#AC_CHECK_FUNC(clone, AC_DEFINE(HAVE_CLONE))
+
+AC_CHECK_FUNC(MouOpen, AC_DEFINE(HAVE_MOUOPEN))
+AC_CHECK_FUNC(_read_kbd, AC_DEFINE(HAVE_READ_KBD))
+
+AC_MSG_CHECKING([for XFree for OS/2])
+CFLAGS_X="$CFLAGS"
+LIBS_X="$LIBS"
+cf_result=no
+if test -n "$X11ROOT"; then
+	CFLAGS="$CFLAGS_X -I$X11ROOT/XFree86/include"
+	LIBS="$LIBS_X -L$X11ROOT/XFree86/lib -lxf86_gcc"
+	AC_TRY_LINK([#include <pty.h>], [struct winsize win;ptioctl(1, TIOCGWINSZ, &win)], cf_result=yes, cf_result=no)
+	if test "$cf_result" = no; then
+		LIBS="$LIBS_X -L$X11ROOT/XFree86/lib -lxf86"
+		AC_TRY_LINK([#include <pty.h>], [struct winsize win;ptioctl(1, TIOCGWINSZ, &win)], cf_result=yes, cf_result=no)
+	fi
+fi
+if test "$cf_result" != yes; then
+	CFLAGS="$CFLAGS_X"
+	LIBS="$LIBS_X"
+else
+	AC_DEFINE(X2)
+fi
+AC_MSG_RESULT($cf_result)
+
+AC_CHECK_LIB(dl, dlopen)
+#ifdef HAVE_SSL
+AC_ARG_WITH(ssl, [  --without-ssl           disable SSL support], [if test "$withval" = no; then disable_ssl=yes; fi])
+CFLAGS_X="$CFLAGS"
+LIBS_X="$LIBS"
+cf_result=no
+if test -z "$disable_ssl"; then
+	PKG_CHECK_MODULES(OPENSSL,openssl,pkgconfig_openssl=yes,pkgconfig_openssl=no)
+	if test "$pkgconfig_openssl" = "yes"; then
+		AC_MSG_CHECKING([for OpenSSL])
+		CPPFLAGS="$CPPFLAGS `pkg-config openssl --cflags-only-I`"
+		LIBS="$LIBS `pkg-config openssl --libs`"
+		AC_TRY_LINK([#include <openssl/ssl.h>], [OpenSSL_add_all_algorithms()], cf_result=yes, cf_result=no)
+		if test "$cf_result" != yes; then
+			AC_TRY_LINK([#include <openssl/ssl.h>], [SSLeay_add_ssl_algorithms()], cf_result=yes, cf_result=no)
+	   	fi
+	else
+		AC_MSG_CHECKING([for OpenSSL])
+		for ssldir in "" /usr /usr/local/openssl /usr/lib/openssl /usr/local/ssl /usr/local/www /usr/lib/ssl /usr/local /usr/pkg /opt /opt/openssl; do
+			if test "$cf_result" = no; then
+				if test ! -z "$ssldir" && test "$ssldir" != /usr; then
+					LIBS="-L$ssldir/lib -lssl -lcrypto $LIBS_X"
+					CFLAGS="$CFLAGS_X -I$ssldir/include"
+				else
+					LIBS="-lssl -lcrypto $LIBS_X"
+				fi
+				AC_TRY_LINK([#include <openssl/ssl.h>], [OpenSSL_add_all_algorithms()], cf_result=yes, cf_result=no)
+				if test "$cf_result" != yes; then
+					AC_TRY_LINK([#include <openssl/ssl.h>], [SSLeay_add_ssl_algorithms()], cf_result=yes, cf_result=no)
+				fi
+			fi
+		done
+	fi
+
+	AC_MSG_RESULT($cf_result)
+
+	if test "$cf_result" != yes; then
+		if test "$withval" = yes; then
+			AC_MSG_ERROR("OpenSSL not found")
+		fi
+	        CFLAGS="$CFLAGS_X"
+        	LIBS="$LIBS_X"
+	else
+		AC_DEFINE(HAVE_SSL)
+	fi
+fi
+#endif
+
+test "$have_emx" = yes && LDFLAGS="$LDFLAGS -Zexe"
+test "$have_emx" = yes && LDFLAGS=`echo "$LDFLAGS" | sed "s/-Zbin-files//g"`
+
+AC_OUTPUT(Makefile)
+
