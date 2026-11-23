@@ -25,7 +25,6 @@ extern int atoi();
 extern int select();
 extern void exit();
 extern int printf();
-extern int perror();
 extern char *strcpy();
 extern int memcmp();
 /* memset is already declared in string.h */

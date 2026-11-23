@@ -20,7 +20,6 @@ extern int read();
 extern int open();
 extern void sleep();
 extern int printf();
-extern int perror();
 extern char *memset();
 extern int memcmp();
 #endif
