@@ -41,7 +41,16 @@ DAMAGE.
 
 #include "rad50.h"
 
-static char     radtbl[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ$. 0123456789";
+/* Not toupper(): on 2.11BSD it is valid only for lower-case letters. */
+static int rad_upper(
+    int c)
+{
+    return c >= 'a' && c <= 'z' ? c - 'a' + 'A' : c;
+}
+
+/* Code 035 is unassigned in DEC RAD50; it carries "_" so that -yus
+   names such as _MAIN survive into the object (obj2bsd decodes it). */
+static char     radtbl[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ$._0123456789";
 
 /* rad50 converts from 0 to 3 ASCII (or EBCDIC, if your compiler is so
    inclined) characters into a RAD50 word. */
@@ -59,7 +68,7 @@ unsigned rad50(
     if (!*cp)                          /* Got to check for end-of-string manually, because strchr will call it a hit.  :-/ */
         return acc;
 
-    rp = strchr(radtbl, toupper(*cp));
+    rp = strchr(radtbl, rad_upper(*cp));
     if (rp == NULL)                    /* Not a RAD50 character */
         return acc;
     acc = ((int) (rp - radtbl)) * 03100;        /* Convert */
@@ -71,7 +80,7 @@ unsigned rad50(
         *endp = cp;
     if (!*cp)
         return acc;
-    rp = strchr(radtbl, toupper(*cp));
+    rp = strchr(radtbl, rad_upper(*cp));
     if (rp == NULL)
         return acc;
     acc += ((int) (rp - radtbl)) * 050;
@@ -81,7 +90,7 @@ unsigned rad50(
         *endp = cp;
     if (!*cp)
         return acc;
-    rp = strchr(radtbl, toupper(*cp));
+    rp = strchr(radtbl, rad_upper(*cp));
     if (rp == NULL)
         return acc;
     acc += (int) (rp - radtbl);

@@ -22,6 +22,14 @@
 #endif
 
 /*
+ * 2.11BSD's toupper() and tolower() are bare arithmetic, valid only for a
+ * letter of the other case (toupper('H') is 40).  Use these instead.  The
+ * argument is evaluated more than once.
+ */
+#define UPPER(c) ((c) >= 'a' && (c) <= 'z' ? (c) - 'a' + 'A' : (c))
+#define LOWER(c) ((c) >= 'A' && (c) <= 'Z' ? (c) - 'A' + 'a' : (c))
+
+/*
 
 Copyright (c) 2001, Richard Krehbiel
 All rights reserved.

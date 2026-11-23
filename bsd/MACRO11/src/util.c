@@ -447,8 +447,10 @@ int xstrcasecmp(
     int             rch;
 
     do {
-        lch = tolower((unsigned char) *left++);
-        rch = tolower((unsigned char) *right++);
+        lch = (unsigned char) *left++;
+        rch = (unsigned char) *right++;
+        lch = LOWER(lch);
+        rch = LOWER(rch);
     } while (lch != 0 && lch == rch);
 
     return lch - rch;

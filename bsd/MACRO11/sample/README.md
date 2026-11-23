@@ -238,3 +238,5 @@ BSD object sample:
 
 - Build a linkable 2.11BSD object with `make HELLO.o` or `../src/macro11 -b -yus HELLO.MAC -o HELLO.o`.
 - On 2.11BSD, link it with the native toolchain, for example `cc -o hello HELLO.o` if libc startup is desired.
+- Global names are written in lower case, as C names them: `_MAIN` becomes `_main` and `_PUTS` is libc's `_puts`. Use `-yus` to allow the underscore.
+- The intermediate RT-11 object stores names in RAD50, so only the first six characters of a global name survive (`_PRINTF` would become `_print`).

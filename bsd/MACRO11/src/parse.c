@@ -653,7 +653,7 @@ EX_TREE        *parse_unary(
     if (*cp == '^') {
         int             save_radix;
 
-        switch (tolower(cp[1])) {
+        switch (LOWER(cp[1])) {
         case 'c':
             /* ^C, ones complement */
             tp = new_ex_tree();

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <setjmp.h>
+#include <ctype.h>
 
 #include "object.h"
 #include "obj2bsd.h"
@@ -133,7 +134,7 @@ static void unrad50_word(
     unsigned value,
     char *out)
 {
-    static char     table[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ$.%0123456789";
+    static char     table[] = " ABCDEFGHIJKLMNOPQRSTUVWXYZ$._0123456789";
 
     out[0] = table[(value / 1600) % 40];
     out[1] = table[(value / 40) % 40];
@@ -149,6 +150,18 @@ static void decode_rad50_name(
     out[6] = 0;
 }
 
+/*
+ * MACRO-11 folds symbols to upper case; 2.11BSD C names are lower case
+ * (main is _main), so global names are written in lower case.
+ */
+static void lower_name(
+    char *cp)
+{
+    for (; *cp; cp++)
+        if (isupper((unsigned char) *cp))
+            *cp = tolower((unsigned char) *cp);
+}
+
 static void trim_name(
     char *dst,
     char *src)
@@ -161,6 +174,7 @@ static void trim_name(
         dst[len - 1] = 0;
         len--;
     }
+    lower_name(dst);
 }
 
 static void make_psect_name(
@@ -701,6 +715,16 @@ static RELOC_EXPR eval_complex_expr(
     }
 }
 
+/*
+ * a.out addresses are continuous: data follows text, so a data offset
+ * is text_size plus its offset in the data segment.
+ */
+static unsigned seg_base(
+    int segment)
+{
+    return segment == SEG_DATA ? text_size : 0;
+}
+
 static void apply_expr(
     int segment,
     unsigned addr,
@@ -709,12 +733,14 @@ static void apply_expr(
 {
     unsigned        reloc;
     unsigned        value;
+    unsigned        here;
 
     reloc = RABS;
     value = expr->addend & 0xffff;
 
     if (expr->kind == EXPR_PSECT) {
-        value = (expr->psect->seg_offset + expr->addend) & 0xffff;
+        value = (seg_base(expr->psect->segment) + expr->psect->seg_offset +
+            expr->addend) & 0xffff;
         reloc = psect_segment_type(expr->psect);
     } else if (expr->kind == EXPR_GLOBAL) {
         if (expr->global->sym_index < 0)
@@ -725,8 +751,21 @@ static void apply_expr(
         fail("Unsupported complex relocation for BSD object\n", NULL);
     }
 
-    if (pcrel)
-        reloc |= RELFLG;
+    if (pcrel) {
+        /*
+         * A PC-relative word holds target - (its address + 2), as as(1)
+         * writes it.  Within one segment that is final; otherwise ld adds
+         * the target's relocation and, for RELFLG, subtracts this
+         * segment's.
+         */
+        here = seg_base(segment) + addr + 2;
+        value = (value - here) & 0xffff;
+        if (expr->kind == EXPR_PSECT &&
+            expr->psect->segment == segment)
+            reloc = RABS;
+        else
+            reloc |= RELFLG;
+    }
 
     store_segment_word(segment, addr, value);
     store_segment_reloc(segment, addr, reloc);
@@ -944,29 +983,28 @@ static void put_pdp_long(
     FILE *fp,
     unsigned long value)
 {
-    put_u16(fp, value & 0xffff);
+    /* PDP-11 longs keep the high word first. */
     put_u16(fp, (value >> 16) & 0xffff);
+    put_u16(fp, value & 0xffff);
 }
 
 static void write_exec_header(
     FILE *fp)
 {
-    unsigned        trelsz;
-    unsigned        drelsz;
     unsigned        symsz;
 
-    trelsz = ((text_size + 1) >> 1) << 1;
-    drelsz = ((data_size + 1) >> 1) << 1;
     symsz = global_count * 8;
 
+    /* a_magic a_text a_data a_bss a_syms a_entry a_unused a_flag;
+       a_flag 0 says relocation follows the text and data. */
     put_u16(fp, A_MAGIC1);
     put_u16(fp, text_size);
     put_u16(fp, data_size);
     put_u16(fp, 0);
     put_u16(fp, symsz);
     put_u16(fp, 0);
-    put_u16(fp, trelsz);
-    put_u16(fp, drelsz);
+    put_u16(fp, 0);
+    put_u16(fp, 0);
 }
 
 static void write_bytes(
@@ -1010,7 +1048,8 @@ static unsigned symbol_value(
         return sym->value;
     if (sym->psect == NULL)
         return sym->value;
-    return (sym->psect->seg_offset + sym->value) & 0xffff;
+    return (seg_base(sym->psect->segment) + sym->psect->seg_offset +
+        sym->value) & 0xffff;
 }
 
 static void write_symbols(
@@ -1053,6 +1092,12 @@ int obj2bsd_convert(
     reset_state();
     pass_object(infile, 1);
     assign_symbol_indices();
+
+    /* a.out segments are whole words: the symbol table offset is computed
+       from the sizes, and an odd text size (".ASCIZ" at the end) would
+       shift it by a byte. */
+    text_size = (text_size + 1) & ~1;
+    data_size = (data_size + 1) & ~1;
 
     if (text_size != 0) {
         text_bytes = calloc(text_size, 1);
