@@ -1,0 +1,99 @@
+*** umount/umount.c	Mon Nov 23 01:41:38 2026
+--- umount/umount.c	Mon Nov 23 01:47:56 2026
+***************
+*** 50,59 ****
+--- 50,63 ----
+  
+  typedef enum { MNTON, MNTFROM } mntwhat;
+  
++ #define	NFSD_BMAJOR	13		/* /dev/nfsN, see sys/nfsdisk.h */
++ #define	MOUNT_NFSD	(MOUNT_MAXTYPE + 1)	/* "nfs" in fstab */
++ 
+  int	fake, fflag, vflag, *typelist;
+  char	*nfshost;
+  
+  int	 fsnametotype();
++ char	*nfsdevice();
+  char	*getmntname();
+  void	 maketypelist();
+  int	 selected();
+***************
+*** 185,190 ****
+--- 189,203 ----
+  		return (1);
+  	}
+  
++ 	/*
++ 	 * An NFS mount is recorded as host:/path; umount(2) wants its
++ 	 * /dev/nfsN block device, found from the mount point's st_dev.
++ 	 */
++ 	if (nfsdevice(mntpt) != NULL) {
++ 		name = nfsdevice(mntpt);
++ 		type = MOUNT_NFSD;
++ 	}
++ 
+  	if (!selected(type))
+  		return (0);
+  
+***************
+*** 235,245 ****
+  selected(type)
+  	int type;
+  {
+  	/* If no type specified, it's always selected. */
+  	if (typelist == NULL)
+  		return (1);
+! 	for (; *typelist != MOUNT_NONE; ++typelist)
+! 		if (type == *typelist)
+  			return (which == IN_LIST ? 1 : 0);
+  	return (which == IN_LIST ? 0 : 1);
+  }
+--- 248,261 ----
+  selected(type)
+  	int type;
+  {
++ 	register int *tp;
++ 
+  	/* If no type specified, it's always selected. */
+  	if (typelist == NULL)
+  		return (1);
+! 	/* Walk a copy: this is called more than once per file system. */
+! 	for (tp = typelist; *tp != MOUNT_NONE; ++tp)
+! 		if (type == *tp)
+  			return (which == IN_LIST ? 1 : 0);
+  	return (which == IN_LIST ? 0 : 1);
+  }
+***************
+*** 284,289 ****
+--- 300,319 ----
+  	av[i++] = MOUNT_NONE;
+  }
+  
++ /* The /dev/nfsN device mounted on dir, or NULL if it is not NFS. */
++ char *
++ nfsdevice(dir)
++ 	char *dir;
++ {
++ 	static char dev[32];
++ 	struct stat sb;
++ 
++ 	if (stat(dir, &sb) < 0 || major(sb.st_dev) != NFSD_BMAJOR)
++ 		return (NULL);
++ 	(void)sprintf(dev, "/dev/nfs%d", minor(sb.st_dev));
++ 	return (dev);
++ }
++ 
+  int
+  fsnametotype(name)
+  	char *name;
+***************
+*** 291,296 ****
+--- 321,328 ----
+  	static char *namelist[] = INITMOUNTNAMES;
+  	register char **cp;
+  
++ 	if (strcmp(name, "nfs") == 0)
++ 		return (MOUNT_NFSD);
+  	for (cp = namelist; *cp; ++cp)
+  		if (strcmp(name, *cp) == 0)
+  			return (cp - namelist);

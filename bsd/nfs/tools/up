@@ -1,0 +1,9 @@
+#!/bin/sh
+# up file... : upload files (paths relative to bsd/nfs) to the same place on the PDP-11.
+# Needs PDP_PASS (root password); PDP_HOST defaults to 192.168.1.26.
+: "${PDP_PASS:?set PDP_PASS to the PDP-11 root password}"
+H=${PDP_HOST:-192.168.1.26}
+cd "$(dirname "$0")/.." || exit 1
+for f in "$@"; do
+  curl -s --ftp-create-dirs -u "root:$PDP_PASS" -T "$f" "ftp://$H/usr/dave/source/repos/pdpsrc/bsd/nfs/$f" || echo "upload failed: $f"
+done

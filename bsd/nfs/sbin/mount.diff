@@ -1,0 +1,26 @@
+*** mount/mount.c	Mon Nov 23 01:41:32 2026
+--- mount/mount.c	Mon Nov 23 01:43:23 2026
+***************
+*** 216,226 ****
+  		/*
+  		 * If -t flag has not been specified, and spec contains either
+  		 * a ':' or a '@' then assume that an NFS filesystem is being
+! 		 * specified ala Sun.  Since 2BSD does not support nfs an 
+! 		 * error is declared here rather than from mountfs().
+  		 */
+  		if (vfslist == NULL && strpbrk(argv[0], ":@") != NULL)
+! 			err(1, "nfs not supported");
+  		rval = mountfs(vfstype,
+  		    argv[0], argv[1], init_flags, options, NULL);
+  		break;
+--- 216,225 ----
+  		/*
+  		 * If -t flag has not been specified, and spec contains either
+  		 * a ':' or a '@' then assume that an NFS filesystem is being
+! 		 * specified ala Sun.  mount_nfs (from bsd/nfs) handles it.
+  		 */
+  		if (vfslist == NULL && strpbrk(argv[0], ":@") != NULL)
+! 			vfstype = "nfs";
+  		rval = mountfs(vfstype,
+  		    argv[0], argv[1], init_flags, options, NULL);
+  		break;

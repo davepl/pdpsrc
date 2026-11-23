@@ -1,0 +1,22 @@
+#!/usr/bin/expect --
+# pdp "shell commands" : run as root on the PDP-11 via telnet (/bin/sh). PDPT=seconds timeout.
+set timeout 300
+if {[info exists env(PDPT)]} { set timeout $env(PDPT) }
+set cmd [join $argv " "]
+log_user 0
+spawn telnet $env(PDP_HOST)
+expect -timeout 30 "login:" { send "root\r" } timeout { puts "*** no login prompt"; exit 125 }
+expect -timeout 30 "assword:" { send "$env(PDP_PASS)\r" } timeout { puts "*** no password prompt"; exit 125 }
+expect -timeout 30 "pdpfetch" {} timeout {}
+sleep 1
+send "exec /bin/sh\r"
+sleep 0.5
+send "stty -echo; TERM=dumb; export TERM; echo __S\"TART\"\r"
+expect -timeout 30 -re "__START\r?\n" {} timeout { puts "*** no shell"; exit 125 }
+send "sh /usr/tmp/.cc.$cmd.sh; echo __R\"C=\$?\"\r"
+log_user 1
+expect -re "__RC=(\[0-9\]+)" { set rc $expect_out(1,string) } timeout { puts "\n*** TIMEOUT"; set rc 124 }
+log_user 0
+send "exit\r"
+expect -timeout 5 eof
+exit $rc

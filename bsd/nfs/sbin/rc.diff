@@ -1,0 +1,38 @@
+*** etc/rc	Mon Nov 23 01:43:40 2026
+--- etc/rc	Mon Nov 23 01:44:03 2026
+***************
+*** 79,87 ****
+  umount -a
+  #
+  # Now mount everything mentioned in /etc/fstab *except* filesystems with the
+! # 'na' (noauto) option.
+  #
+! mount -a						>/dev/console 2>&1
+  
+  if [ ${RAMSIZE} != 0 ]
+  then
+--- 79,87 ----
+  umount -a
+  #
+  # Now mount everything mentioned in /etc/fstab *except* filesystems with the
+! # 'na' (noauto) option.  NFS filesystems wait until the network is up.
+  #
+! mount -a -t nonfs					>/dev/console 2>&1
+  
+  if [ ${RAMSIZE} != 0 ]
+  then
+***************
+*** 157,162 ****
+--- 157,168 ----
+  	# lpd will run even with out networking.
+  	echo starting lpd			>/dev/console 2>&1
+  	/usr/sbin/lpd
++ fi
++ 
++ # NFS filesystems from /etc/fstab, now that the network is up (bsd/nfs).
++ if [ $INET = YES -a -f /usr/sbin/mount_nfs ]; then
++ 	echo 'mounting NFS filesystems'		>/dev/console 2>&1
++ 	mount -a -t nfs					>/dev/console 2>&1
+  fi
+  
+  /etc/rc.local

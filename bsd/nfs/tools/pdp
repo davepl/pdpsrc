@@ -1,0 +1,11 @@
+#!/bin/sh
+# pdp "shell commands": upload as a script, run as root on the PDP-11 over telnet.
+# Needs PDP_PASS; PDP_HOST defaults to 192.168.1.26; PDPT = timeout in seconds.
+: "${PDP_PASS:?set PDP_PASS to the PDP-11 root password}"
+H=${PDP_HOST:-192.168.1.26}; export PDP_HOST=$H
+D=$(dirname "$0"); tag=$$
+T=${TMPDIR:-/tmp}/.cc.$tag.sh
+printf '%s\n' "$*" > "$T"
+curl -s -u "root:$PDP_PASS" -T "$T" "ftp://$H/usr/tmp/.cc.$tag.sh" || { rm -f "$T"; echo "upload failed"; exit 125; }
+rm -f "$T"
+expect -- "$D/pdp.exp" "$tag" | tr -d '\r'

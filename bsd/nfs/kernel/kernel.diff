@@ -1,0 +1,139 @@
+*** sys/pdp/conf.c	Mon Nov 23 01:45:48 2026
+--- sys/pdp/conf.c	Mon Nov 23 01:46:00 2026
+***************
+*** 173,178 ****
+--- 173,194 ----
+  #define ramstrategy	nodev
+  #endif
+  
++ #ifdef NFSDISK
++ int	nfsbopen(), nfsbclose(), nfsbstrategy();
++ int	nfsdopen(), nfsdclose(), nfsdread(), nfsdwrite(), nfsdioctl();
++ int	nfsdselect();
++ #else
++ #define	nfsbopen	nodev
++ #define	nfsbclose	nodev
++ #define	nfsbstrategy	nodev
++ #define	nfsdopen	nodev
++ #define	nfsdclose	nodev
++ #define	nfsdread	nodev
++ #define	nfsdwrite	nodev
++ #define	nfsdioctl	nodev
++ #define	nfsdselect	nodev
++ #endif
++ 
+  struct bdevsw	bdevsw[] = {
+  /* ht = 0 */
+  	htopen,		htclose,	htstrategy,	nulldev,	NULL,
+***************
+*** 213,218 ****
+--- 229,237 ----
+  /* tmscp = 12 (tu81/tk50) */
+  	tmscpopen,	tmscpclose,	tmscpstrategy,	nulldev,	NULL,
+  	B_TAPE,
++ /* nfs = 13 (user-served NFS virtual disk) */
++ 	nfsbopen,	nfsbclose,	nfsbstrategy,	nulldev,	NULL,
++ 	0,
+  };
+  int	nblkdev = sizeof(bdevsw) / sizeof(bdevsw[0]);
+  
+***************
+*** 467,472 ****
+--- 486,495 ----
+  	fdopen,		nodev,		nodev,		nodev,
+  	nodev,		nodev,		0,		nodev,
+  	nodev,
++ /* nfsd = 27 (NFS virtual disk control, held by mount_nfs) */
++ 	nfsdopen,	nfsdclose,	nfsdread,	nfsdwrite,
++ 	nfsdioctl,	nulldev,	0,		nfsdselect,
++ 	nulldev,
+  };
+  
+  int	nchrdev = sizeof(cdevsw) / sizeof(cdevsw[0]);
+*** sys/sys/ufs_alloc.c	Mon Nov 23 01:45:49 2026
+--- sys/sys/ufs_alloc.c	Mon Nov 23 01:46:00 2026
+***************
+*** 15,20 ****
+--- 15,23 ----
+  #include "user.h"
+  #include "kernel.h"
+  #include "mount.h"
++ #ifdef NFSDISK
++ #include "nfsdisk.h"
++ #endif
+  #ifdef QUOTA
+  #include "quota.h"
+  #endif
+***************
+*** 249,254 ****
+--- 252,262 ----
+  	register struct buf *bp;
+  	struct fblk *fbp;
+  
++ #ifdef NFSDISK
++ 	/* Blocks of the user-served NFS disk are never reused. */
++ 	if (major(ip->i_dev) == NFSD_BMAJOR)
++ 		return;
++ #endif
+  	fs = ip->i_fs;
+  	if (badblock(fs, bno)) {
+  		printf("bad block %D, ino %d\n", bno, ip->i_number);
+*** sys/MINERVA/Makefile	Mon Nov 23 01:45:51 2026
+--- sys/MINERVA/Makefile	Mon Nov 23 01:46:00 2026
+***************
+*** 1,4 ****
+! OPTS=-DMINERVA -DUCB_METER -DINET -DUCB_CLIST
+  #
+  # Copyright (c) 1988 Regents of the University of California.
+  # All rights reserved.
+--- 1,4 ----
+! OPTS=-DMINERVA -DUCB_METER -DINET -DUCB_CLIST -DNFSDISK
+  #
+  # Copyright (c) 1988 Regents of the University of California.
+  # All rights reserved.
+***************
+*** 76,81 ****
+--- 76,82 ----
+  OV7=	ufs_disksubr.o ufs_dsort.o ufs_syscalls2.o kern_sig2.o
+  OV8=	mch_fpsim.o kern_sysctl.o kern_xxx.o ingreslock.o vm_text.o
+  OV9=	tmscp.o tmscpdump.o
++ OV10=	nfsdisk.o
+  
+  KERNOBJ=${CONF} ${BASE} ${OV1} ${OV2} ${OV3} ${OV4} ${OV5} \
+  	${OV6} ${OV7} ${OV8} ${OV9} ${OV10} ${OV11} ${OV12} \
+*** sys/MINERVA/Make.sys	Mon Nov 23 01:45:51 2026
+--- sys/MINERVA/Make.sys	Mon Nov 23 01:46:00 2026
+***************
+*** 34,40 ****
+  	${S}/ufs_mount.c ${S}/ufs_namei.c ${S}/ufs_subr.c		\
+  	${S}/ufs_disksubr.c ${S}/ufs_syscalls2.c			\
+  	${S}/ufs_syscalls.c ${S}/uipc_syscalls.c ${S}/vm_proc.c		\
+! 	${S}/vfs_vnops.c \
+  	${S}/vm_sched.c ${S}/vm_swap.c ${S}/vm_swp.c ${S}/vm_text.c
+  OBJS=	init_main.o init_sysent.o kern_acct.o kern_clock.o		\
+  	kern_descrip.o kern_exec.o kern_exit.o kern_fork.o kern_mman.o	\
+--- 34,40 ----
+  	${S}/ufs_mount.c ${S}/ufs_namei.c ${S}/ufs_subr.c		\
+  	${S}/ufs_disksubr.c ${S}/ufs_syscalls2.c			\
+  	${S}/ufs_syscalls.c ${S}/uipc_syscalls.c ${S}/vm_proc.c		\
+! 	${S}/vfs_vnops.c ${S}/nfsdisk.c \
+  	${S}/vm_sched.c ${S}/vm_swap.c ${S}/vm_swp.c ${S}/vm_text.c
+  OBJS=	init_main.o init_sysent.o kern_acct.o kern_clock.o		\
+  	kern_descrip.o kern_exec.o kern_exit.o kern_fork.o kern_mman.o	\
+***************
+*** 49,55 ****
+  	ufs_dsort.o ufs_fio.o ufs_inode.o ufs_mount.o ufs_namei.o	\
+  	ufs_subr.o ufs_syscalls.o uipc_syscalls.o vm_proc.o vm_sched.o	\
+  	ufs_disksubr.o ufs_syscalls2.o					\
+! 	vfs_vnops.o \
+  	vm_swap.o vm_swp.o vm_text.o
+  
+  .c.o:
+--- 49,55 ----
+  	ufs_dsort.o ufs_fio.o ufs_inode.o ufs_mount.o ufs_namei.o	\
+  	ufs_subr.o ufs_syscalls.o uipc_syscalls.o vm_proc.o vm_sched.o	\
+  	ufs_disksubr.o ufs_syscalls2.o					\
+! 	vfs_vnops.o nfsdisk.o \
+  	vm_swap.o vm_swp.o vm_text.o
+  
+  .c.o:

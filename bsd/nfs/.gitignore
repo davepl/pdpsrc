@@ -1,0 +1,4 @@
+*.o
+nfsc
+mount_nfs
+vdtest
