@@ -6,6 +6,8 @@
 #include "object.h"
 #include "obj2bsd.h"
 
+extern int      unlink();
+
 #define MAX_PSECTS 64
 #define MAX_GLOBALS 512
 #define REC_MAX 2048
@@ -1041,8 +1043,12 @@ int obj2bsd_convert(
     char *infile,
     char *outfile)
 {
-    if (setjmp(convert_fail) != 0)
+    if (setjmp(convert_fail) != 0) {
+        /* Never leave an empty or partial object behind. */
+        if (outfile != NULL)
+            unlink(outfile);
         return 0;
+    }
 
     reset_state();
     pass_object(infile, 1);
@@ -1076,7 +1082,13 @@ int obj2bsd_convert(
     write_relocs(out_fp, data_reloc, data_size);
     write_symbols(out_fp);
 
-    fclose(out_fp);
+    if (fflush(out_fp) != 0 || ferror(out_fp)) {
+        fail("Write error on '%s'\n", outfile);
+    }
+    if (fclose(out_fp) != 0) {
+        out_fp = NULL;
+        fail("Write error on '%s'\n", outfile);
+    }
     out_fp = NULL;
     cleanup_state();
     return 1;

@@ -44,9 +44,6 @@ DAMAGE.
 
 #include <stdio.h>
 
-#ifndef L_tmpnam
-#define L_tmpnam 64
-#endif
 
 #include "macro11.h"
 
@@ -72,7 +69,7 @@ int main(argc, argv)
     struct command_options options;
     FILE           *obj = NULL;
     TEXT_RLD        tr;
-    char            tmpobj[L_tmpnam];
+    char           *tmpobj = NULL;
     int             convert_ok = 1;
     char           *toolname;
     char           *slash;
@@ -82,21 +79,31 @@ int main(argc, argv)
     STACK           stack;
     int             errcount;
 
-    tmpobj[0] = 0;
-
     memset(&options, 0, sizeof(options));
     parse_options(argc, argv, &options);
 
     if (options.objname) {
         if (options.bsd_obj) {
-            if (tmpnam(tmpobj) == NULL)
-                return EXIT_FAILURE;
+            /*
+             * Write the RT-11 object beside the output rather than through
+             * tmpnam(): 2.11BSD's tmpnam() uses /var/tmp, which may not
+             * exist, and then fails without a message.
+             */
+            tmpobj = memcheck(malloc(strlen(options.objname) + 5));
+            strcpy(tmpobj, options.objname);
+            strcat(tmpobj, ".rto");
             obj = fopen(tmpobj, "wb");
+            if (obj == NULL) {
+                fprintf(stderr, "macro11: can't create %s\n", tmpobj);
+                return EXIT_FAILURE;
+            }
         } else {
             obj = fopen(options.objname, "wb");
+            if (obj == NULL) {
+                fprintf(stderr, "macro11: can't create %s\n", options.objname);
+                return EXIT_FAILURE;
+            }
         }
-        if (obj == NULL)
-            return EXIT_FAILURE;
     }
 
     add_symbols(&blank_section);
@@ -206,12 +213,23 @@ int main(argc, argv)
         }
 
         if (errcount == 0) {
-            sprintf(cmd, "%s %s -o %s", obj2bsd_path, tmpobj, options.objname);
-            convert_ok = system(cmd) == 0;
+            if (strlen(obj2bsd_path) + strlen(tmpobj) +
+                strlen(options.objname) + 6 > sizeof(cmd)) {
+                fprintf(stderr, "macro11: object file name too long\n");
+                convert_ok = 0;
+            } else {
+                sprintf(cmd, "%s %s -o %s", obj2bsd_path, tmpobj, options.objname);
+                convert_ok = system(cmd) == 0;
+                if (!convert_ok)
+                    fprintf(stderr, "macro11: %s failed\n", obj2bsd_path);
+            }
         }
         unlink(tmpobj);
-        if (!convert_ok)
+        free(tmpobj);
+        if (!convert_ok) {
+            unlink(options.objname);
             return EXIT_FAILURE;
+        }
     }
 
     if (errcount > 0)

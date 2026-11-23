@@ -1,6 +1,7 @@
 MAKE=make
 MACRO11=../src/macro11
 OBJ2BIN=../src/obj2bin
+OBJ2BSD=../src/obj2bsd
 
 OBJ=ATTN-11.obj
 BIN=ATTN-11.bin
@@ -23,14 +24,14 @@ all: ${BIN}
 ${BIN}: ${OBJ} ${OBJ2BIN}
 	${OBJ2BIN} ${OBJ} --binary --rt11 --outfile=${BIN}
 
-${HELLO_OBJ}: HELLO.MAC ${MACRO11}
+${HELLO_OBJ}: HELLO.MAC ${MACRO11} ${OBJ2BSD}
 	${MACRO11} -b -yus HELLO.MAC -o ${HELLO_OBJ}
 
 ${OBJ}: ${SOURCES} ${MACRO11}
 	${MACRO11} TRAIN.MAC -o ${OBJ}
 
-${MACRO11} ${OBJ2BIN}:
-	cd ../src && ${MAKE} macro11 obj2bin
+${MACRO11} ${OBJ2BIN} ${OBJ2BSD}:
+	cd ../src && ${MAKE} macro11 obj2bin obj2bsd
 
 clean:
 	rm -f ${OBJ} ${BIN} ${HELLO_OBJ}
