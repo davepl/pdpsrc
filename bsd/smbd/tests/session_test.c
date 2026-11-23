@@ -3,6 +3,8 @@
 #include <sys/wait.h>
 #include <sys/time.h>
 
+struct authstate auth;
+
 static int children[3], count, checks;
 static char work[] = "/tmp/smbd-session-test.XXXXXX";
 

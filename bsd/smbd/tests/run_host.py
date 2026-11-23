@@ -103,6 +103,9 @@ with tempfile.TemporaryDirectory(prefix='smbd-host-tests-') as work:
                 server.terminate()
                 server.wait(timeout=10)
     flags = ['-std=c89', '-Wno-deprecated-non-prototype', '-fsanitize=address,undefined', '-g']
+    subprocess.run(['cc', *flags, str(root / 'tests/accounts_test.c'),
+                    str(root / 'accounts.c'), '-o', str(work / 'accounts-test')], check=True)
+    subprocess.run([str(work / 'accounts-test')], check=True)
     subprocess.run(['cc', *flags, str(root / 'tests/fs_test.c'), str(root / 'fs.c'),
                     str(root / 'metadata.c'), str(root / 'wire.c'), '-o', str(work / 'fs-test')], check=True)
     subprocess.run([str(work / 'fs-test')], check=True)
@@ -122,4 +125,6 @@ with tempfile.TemporaryDirectory(prefix='smbd-host-tests-') as work:
     subprocess.run([sys.executable, str(root / 'tests/auth_test.py'), '--sanitize'], check=True)
     subprocess.run([sys.executable, str(root / 'tests/password_test.py')], check=True)
     subprocess.run([sys.executable, str(root / 'tests/metadata_startup_test.py')], check=True)
+    subprocess.run([sys.executable, str(root / 'tests/multiaccount_startup_test.py')], check=True)
+    subprocess.run([sys.executable, str(root / 'tests/multiaccount_host_test.py')], check=True)
 print('PASS complete isolated host regression suite')

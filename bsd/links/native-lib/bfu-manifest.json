@@ -1,0 +1,242 @@
+[
+  {
+    "file": "bfu_000.c",
+    "function": "DATA"
+  },
+  {
+    "file": "bfu_001.c",
+    "function": "getml"
+  },
+  {
+    "file": "bfu_002.c",
+    "function": "add_to_ml"
+  },
+  {
+    "file": "bfu_003.c",
+    "function": "freeml"
+  },
+  {
+    "file": "bfu_004.c",
+    "function": "do_menu_selected"
+  },
+  {
+    "file": "bfu_005.c",
+    "function": "do_menu"
+  },
+  {
+    "file": "bfu_006.c",
+    "function": "select_menu"
+  },
+  {
+    "file": "bfu_007.c",
+    "function": "count_menu_size"
+  },
+  {
+    "file": "bfu_008.c",
+    "function": "scroll_menu"
+  },
+  {
+    "file": "bfu_009.c",
+    "function": "display_menu"
+  },
+  {
+    "file": "bfu_010.c",
+    "function": "menu_func"
+  },
+  {
+    "file": "bfu_011.c",
+    "function": "do_mainmenu"
+  },
+  {
+    "file": "bfu_012.c",
+    "function": "display_mainmenu"
+  },
+  {
+    "file": "bfu_013.c",
+    "function": "select_mainmenu"
+  },
+  {
+    "file": "bfu_014.c",
+    "function": "mainmenu_func"
+  },
+  {
+    "file": "bfu_015.c",
+    "function": "new_menu"
+  },
+  {
+    "file": "bfu_016.c",
+    "function": "add_to_menu"
+  },
+  {
+    "file": "bfu_017.c",
+    "function": "do_dialog"
+  },
+  {
+    "file": "bfu_018.c",
+    "function": "display_dlg_item"
+  },
+  {
+    "file": "bfu_019.c",
+    "function": "dlg_select_item"
+  },
+  {
+    "file": "bfu_020.c",
+    "function": "dlg_set_history"
+  },
+  {
+    "file": "bfu_021.c",
+    "function": "dlg_mouse"
+  },
+  {
+    "file": "bfu_022.c",
+    "function": "redraw_dialog"
+  },
+  {
+    "file": "bfu_023.c",
+    "function": "tab_compl"
+  },
+  {
+    "file": "bfu_024.c",
+    "function": "do_tab_compl"
+  },
+  {
+    "file": "bfu_025.c",
+    "function": "dialog_func"
+  },
+  {
+    "file": "bfu_026.c",
+    "function": "check_number"
+  },
+  {
+    "file": "bfu_027.c",
+    "function": "check_nonempty"
+  },
+  {
+    "file": "bfu_028.c",
+    "function": "cancel_dialog"
+  },
+  {
+    "file": "bfu_029.c",
+    "function": "check_dialog"
+  },
+  {
+    "file": "bfu_030.c",
+    "function": "ok_dialog"
+  },
+  {
+    "file": "bfu_031.c",
+    "function": "center_dlg"
+  },
+  {
+    "file": "bfu_032.c",
+    "function": "draw_dlg"
+  },
+  {
+    "file": "bfu_033.c",
+    "function": "max_text_width"
+  },
+  {
+    "file": "bfu_034.c",
+    "function": "min_text_width"
+  },
+  {
+    "file": "bfu_035.c",
+    "function": "dlg_format_text"
+  },
+  {
+    "file": "bfu_036.c",
+    "function": "max_buttons_width"
+  },
+  {
+    "file": "bfu_037.c",
+    "function": "min_buttons_width"
+  },
+  {
+    "file": "bfu_038.c",
+    "function": "dlg_format_buttons"
+  },
+  {
+    "file": "bfu_039.c",
+    "function": "dlg_format_checkbox"
+  },
+  {
+    "file": "bfu_040.c",
+    "function": "dlg_format_checkboxes"
+  },
+  {
+    "file": "bfu_041.c",
+    "function": "checkboxes_width"
+  },
+  {
+    "file": "bfu_042.c",
+    "function": "dlg_format_field"
+  },
+  {
+    "file": "bfu_043.c",
+    "function": "dlg_format_box"
+  },
+  {
+    "file": "bfu_044.c",
+    "function": "max_group_width"
+  },
+  {
+    "file": "bfu_045.c",
+    "function": "min_group_width"
+  },
+  {
+    "file": "bfu_046.c",
+    "function": "dlg_format_group"
+  },
+  {
+    "file": "bfu_047.c",
+    "function": "checkbox_list_fn"
+  },
+  {
+    "file": "bfu_048.c",
+    "function": "group_fn"
+  },
+  {
+    "file": "bfu_049.c",
+    "function": "msg_box_fn"
+  },
+  {
+    "file": "bfu_050.c",
+    "function": "msg_box_button"
+  },
+  {
+    "file": "bfu_051.c",
+    "function": "msg_box"
+  },
+  {
+    "file": "bfu_052.c",
+    "function": "add_to_history"
+  },
+  {
+    "file": "bfu_053.c",
+    "function": "input_field_cancel"
+  },
+  {
+    "file": "bfu_054.c",
+    "function": "input_field_ok"
+  },
+  {
+    "file": "bfu_055.c",
+    "function": "input_field_fn"
+  },
+  {
+    "file": "bfu_056.c",
+    "function": "input_field"
+  },
+  {
+    "file": "bfu_057.c",
+    "function": "box_sel_set_visible"
+  },
+  {
+    "file": "bfu_058.c",
+    "function": "box_sel_move"
+  },
+  {
+    "file": "bfu_059.c",
+    "function": "show_dlg_item_box"
+  }
+]

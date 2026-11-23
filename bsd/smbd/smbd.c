@@ -202,6 +202,15 @@ session_setup()
     if(cfg.guest && auth.signing_required) return ST_DENIED;
     status=auth_session(request+off,len,response+72,&out);
     if(status!=ST_OK && status!=ST_MORE_AUTH) return status;
+    if(status==ST_OK && cfg.accounts_file) {
+        /* No exported-file access until both the NTLM proof and Unix
+         * identity have been established. The worker is already chrooted. */
+        if(accounts_apply(auth.account)) {
+            auth.authenticated=0; auth.phase=3; memset(auth.key,0,16);
+            return ST_DENIED;
+        }
+        fs_init();
+    }
     if(status==ST_OK && session_establish(session_lo,session_hi,
        get32(request+80),get32(request+84))) {
         auth.authenticated=0; auth.phase=3; memset(auth.key,0,16);
@@ -458,7 +467,8 @@ FILE *in,*out,*ahead;
     unsigned n;
     int result, batch;
     transport_init(fd,ahead);
-    fs_init(); rpc_init();
+    if(!cfg.accounts_file) fs_init();
+    rpc_init();
     credit_count=1; credit_lo=credit_hi=0;
     session_lo=get32(auth.challenge); session_hi=get32(auth.challenge+4);
     if(cfg.guest) { session_lo=(u32)(unsigned)getpid(); session_hi=1UL; }
@@ -484,6 +494,7 @@ FILE *in,*out,*ahead;
         total=bootstrap(in,total);
         if(total<0) break;
         batch=frame_validate(in,total);
+        if(!auth.authenticated && batch>0) batch=0;
         if(batch<0 || (batch && fs_batch_begin())) break;
         result=process_frame(in,out,total);
         if(batch) fs_batch_end();
@@ -558,7 +569,7 @@ make_guid()
 static void
 usage()
 {
-    fprintf(stderr,"usage: smbd -r directory [-s share] [-u smbuser -P password-file | -H hash-file | -g]\n"
+    fprintf(stderr,"usage: smbd -r directory [-s share] [-u smbuser -P password-file | -H hash-file | -F accounts-file | -g]\n"
         "            [-a IPv4-address] [-p port] [-c connections] [-C credits] [-U unixuser]\n"
         "            [-R random-pool] [-T temporary-directory] [-M metadata-file]\n"
         "            [-S required|optional] [-A appledouble|none] [-w] [-v]\n");
@@ -570,7 +581,7 @@ main(argc,argv)
 int argc;
 char **argv;
 {
-    int i,listenfd,fd,pid,one,child_state,child_meta,child_session;
+    int i,listenfd,fd,pid,one,child_state,child_meta,child_session,identity_options;
     struct stat st;
     struct sockaddr_in address;
     struct passwd *pw;
@@ -584,6 +595,7 @@ char **argv;
     cfg.share="pdp"; cfg.user="pdp"; cfg.port=445; cfg.max_connections=4;
     cfg.max_credits=32;
     cfg.bind_address="0.0.0.0"; unixuser="nobody";
+    identity_options=0;
     for(i=1;i<argc;i++) {
         if(!strcmp(argv[i],"-g")) cfg.guest=1;
         else if(!strcmp(argv[i],"-v")) cfg.verbose=1;
@@ -593,9 +605,10 @@ char **argv;
             switch(argv[i++][1]) {
             case 'r': cfg.root=argv[i]; break;
             case 's': cfg.share=argv[i]; break;
-            case 'u': cfg.user=argv[i]; break;
+            case 'u': cfg.user=argv[i]; identity_options=1; break;
             case 'P': cfg.password_file=argv[i]; break;
             case 'H': cfg.hash_file=argv[i]; break;
+            case 'F': cfg.accounts_file=argv[i]; break;
             case 'R': cfg.random_file=argv[i]; break;
             case 'T': temporary_directory=argv[i]; break;
             case 'M': cfg.metadata_file=argv[i]; break;
@@ -622,7 +635,7 @@ char **argv;
                 number=strtol(argv[i],&end,10);
                 if(!*argv[i] || *end || number<8 || number>32) usage();
                 cfg.max_credits=(int)number; break;
-            case 'U': unixuser=argv[i]; break;
+            case 'U': unixuser=argv[i]; identity_options=1; break;
             default: usage();
             }
         }
@@ -630,14 +643,15 @@ char **argv;
     if(!cfg.root || !*cfg.share || strlen(cfg.share)>80 || same_name(cfg.share,"IPC$") ||
         temporary_directory[0]!='/' || strlen(temporary_directory)>SMBD_PATH-32 ||
         cfg.max_connections<1 || cfg.max_connections>16 ||
-        (!!cfg.guest + !!cfg.password_file + !!cfg.hash_file != 1)) usage();
+        (!!cfg.guest + !!cfg.password_file + !!cfg.hash_file + !!cfg.accounts_file != 1) ||
+        (cfg.accounts_file && identity_options)) usage();
     for(i=0;cfg.share[i];i++) {
         unsigned c;
         c=(unsigned char)cfg.share[i];
         if(c<32 || c>126 || strchr("/\\:;|=,+*?<>\"",c)) usage();
     }
     worker_uid=getuid(); worker_gid=getgid();
-    if(geteuid()==0) {
+    if(geteuid()==0 && !cfg.accounts_file) {
         pw=getpwnam(unixuser);
         if(!pw || pw->pw_uid==0) { fprintf(stderr,"smbd: choose a non-root Unix account with -U\n"); return 1; }
         worker_uid=pw->pw_uid; worker_gid=pw->pw_gid;
@@ -724,7 +738,9 @@ char **argv;
             auth_random_close();
             close(listenfd); signal(SIGINT,SIG_DFL); signal(SIGTERM,SIG_DFL);
             if(geteuid()==0 && (chroot(".") || chdir("/") || setgroups(0,(gid_t *)0) ||
-                setgid(worker_gid) || setuid(worker_uid))) { perror("confinement"); _exit(1); }
+                (!cfg.accounts_file && (setgid(worker_gid) || setuid(worker_uid))))) {
+                perror("confinement"); _exit(1);
+            }
             serve(fd,in,out,ahead); _exit(0);
         }
         close(child_session);
@@ -747,5 +763,6 @@ char **argv;
     if(!lstat(state_path,&st) && st.st_dev==state_stat.st_dev && st.st_ino==state_stat.st_ino)
         unlink(state_path);
     memset(cfg.nthash,0,16);
+    accounts_clear();
     return 0;
 }

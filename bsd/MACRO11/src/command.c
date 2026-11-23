@@ -42,9 +42,7 @@ DAMAGE.
 #include <ctype.h>
 #include <assert.h>
 
-#ifndef L_tmpnam
-#define L_tmpnam 64
-#endif
+#include <stdio.h>
 
 #include "macro11.h"
 

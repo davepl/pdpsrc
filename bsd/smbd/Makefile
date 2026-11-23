@@ -5,7 +5,7 @@ LDFLAGS=
 BINDIR=/usr/bin
 DESTDIR=
 INSTALL=install
-OBJS=smbd.o wire.o fs.o metadata.o metaio.o rpc.o auth.o session.o crypto.o revoke.o transport.o
+OBJS=smbd.o wire.o fs.o metadata.o metaio.o rpc.o auth.o accounts.o session.o crypto.o revoke.o transport.o
 
 all: smbd smbpwd
 
@@ -22,7 +22,7 @@ FORCE:
 smbd: $(OBJS)
 	@if test "`uname -m`" = pdp11; then \
 		$(CC) -i $(LDFLAGS) -o smbd smbd.o wire.o crypto.o revoke.o \
-		    -Z fs.o metadata.o -Z rpc.o auth.o metaio.o session.o transport.o -Y; \
+		    -Z fs.o metadata.o -Z rpc.o auth.o accounts.o metaio.o session.o transport.o -Y; \
 	else \
 		$(CC) $(LDFLAGS) -o smbd $(OBJS); \
 	fi
@@ -41,6 +41,8 @@ rpc.o: rpc.c smbd.h
 	$(CC) $(CFLAGS) -c rpc.c
 auth.o: auth.c smbd.h
 	$(CC) $(CFLAGS) -c auth.c
+accounts.o: accounts.c smbd.h
+	$(CC) $(CFLAGS) -c accounts.c
 session.o: session.c smbd.h
 	$(CC) $(CFLAGS) -c session.c
 revoke.o: revoke.c smbd.h

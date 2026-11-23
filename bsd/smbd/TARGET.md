@@ -8,6 +8,10 @@ The server was tested in the foreground, then left as a temporary background
 process using the installed `nohup`; no boot-time service was installed.
 Native administrative credentials are not included in this repository.
 
+The later PDP-11/44 deployment at `192.168.1.170`, including distinct Unix
+accounts and boot startup, is recorded under
+[PDP-11/44 multi-account service](#pdp-1144-multi-account-service-2026-10-18).
+
 The current native build supports signed read/write access, share enumeration,
 and the persistent `-M` timestamp table. Its latest measurements and reconnect
 checks are recorded under [Reconnect and timestamp completion](#reconnect-and-timestamp-completion),
@@ -863,3 +867,68 @@ Resident text is 32320 bytes, overlays 29504 and 19584, data 3990, BSS 43082.
 Data+BSS leaves 18464 bytes for heap and stack. Production startup now includes
 `-A none`; the prior executable and startup are retained as `smbd.pre-mac` and
 `start.appledouble`. Existing Unix ownership and access permissions are unchanged.
+
+## PDP-11/44 multi-account service (2026-10-18)
+
+The source was built on the user's PDP-11/44 at `192.168.1.170` in
+`/home/dave/source/repos/pdpsrc/bsd/smbd`, as Unix `dave` (UID/GID 1002).
+The installed native `cc -O` compiled every module; private compiler passes
+and changes to the existing two-overlay link layout were unnecessary.
+`make all`, `make unit` and the separately linked native wire/FILETIME
+vectors all returned success. The cryptographic test includes the
+one-million-byte streaming SHA-256 known-answer vector.
+
+Measured native executables:
+
+| Executable | Resident text | Data | BSS | File bytes |
+| --- | ---: | ---: | ---: | ---: |
+| `smbd` | 31,744 | 3,986 | 43,794 | 119,109 |
+| `smbpwd` | 12,160 | 1,556 | 114 | 19,843 |
+
+The daemon's overlays measure 29,504 and 21,312 bytes. Its resident text
+and largest overlay each fit their rounded 32 KiB instruction window.
+Data plus BSS is 47,780 bytes, leaving a calculated 17,756 bytes for heap
+and stack; this is not a measured peak watermark.
+
+The new bounded `-F` account table supports distinct SMB `dave` and `root`
+credentials mapped to their existing Unix accounts. Signed NTLMv2
+authentication selects the identity before filesystem operations, and a
+different authenticated account cannot replace another account's session.
+The complete host regression suite passed, including the protected
+account-file parser, credential isolation and reconnect cases.
+
+Both native binaries were installed root-owned, mode 0755, in
+`/usr/local/sbin`; native `cmp` verified their installed bytes against the
+build. `/etc/rc.smbd` exports `/usr` as writable share `usr` on
+`192.168.1.170:445`, with required signing, separate account credentials,
+persistent timestamps and the default four-worker admission limit.
+The protected account, entropy, timestamp and log files are mode 0600.
+The configuration and runtime directories are root-owned, mode 0700.
+The startup script ignores HUP in its background subshell rather than
+using this target's `nohup`, which overrides output redirection.
+
+Independent live-client acceptance passed:
+
+- Signed logins for both identities, with signed authentication replies
+  independently checked; wrong, swapped and unknown credentials rejected.
+- `dave` read its own 0600 file; `root` read both accounts' 0600 files;
+  `dave` could neither read the root file nor create in the root 0700 directory.
+- Each account created, wrote, read back exact bytes and deleted a unique file
+  in its own 0700 directory.
+- Incorrect credentials and a valid different account could not replace the
+  existing session or disturb its exclusive handle. A valid same-account
+  reconnect closed the previous transport and released that handle.
+
+A clean stop removed the listening socket. Restart restored the listener,
+and a repeated start correctly reported the existing daemon. After the
+maintenance Telnet connection closed, independent signed logins and protected
+file reads still passed for both users. Native macOS `smbutil` also
+authenticated and enumerated `usr` as a disk share for each account; no client
+mount was created. All test transports closed cleanly.
+
+An `INET=YES` guard in `/etc/rc.local` starts the service after `ntpd`;
+the original file is preserved as `/etc/rc.local.pre-smb`.
+Both startup scripts passed native shell syntax checks. Manual lifecycle
+tests cover the daemon startup path; a complete machine reboot was not
+performed. The fixture files and empty test directories were removed after
+acceptance. No credentials are recorded here.

@@ -1,0 +1,75 @@
+Final verification: 2026-11-14 (Mac clock; Minerva clock unchanged)
+
+Delivered files on Minerva:
+/usr/dave/source/repos/pdpsrc/bsd/links/upstream/links-pdp
+/usr/dave/source/repos/pdpsrc/bsd/links/upstream/language.dat
+
+Run from port root:
+TERM=vt100 upstream/links-pdp -no-connect http://frogfind.com/
+Use an 80-column, 24-row terminal. Keep language.dat beside the executable.
+
+Native verification:
+- Normal make clean; make native completed with status 0, including native
+  objects and function-library archives. A final host-profile guard adjustment
+  (unchanged native behavior) then rebuilt normally with make native, status 0.
+- Exact final executable passed make native-test with the temporary HTTP server:
+  local HTML/table/links, byte-exact source, HTTP, redirect, chunked framing,
+  UTF-8 transliteration; status 0.
+- Exact final executable fetched the real remote http://frogfind.com/ directly,
+  displayed it on VT100, submitted PDP-11 through its search form, rendered real
+  search results, and scrolled to page 2 of 4. Back returned to the homepage
+  with PDP-11 preserved in the field; resubmission rendered results again.
+- Known remaining limit: Ctrl-R after that entire sequence failed allocation
+  (456-byte resize) in the 64 KiB data space. Fresh direct-results startup and
+  Ctrl-R worked on the preceding native-identical guard build. Repeated long
+  sessions and arbitrary result pages are not certified; restart on OOM.
+- Native -dump of real remote FrogFind results also succeeded during development.
+- Clean exit restores the terminal. No system-wide installation was performed.
+
+Final executable: 276486 bytes
+SHA-256 20d74e4fd3562a8f119b582a984f3c8689c1a4b42ed7e3d6801b813369fe3569
+Required language.dat: 6392 bytes
+SHA-256 399af8f7926fe62418f88b4cdb73ae6868975be8b56c7469402b7bb07198c8cf
+Both downloaded via binary FTP from the final Minerva files. Language data
+matches the locally generated sidecar byte for byte. Executable passed the
+structural a.out validator: text228416, base17536, maxoverlay32064, data22690,
+bss3502, fifteen overlays. Structural validation is not a runtime test.
+
+Host regression evidence (separate from native execution):
+- Final reduced browser profile builds and passes local/HTTP rendering tests.
+- VT100 submit/Back/preserved-form/resubmit/forced-refetch sequence passes.
+- Bounded terminal redraw tests pass ASan/UBSan, including partial/midstream
+  failed writes, retry, dirty bits, cursor, line graphics and balanced draw locks.
+- Sidecar loader passes all371 IDs, caching, sibling/PATH/env lookup, missing
+  file and six corrupt-file cases under sanitizers.
+- Cache reservation, signed16 fragment alignment, allocation-free charset
+  conversion and compact-coordinate boundary tests pass.
+
+Implementation highlights:
+- Private compiler/linker helpers, declaration-pruned generated sources,
+  split I/D with fifteen overlays, audited assembly libc retained in base.
+- Correct 32-bit IPv4 and timeout arithmetic; native cache alignment fix.
+- Lazy English UI sidecar, direct charset conversion, compact checked positions,
+  small table/link buffers, wrapped-row shrink, bounded terminal output.
+- Outgoing formatted page released before navigation while preserving history
+  and form values; unlocked raw cache collected before forced reload.
+
+Limits: HTTP/local only; no TLS/HTTPS, JavaScript or graphical rendering.
+Compact link/search coordinates are limited to0..255 (including intermediate
+pre-wrap positions); large/complex pages can fail. Historical code has not had
+modern hostile-input security review. Do not enter sensitive data.
+No kernel, maxmem, security level, clock, system compiler/linker/libc change or
+reboot. Original300 KiB process cap remains. No commit or push.
+
+Monochrome rendering follow-up, 2026-11-14:
+- Renderer-generated leading/centering padding now uses normal monochrome
+  attributes. Color terminal padding and genuine selection highlights remain.
+- Native make native completed status0; make native-test passed. Fresh actual
+  FrogFind VT100 launch verified normal margins, reversed active link and search
+  field, and highlighted menu. Escape alone opens File/View/Link/Downloads/Help.
+- Host tests/mono_padding.py checks all8 backgrounds in mono/color modes and
+  actual centered/indented black/white HTML pages, selected-link internal spaces
+  and menu highlighting. All pass.
+- Current executable hash above is this rendering-fix build. Earlier broader
+  HTTP/search/Back tests describe its immediately preceding build; this change
+  affects only synthetic padding cells. Package and Minerva executable match.

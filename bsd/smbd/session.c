@@ -1,5 +1,5 @@
-/* Private, bounded session registry for authenticated reconnects. The single
- * configured SMB identity is shared by all workers in this daemon. */
+/* Private, bounded session registry for authenticated reconnects. A previous
+ * session can be replaced only by its own authenticated SMB account. */
 #include "smbd.h"
 #include <sys/file.h>
 #include <sys/socket.h>
@@ -7,7 +7,7 @@
 #include <fcntl.h>
 
 #define SESSION_ROWS 16
-#define SESSION_SIZE 16
+#define SESSION_SIZE 20
 static int registry_fd = -1, own_slot = -1;
 static char registry_path[SMBD_PATH];
 static struct stat registry_stat;
@@ -100,12 +100,14 @@ u32 lo, hi, previous_lo, previous_hi;
   if (get32(p + 4) == lo && get32(p + 8) == hi) goto bad;
   if ((previous_lo || previous_hi) &&
       get32(p + 4) == previous_lo && get32(p + 8) == previous_hi) {
+   if(get32(p + 16)!=(u32)auth.account) goto bad;
    previous = i; pid = (int)get32(p); signal_old = get32(p + 12) == 1UL;
   }
  }
  if (available < 0 || session_revoked) goto bad;
  memset(p, 0, sizeof(p)); put32(p, (u32)(unsigned)getpid());
  put64(p + 4, lo, hi); put32(p + 12, 1UL);
+ put32(p + 16,(u32)auth.account);
  if (row(available, p, 1)) goto bad;
  own_slot = available;
  if (previous >= 0 && (lo != previous_lo || hi != previous_hi)) {

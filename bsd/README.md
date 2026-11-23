@@ -50,9 +50,11 @@ make SUBDIRS=novi clean
 
 On macOS, the same command builds all portable programs and the MACRO11
 assembly sample. It reports skips for the native assembly sieve, attention
-program, `seektest`, `top`, and `webtop`, which require PDP-11 assembly or 2.11BSD kernel
-interfaces. The other web helpers and HTTP servers still build, and the socket
-client is selected for the running system. The complete set builds on the PDP.
+program, `seektest`, `top`, and `webtop`, which require PDP-11 assembly or
+2.11BSD kernel interfaces. The file-backed `vmsieve` requires the native
+2.11BSD `libvmf`. The segmented `segsieve` builds on both hosts. The other
+web helpers and HTTP servers still build, and the socket client is selected
+for the running system. The complete set builds on the PDP.
 `make clean` cleans every subproject on either host, including native-only
 outputs left from a previous build.
 

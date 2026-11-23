@@ -1,0 +1,3 @@
+#! /bin/sh -
+# Supported driver control; valid in multiuser mode too.
+/bin/sysctl -w machdep.mscp.printf=3

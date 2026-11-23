@@ -1,0 +1,80 @@
+PDP-11/44 native benchmark results - 2026-10-19 UTC
+
+Target: 192.168.1.170, PDP-11/44, 2.11BSD UNIX #5 (PDP44DU).
+Source base: /home/dave/source/repos/pdpsrc/bsd
+Build/run account: dave, UID/GID 1002. Native compiler: cc -O.
+Both folders built successfully with make all, without source changes.
+
+All four programs ran serially, three measured runs each, at normal priority
+(nice 0). All compiler/make processes had exited before timing began.
+Existing idle services and user sessions remained. Every run exited 0.
+
+Summary (median of three runs):
+
+Program  Workload                  Median throughput       Observed range
+dry      20000 iterations          738 Dhrystones/s          737-740
+dry29    20000 iterations          728 Dhrystones/s          725-730
+sieve    limit 10000, target 30s    0.17857 passes/s          0.17751-0.17857
+krsieve  limit 10000, target 30s    1.08475 passes/s          1.05263-1.09589
+
+Dhrystone throughput uses each program's timed-loop user CPU time.
+Sieve throughput is passes divided by external /bin/time real seconds.
+Calculated sieve rates inherit the external timer's one-decimal precision;
+the extra displayed rate digits permit reproduction, not greater accuracy.
+
+Dhrystone measurements:
+Program Run Dhrystones/s Microseconds/iteration Real(s) User(s) System(s)
+dry     1          740                 1351.7    27.8    27.0       0.5
+dry     2          737                 1357.5    27.8    27.2       0.4
+dry     3          738                 1355.0    27.8    27.1       0.4
+dry29   1          730                 1370.0    28.3    27.4       0.6
+dry29   2          728                 1374.0    28.3    27.5       0.5
+dry29   3          725                 1379.0    28.4    27.6       0.4
+
+Each Dhrystone command was /bin/time ./PROGRAM 20000. All 20 printed final
+value checks and equal/nonzero record pointers passed in every run.
+Arr_2_Glob[8][7] was always 20010. No run automatically rescaled.
+The chosen iteration count avoids overflow of that native 16-bit array.
+The running kernel and libc times() implementation were verified at 60 Hz.
+
+Sieve measurements:
+Program Run Passes Real(s) User(s) System(s) Passes/external-second
+sieve   1        6    33.6    32.8       0.3               0.178571
+sieve   2        6    33.8    32.8       0.5               0.177515
+sieve   3        6    33.6    32.6       0.6               0.178571
+krsieve 1       32    30.4    28.8       0.5               1.052632
+krsieve 2       32    29.5    28.8       0.4               1.084746
+krsieve 3       32    29.2    28.8       0.4               1.095890
+
+Each timed sieve command was /bin/time ./PROGRAM -l 10000 -s 30.
+Every timed run found 1229 primes and printed validator PASS. Separate
+one-shot checks for both executables found 168 primes at limit 1000 and
+1229 at limit 10000. Those reference counts were independently confirmed
+by trial division. No allocation errors occurred.
+Aggregate sieve rate: 18 passes / 101.0 real seconds = 0.178218 passes/s.
+Aggregate krsieve rate: 96 passes / 89.1 real seconds = 1.077441 passes/s.
+
+Timing notes:
+- dry prints a rounded floating-point rate; dry29 truncates its integer
+  rate and derives rounded microseconds from that rate.
+- The default REG macro is empty and no -DREG flag was used. The sources'
+  printed 'with register' banner is misleading; original output is retained.
+- sieve uses gettimeofday(); krsieve sums per-pass whole-second time()
+  differences. Krsieve's printed internal 30.00 seconds differed from real
+  elapsed time, so it was not used to derive comparable throughput.
+- A sieve run finishes its last complete pass, so actual duration can exceed
+  the requested 30 seconds. Known limits were used to avoid 16-bit overflow
+  and the sources' misleading validation of unknown limits.
+
+Native executable sizes (bytes):
+Program Text Data BSS  File
+dry     7352 2216 5254 13503
+dry29   6910 2448 5174 13337
+sieve   6388 1312  126 11059
+krsieve 5332 1068  120  9396
+
+Native raw logs remain in dry/ and sieve/results20261019/ under the source
+base above. Full build logs remain in each source folder. Local copies of
+all raw run logs, statuses, environment snapshots, source hashes and detailed
+per-folder summaries are alongside this report in dry/ and sieve/.
+All 16 correctness/measurement logs received independent review.

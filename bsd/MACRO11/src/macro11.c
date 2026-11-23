@@ -42,6 +42,8 @@ DAMAGE.
 #include <ctype.h>
 #include <assert.h>
 
+#include <stdio.h>
+
 #ifndef L_tmpnam
 #define L_tmpnam 64
 #endif

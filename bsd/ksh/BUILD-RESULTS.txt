@@ -70,3 +70,27 @@ fixture now defines a function, and the test checks successful loading as
 well as output. The corrected suite ran against the freshly built shell:
 67 passed, 0 failed, with no autoload diagnostic.
 No C source, runtime code, or compiler inputs changed for this correction.
+
+PDP-11/44 native install verification - 2026-10-19
+------------------------------------------------
+Target: physical PDP-11/44, 2.11BSD patch level 498 (September 7, 2025).
+Source: /home/dave/source/repos/pdpsrc/bsd/ksh, built as dave (uid/gid 1002).
+After clean/bootstrap and generated-table setup, all 29 shell modules were
+compiled natively with the private compiler/runtime helpers. For this build,
+the redundant make-depend pass was deliberately stopped and the unchanged
+shipped Makefile.mentec dependencies reused (22264 bytes; BSD sum 44801).
+Native make completed the executable and formatted manual without warnings.
+
+The complete native regression suite passed: 67 passed, 0 failed, including
+the 200-iteration overlay stress check. Version and 32-bit arithmetic smoke
+checks also passed. Executable size: 172850 bytes. Native size reported:
+Base text 42944; data 16384; bss 6182; total text 146752 bytes.
+Eight overlays: 12416, 13120, 14656, 12736, 12736, 14848, 14208, 9088.
+
+Installed /bin/ksh (root, 0755) and /usr/man/cat1/ksh.0 (root, 0444), and
+added /bin/ksh to /etc/shells. Only dave's login-shell field was changed via
+vipw; a full master-file comparison confirmed all other fields unchanged.
+Protected account/install backups are in /etc/ksh-pre-20261019.
+Fresh command-mode and interactive dave logins selected /bin/ksh with
+uid/gid 1002 and /home/dave. Interactive prompt, read/print, and exit passed.
+System compiler and libc files were not replaced.

@@ -1,0 +1,90 @@
+[
+  {
+    "file": "types_000.c",
+    "function": "DATA"
+  },
+  {
+    "file": "types_001.c",
+    "function": "get_assoc_cnt"
+  },
+  {
+    "file": "types_002.c",
+    "function": "delete_association"
+  },
+  {
+    "file": "types_003.c",
+    "function": "delete_extension"
+  },
+  {
+    "file": "types_004.c",
+    "function": "is_in_list"
+  },
+  {
+    "file": "types_005.c",
+    "function": "get_content_type"
+  },
+  {
+    "file": "types_006.c",
+    "function": "get_type_assoc"
+  },
+  {
+    "file": "types_007.c",
+    "function": "free_types"
+  },
+  {
+    "file": "types_008.c",
+    "function": "add_ct_fn"
+  },
+  {
+    "file": "types_009.c",
+    "function": "update_assoc"
+  },
+  {
+    "file": "types_010.c",
+    "function": "really_del_ct"
+  },
+  {
+    "file": "types_011.c",
+    "function": "menu_del_ct"
+  },
+  {
+    "file": "types_012.c",
+    "function": "menu_add_ct"
+  },
+  {
+    "file": "types_013.c",
+    "function": "menu_list_assoc"
+  },
+  {
+    "file": "types_014.c",
+    "function": "add_ext_fn"
+  },
+  {
+    "file": "types_015.c",
+    "function": "update_ext"
+  },
+  {
+    "file": "types_016.c",
+    "function": "really_del_ext"
+  },
+  {
+    "file": "types_017.c",
+    "function": "menu_del_ext"
+  },
+  {
+    "file": "types_018.c",
+    "function": "menu_add_ext"
+  },
+  {
+    "file": "types_019.c",
+    "function": "menu_list_ext"
+  },
+  {
+    "file": "types_020.c",
+    "function": "update_prog"
+  },
+  {
+    "file": "types_021.c",
+    "function": "get_prog"
+  }
+]

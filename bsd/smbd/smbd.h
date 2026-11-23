@@ -50,6 +50,7 @@ struct hmacctx { struct hashctx inner; u8 outer[64]; int algorithm; };
 
 struct authstate {
  int phase, authenticated, guest, signing_required;
+ unsigned account; /* 0: legacy identity; 1..8: explicit account-file row. */
  u8 challenge[8], key[16];
  /* Bounded saved handshake for NTLM MIC verification. */
  u8 negotiate[512], challenge_msg[512];
@@ -58,6 +59,7 @@ struct authstate {
 struct config {
  char *root, *share, *user, *password_file, *hash_file, *bind_address, *random_file;
  char *metadata_file;
+ char *accounts_file;
  u8 nthash[16];
  unsigned port;
  int guest, max_connections, verbose, writable, max_credits, optional_signing, mac_fast;
@@ -99,6 +101,11 @@ void hmac_update(struct hmacctx *, const u8 *, unsigned);
 void hmac_final(struct hmacctx *, u8 *);
 int constant_equal(const u8 *, const u8 *, unsigned);
 int auth_load(void);
+int accounts_load(void);
+unsigned accounts_find(const u8 *, unsigned);
+const u8 *accounts_hash(unsigned);
+int accounts_apply(unsigned);
+void accounts_clear(void);
 int auth_random_init(void);
 void auth_random_close(void);
 int auth_random_challenge(void);
