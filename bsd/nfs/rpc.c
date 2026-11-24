@@ -2,6 +2,7 @@
 #include "nfs.h"
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <netdb.h>
 #ifdef PDP11
 #include <arpa/inet.h>
@@ -109,12 +110,34 @@ doconnect(c)
 			return EADDRINUSE;
 		}
 	}
+	/*
+	 * Room for a whole request and a whole reply.  With 2.11's default
+	 * buffers (about 2 KB) a 4 KB WRITE or READ reply crosses in two or
+	 * three pieces, each waiting for the other end's ACK.  Set before
+	 * connecting so the window we offer starts large.
+	 */
+	for (e = 16384; e >= 4096; e -= 4096)
+		if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (char *)&e,
+		    sizeof(e)) == 0)
+			break;
+	for (e = 16384; e >= 4096; e -= 4096)
+		if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, (char *)&e,
+		    sizeof(e)) == 0)
+			break;
 	fillsin(&sin, c->addr, c->port);
 	if (connect(fd, (struct sockaddr *)&sin, sizeof(sin)) < 0) {
 		e = errno;
 		close(fd);
 		return e;
 	}
+	/*
+	 * One request, one reply: never hold back a short final segment
+	 * waiting for an ACK.  A request larger than one segment (any 1 KB
+	 * WRITE: 2.11's MSS is at most 1024) otherwise stalls on the
+	 * server's delayed ACK, about 40 ms for every block.
+	 */
+	e = 1;
+	(void)setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char *)&e, sizeof(e));
 	c->fd = fd;
 	return 0;
 }
@@ -370,7 +393,14 @@ rpc_call(c, x, r)
 	if (x->err)
 		return E2BIG;
 	putbe32(x->base, 0x80000000UL | (u32)(x->len - 4));
-	for (attempt = 0; attempt < 3; attempt++) {
+	for (attempt = 0; attempt < 6; attempt++) {
+		/*
+		 * Back off before reconnecting: a server that is rebooting
+		 * refuses connections at once, and three instant attempts
+		 * would turn a short outage into lost writes.
+		 */
+		if (attempt)
+			sleep(1 << (attempt - 1));
 		e = transact(c, x, r);
 		if (e == 0 || e == EACCES || e == EPROTONOSUPPORT ||
 		    e == EOPNOTSUPP || e == EINVAL || e == EMSGSIZE)

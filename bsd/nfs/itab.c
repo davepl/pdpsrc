@@ -15,10 +15,10 @@ unsigned itab_next = ROOTINO;	/* the export root is entered first */
 
 static struct icache {
 	unsigned ino;
-	unsigned age;
+	u32 age;		/* 32 bits: a 16-bit clock wraps in minutes */
 	struct irec r;
 } cache[NCACHE];
-static unsigned clock_age;
+static u32 clock_age;
 
 int
 itab_open(dir, unit)
@@ -274,7 +274,11 @@ itab_enter(fid, fh, a, parent)
 	if (fh == 0)
 		return 0;		/* cannot use a file without a handle */
 	if (VD_ISPOOL(itab_next) || itab_next >= VD_PINO) {
-		syslog(LOG_ERR, "inode table full; ignoring further files");
+		static int said;
+
+		if (!said)
+			syslog(LOG_ERR, "inode table full; ignoring further files");
+		said = 1;
 		return 0;
 	}
 	ino = itab_next++;

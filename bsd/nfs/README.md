@@ -100,6 +100,42 @@ Some kernel behaviour the daemon has to allow for:
   inodes from it, so a held inode's shadow copy is not replaced, and a
   change is acted on only when it differs from both the shadow and the
   server.
+* While the kernel writes a file, unflushed blocks exist only in its buffer
+  cache under the block numbers in its inode and indirect blocks, and it
+  re-reads those maps from the daemon whenever its copy was flushed and
+  then invalidated or reused. A map rebuilt from the server at that moment
+  gives the same file block a second address: one buffer is read stale and
+  the other later overwrites newer data (seen as a run of zeros in a
+  compiler temporary file). So an indirect block the kernel wrote is
+  always read back as written, and a regular file's inode is handed back
+  with the block map the kernel last wrote, and with its size too while
+  the file was written in the last minute.
+* A data block can arrive before the inode or indirect block that names
+  it, while its file is out of core. The daemon asks the kernel who owns a
+  block, checks its own map against the block maps the kernel wrote, and
+  spools a block whose owner or final size is not known yet; it is
+  replayed when the inode block arrives.
+* An inode block is written back whole, with old copies of its other 15
+  inodes. A size in such a copy is not applied while the kernel holds that
+  inode with a different size: it would cut off data written since.
+* A file removed while still open (ld's scratch files) is renamed to
+  `.nfsNNN.N` on the server and removed when the kernel frees the inode.
+* A file the PDP wrote keeps the PDP's modification time, not the server's
+  time of the last WRITE: the clocks differ, and `ld` compares an archive's
+  time with the one `ranlib` stored inside it.
+* A change of mode sent together with a change of owner that the server
+  refuses (the daemon is not root there) is retried without the owner.
+
+### Speed
+
+A round trip to the server costs the same whatever it carries, and on an
+emulated PDP-11 that is 15-30 ms with the CPU idle. So adjacent 1 KB
+blocks of a file are gathered into 4 KB WRITEs (sent as soon as no request
+is waiting), reads are fetched 4 KB at a time into a two-chunk cache (two
+files read in step, as by `cmp`, do not evict each other), and the socket
+buffers are raised to 8 KB so a request or reply crosses in one piece.
+Measured on MINERVA: about 180 KB/s reading and 130 KB/s writing, against
+110 and 33 before (FTP on the same machine: 200 KB/s).
 
 ## Installing on a new machine
 

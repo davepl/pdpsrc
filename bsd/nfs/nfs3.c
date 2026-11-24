@@ -365,8 +365,11 @@ nfs_setattr(m, fh, s, a)
 	putsattr(&x, s);
 	xput32(&x, 0UL);		/* no guard */
 	e = call(m, &x, &r);
-	if (e == 0 && a)
+	if (e == 0 && a) {
 		getwcc(&r, a);
+		if (r.err)
+			a->type = 0;	/* reply cut short: attributes unknown */
+	}
 	return e;
 }
 
@@ -430,29 +433,40 @@ nfs_read(m, fh, off, count, buf, got, eof, a)
 	struct u64 o;
 	u32 n;
 	u8 *p;
-	unsigned len;
+	unsigned len, total;
 	int e, have;
 
 	if (count > NFS_IOSIZE)
 		count = NFS_IOSIZE;
-	rpc_begin(&m->nfs, &x, P_READ);
-	putfh(&x, fh);
-	o.hi = 0;
-	o.lo = off;
-	xput64(&x, &o);
-	xput32(&x, (u32)count);
-	if ((e = call(m, &x, &r)) != 0)
-		return e;
-	have = getpostop(&r, a);
-	if (!have && a)
-		a->type = 0;
-	n = xget32(&r);
-	*eof = xget32(&r) != 0;
-	p = xgetref(&r, &len);
-	if (r.err || p == 0 || (u32)len != n || len > count)
-		return EPROTO_RPC;
-	memcpy(buf, p, len);
-	*got = len;
+	/*
+	 * A server may return fewer bytes than asked without being at the
+	 * end of the file; callers take a short count to mean the end.
+	 */
+	total = 0;
+	*eof = 0;
+	while (total < count && !*eof) {
+		rpc_begin(&m->nfs, &x, P_READ);
+		putfh(&x, fh);
+		o.hi = 0;
+		o.lo = off + total;
+		xput64(&x, &o);
+		xput32(&x, (u32)(count - total));
+		if ((e = call(m, &x, &r)) != 0)
+			return e;
+		have = getpostop(&r, a);
+		if (!have && a)
+			a->type = 0;
+		n = xget32(&r);
+		*eof = xget32(&r) != 0;
+		p = xgetref(&r, &len);
+		if (r.err || p == 0 || (u32)len != n || len > count - total)
+			return EPROTO_RPC;
+		if (len == 0)
+			break;
+		memcpy(buf + total, p, len);
+		total += len;
+	}
+	*got = total;
 	return 0;
 }
 

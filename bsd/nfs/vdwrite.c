@@ -19,7 +19,7 @@
  */
 #include "vd.h"
 
-#define NSPOOL		256	/* blocks awaiting an owner */
+#define NSPOOL		512	/* blocks awaiting their file or its size */
 #define NPEND		8	/* names awaiting a matching removal */
 #define NDW		16	/* inodes with data written */
 #define MAXENT		96	/* directory entries per block */
@@ -27,13 +27,15 @@
 #define PM_MAPPED	1
 #define PM_SPOOLED	2
 #define PM_CHAIN	4
+#define PM_ORPHAN	8		/* spooled with no known owner; may be stale */
+#define PM_KEPT		16		/* indirect block: the spool has the kernel's copy */
 
 struct pmap {			/* pool block map entry */
 	unsigned short ino, role, flags;
 	unsigned short gen;		/* generation of ino when mapped */
 };
 
-static int kinfd = -1, poolfd = -1, spoolfd = -1, ctl = -1;
+static int kinfd = -1, poolfd = -1, spoolfd = -1, indfd = -1, ctl = -1;
 static long nextpool = 1;	/* next pool index to hand out */
 static long chainidx;		/* outstanding free-list chain block */
 static long spooled[NSPOOL];
@@ -49,19 +51,66 @@ static struct pend {
 static unsigned dw[NDW];	/* data written since last inode write */
 static unsigned sizeok;		/* inode whose shadow was just written */
 
-/*
- * Blocks written while the kernel's inode was out of core, clamped to a
- * size that may be stale.  Their data stays in the spool file; the next
- * write of their inode rewrites them with the new size.
- */
-#define NREDO		64
-#define REDOSECS	60
-static struct redo {
-	long idx;
-	unsigned ino, lbn;
-	u32 when;
-} redo[NREDO];
 static u8 oldblk[DEV_BSIZE];
+
+/*
+ * The kernel's view of a file must not change under it.  While it writes
+ * a file, blocks it has not flushed yet exist only in its buffer cache,
+ * under the block numbers in its inode and indirect blocks.  If it reads
+ * one of those back from us (its copy was flushed and then invalidated or
+ * reused) and gets a map rebuilt from the server instead, the same file
+ * block has two addresses: one buffer is read stale and the other later
+ * overwrites newer data.  So an indirect block the kernel wrote is always
+ * read back as written (in the spool for a pool block, PM_KEPT; in the
+ * table below for an (ino, sub) block), and an inode is handed back with
+ * the size and block map the kernel last wrote while the file is in use.
+ */
+#define NIK		16	/* (ino, sub) indirect blocks kept */
+#define IKSECS		120
+static struct ikeep {
+	unsigned ino, sub, gen;
+	u32 when;
+} ik[NIK];
+
+#define NRW		64	/* files written recently */
+#define RWSECS		60
+static struct rwrec {
+	unsigned ino;
+	u32 when;
+} rw[NRW];
+
+static void
+rwmark(ino)
+	unsigned ino;
+{
+	struct rwrec *rp, *old;
+	int i;
+
+	old = &rw[0];
+	for (i = 0; i < NRW; i++) {
+		rp = &rw[i];
+		if (rp->ino == ino)
+			break;
+		if (rp->ino == 0 || rp->when < old->when)
+			old = rp;
+	}
+	if (i == NRW)
+		rp = old;
+	rp->ino = ino;
+	rp->when = vd_now();
+}
+
+static int
+rwrecent(ino)
+	unsigned ino;
+{
+	int i;
+
+	for (i = 0; i < NRW; i++)
+		if (rw[i].ino == ino)
+			return vd_now() - rw[i].when <= RWSECS;
+	return 0;
+}
 
 static long
 poolidx(bn)
@@ -168,8 +217,11 @@ vw_init(dir, unit, fd)
 	ctl = fd;
 	if ((e = openwork(dir, unit, "kin", &kinfd)) != 0 ||
 	    (e = openwork(dir, unit, "pool", &poolfd)) != 0 ||
-	    (e = openwork(dir, unit, "spool", &spoolfd)) != 0)
+	    (e = openwork(dir, unit, "spool", &spoolfd)) != 0 ||
+	    (e = openwork(dir, unit, "ind", &indfd)) != 0)
 		return e;
+	memset((char *)ik, 0, sizeof(ik));
+	memset((char *)rw, 0, sizeof(rw));
 	nextpool = 1;
 	chainidx = 0;
 	nspooled = 0;
@@ -288,6 +340,7 @@ spool(idx, buf)
 	fileat(spoolfd, idx * (long)DEV_BSIZE, (char *)buf, DEV_BSIZE, 1);
 	pget(idx, &pm);
 	pm.flags |= PM_SPOOLED;
+	pm.flags &= ~PM_ORPHAN;
 	pput(idx, &pm);
 	if ((pm.flags & PM_MAPPED) == 0)
 		return;
@@ -330,19 +383,45 @@ mapset(idx, ino, role)
 	if ((pm.flags & PM_MAPPED) && pm.ino == ino && pm.role == role &&
 	    pm.gen == itab_gen(ino) && (pm.flags & PM_SPOOLED) == 0)
 		return;
+	if ((pm.flags & PM_MAPPED) == 0 || pm.ino != ino || pm.role != role ||
+	    pm.gen != itab_gen(ino))
+		pm.flags &= ~PM_KEPT;
 	pm.ino = (unsigned short)ino;
 	pm.role = (unsigned short)role;
 	pm.gen = (unsigned short)itab_gen(ino);
 	pm.flags |= PM_MAPPED;
 	pm.flags &= ~PM_CHAIN;
 	pput(idx, &pm);
+	if ((pm.flags & (PM_SPOOLED|PM_ORPHAN)) == (PM_SPOOLED|PM_ORPHAN)) {
+		struct irec *r;
+		struct dinode sh;
+		unsigned mode;
+
+		/*
+		 * The spooled copy may be the last write of a removed file.
+		 * That is harmless in a regular file, whose own block follows
+		 * if it has not come yet, but must never be parsed as a
+		 * directory or become a symlink target.
+		 */
+		r = itab_get(ino);
+		mode = r ? (r->mode & IFMT) : 0;
+		if (r && (r->flags & IR_LOCAL)) {
+			shadow(ino, &sh, 0);
+			mode = sh.di_mode & IFMT;
+		}
+		if (mode != IFREG) {
+			pm.flags &= ~(PM_SPOOLED|PM_ORPHAN);
+			pput(idx, &pm);
+			return;
+		}
+	}
 	if (pm.flags & PM_SPOOLED) {
 		u8 buf[DEV_BSIZE];
 
 		fileat(spoolfd, idx * (long)DEV_BSIZE, (char *)buf, DEV_BSIZE, 0);
 		if (blockwrite(ino, role, buf, idx) != EAGAIN) {
 			pget(idx, &pm);
-			pm.flags &= ~PM_SPOOLED;
+			pm.flags &= ~(PM_SPOOLED|PM_ORPHAN);
 			pput(idx, &pm);
 			unspool(idx);
 		}
@@ -351,79 +430,75 @@ mapset(idx, ino, role)
 
 /* ---- data, symlinks, indirect blocks ---- */
 
-static void
-redoadd(idx, ino, lbn, buf)
-	long idx;
-	unsigned ino, lbn;
-	u8 *buf;
-{
-	struct redo *rp, *old;
-	u32 now;
-	int i;
-
-	now = vd_now();
-	old = &redo[0];
-	for (i = 0; i < NREDO; i++) {
-		rp = &redo[i];
-		if (rp->idx == idx)
-			break;
-		if (rp->when < old->when)
-			old = rp;
-	}
-	if (i == NREDO)
-		rp = old;
-	fileat(spoolfd, idx * (long)DEV_BSIZE, (char *)buf, DEV_BSIZE, 1);
-	rp->idx = idx;
-	rp->ino = ino;
-	rp->lbn = lbn;
-	rp->when = now;
-}
-
-static int datawrite();
-
-/* The inode of ino was just written: rewrite its clamped blocks. */
-static void
-redorun(ino)
-	unsigned ino;
-{
-	struct redo *rp;
-	struct pmap pm;
-	u8 buf[DEV_BSIZE];
-	u32 now;
-	int i;
-
-	now = vd_now();
-	for (i = 0; i < NREDO; i++) {
-		rp = &redo[i];
-		if (rp->idx == 0)
-			continue;
-		if (now - rp->when > REDOSECS) {
-			rp->idx = 0;
-			continue;
-		}
-		if (rp->ino != ino)
-			continue;
-		pget(rp->idx, &pm);
-		if ((pm.flags & PM_MAPPED) && pm.ino == ino && pm.role == rp->lbn &&
-		    pm.gen == itab_gen(ino) &&
-		    fileat(spoolfd, rp->idx * (long)DEV_BSIZE, (char *)buf,
-		    DEV_BSIZE, 0) >= 0) {
-			if (vd_debug)
-				syslog(LOG_DEBUG, "ino %u lbn %u: rewritten",
-				    ino, rp->lbn);
-			(void)datawrite(ino, rp->lbn, buf, 0L);
-		}
-		rp->idx = 0;
-	}
-}
-
 /*
  * Write file block lbn to the server, clamped to the file size the kernel
  * has.  If the kernel no longer has the inode in core, the shadow may lag
  * behind: the new size can still be in a delayed write of the inode block.
  * A pool block (idx) that reaches past the shadow's size is then written
- * clamped and also kept, to be rewritten when that inode block arrives.
+ * clamped and EAGAIN is returned, so that the caller also spools it; it is
+ * replayed in full when that inode block arrives (inowrite: replay).
  */
+/*
+ * Write-behind.  The kernel hands over one 1 KB block per request, and a
+ * round trip to the server costs the same whatever its size (on a slow
+ * or emulated machine, tens of milliseconds), so adjacent blocks of one
+ * file are gathered and sent as one WRITE.  Everything else the daemon
+ * does that could see the difference flushes first: any read, any inode,
+ * directory, indirect or symlink block, and going idle.
+ */
+static struct {
+	unsigned ino, gen;
+	u32 off;
+	unsigned len;			/* 0: empty */
+	u8 data[NFS_IOSIZE];
+} wb;
+
+void
+vw_flush()
+{
+	struct irec *r;
+	struct nfsfh fh;
+	struct nfsattr a;
+	unsigned done, pos, ino;
+	int e;
+
+	if (wb.len == 0)
+		return;
+	ino = wb.ino;
+	r = itab_get(ino);
+	if (r == 0 || (r->flags & IR_LOCAL) || wb.gen != itab_gen(ino)) {
+		wb.len = 0;		/* the file is gone */
+		return;
+	}
+	vd_recfh(r, &fh);
+	a.type = 0;
+	for (pos = 0; pos < wb.len; pos += done) {
+		a.type = 0;
+		e = nfs_write(&vd_mnt, &fh, wb.off + pos, wb.len - pos,
+		    wb.data + pos, &done, &a);
+		if (e == 0 && done == 0)
+			e = EIO;
+		if (e) {
+			syslog(LOG_ERR, "write ino %u: %s", ino, nfs_strerror(e));
+			break;
+		}
+	}
+	wb.len = 0;
+	r = itab_get(ino);
+	if (r && a.type) {
+		itab_setattr(r, &a);
+		itab_put(ino, r);
+	}
+	vd_rcinval(ino);
+}
+
+/* Anything waiting to be sent? */
+int
+vw_dirty()
+{
+	return wb.len != 0;
+}
+
 static int
 datawrite(ino, lbn, buf, idx)
 	unsigned ino, lbn;
@@ -431,13 +506,11 @@ datawrite(ino, lbn, buf, idx)
 	long idx;
 {
 	struct irec *r;
-	struct nfsfh fh;
-	struct nfsattr a;
 	struct dinode sh;
 	long size;
 	u32 off;
-	unsigned n, done, pos;
-	int e;
+	unsigned n;
+	int keep;
 
 	r = itab_get(ino);
 	if (r == 0)
@@ -446,6 +519,7 @@ datawrite(ino, lbn, buf, idx)
 		return EAGAIN;		/* not created on the server yet */
 	size = kernsize(ino);
 	off = (u32)lbn * DEV_BSIZE;
+	keep = 0;
 	if (size < 0) {
 		shadow(ino, &sh, 0);
 		size = sh.di_mode ? sh.di_size : (long)r->size;
@@ -453,33 +527,29 @@ datawrite(ino, lbn, buf, idx)
 			if (vd_debug)
 				syslog(LOG_DEBUG, "ino %u lbn %u: kept for "
 				    "inode (size %ld)", ino, lbn, size);
-			redoadd(idx, ino, lbn, buf);
+			keep = EAGAIN;
 		}
 	}
 	if ((long)off >= size)
-		return 0;		/* beyond the kernel's end of file */
+		return keep;		/* beyond the kernel's end of file */
 	n = DEV_BSIZE;
 	if (size - (long)off < (long)DEV_BSIZE)
 		n = (unsigned)(size - (long)off);
-	vd_recfh(r, &fh);
-	for (pos = 0; pos < n; pos += done) {
-		a.type = 0;
-		e = nfs_write(&vd_mnt, &fh, off + pos, n - pos, buf + pos, &done, &a);
-		if (e == 0 && done == 0)
-			e = EIO;
-		if (e) {
-			syslog(LOG_ERR, "write ino %u: %s", ino, nfs_strerror(e));
-			return e;
-		}
+	if (wb.len && (wb.ino != ino || wb.gen != itab_gen(ino) ||
+	    wb.off + wb.len != off || wb.len + n > NFS_IOSIZE))
+		vw_flush();
+	if (wb.len == 0) {
+		wb.ino = ino;
+		wb.gen = itab_gen(ino);
+		wb.off = off;
 	}
-	r = itab_get(ino);
-	if (r && a.type) {
-		itab_setattr(r, &a);
-		itab_put(ino, r);
-	}
-	vd_rcinval(ino);
+	memcpy((char *)wb.data + wb.len, (char *)buf, n);
+	wb.len += n;
+	if (wb.len == NFS_IOSIZE || n < DEV_BSIZE)
+		vw_flush();		/* full, or the end of the file */
 	datamark(ino);
-	return 0;
+	rwmark(ino);
+	return keep;
 }
 
 static void bindnew();
@@ -525,14 +595,43 @@ linkwrite(ino, buf)
 }
 
 static int
-indwrite(ino, sub, buf)
+indwrite(ino, sub, buf, idx)
 	unsigned ino, sub;
 	u8 *buf;
+	long idx;
 {
+	struct pmap pm;
+	struct ikeep *kp, *old;
 	daddr_t *ap;
 	u32 base;
 	unsigned j, k;
+	int i;
 
+	/* Keep the kernel's copy: it is what a later read must return. */
+	if (idx > 0) {
+		fileat(spoolfd, idx * (long)DEV_BSIZE, (char *)buf, DEV_BSIZE, 1);
+		pget(idx, &pm);
+		pm.flags |= PM_KEPT;
+		pput(idx, &pm);
+	} else {
+		old = &ik[0];
+		for (i = 0; i < NIK; i++) {
+			kp = &ik[i];
+			if (kp->ino == ino && kp->sub == sub)
+				break;
+			if (kp->ino == 0 || kp->when < old->when)
+				old = kp;
+		}
+		if (i == NIK)
+			kp = old;
+		kp->ino = ino;
+		kp->sub = sub;
+		kp->gen = itab_gen(ino);
+		kp->when = vd_now();
+		fileat(indfd, (long)(kp - ik) * (long)DEV_BSIZE, (char *)buf,
+		    DEV_BSIZE, 1);
+	}
+	rwmark(ino);
 	ap = (daddr_t *)buf;
 	if (sub == VD_IND2) {
 		for (k = 0; k < NINDIR; k++)
@@ -547,6 +646,29 @@ indwrite(ino, sub, buf)
 	for (j = 0; j < NINDIR; j++)
 		if (poolidx(ap[j]) > 0 && base + j < VD_MAXLBN)
 			mapset(poolidx(ap[j]), ino, (unsigned)(base + j));
+	return 0;
+}
+
+/* The kernel's copy of indirect block (ino, sub), if it wrote one lately. */
+int
+vw_indread(ino, sub, buf)
+	unsigned ino, sub;
+	u8 *buf;
+{
+	struct ikeep *kp;
+	int i;
+
+	for (i = 0; i < NIK; i++) {
+		kp = &ik[i];
+		if (kp->ino != ino || kp->sub != sub)
+			continue;
+		if (kp->gen != itab_gen(ino) || vd_now() - kp->when > IKSECS) {
+			kp->ino = 0;
+			return 0;
+		}
+		return fileat(indfd, (long)i * (long)DEV_BSIZE, (char *)buf,
+		    DEV_BSIZE, 0) >= 0;
+	}
 	return 0;
 }
 
@@ -609,34 +731,37 @@ dotname(e)
 	    (e->namlen == 2 && e->name[1] == '.'));
 }
 
-/* Replay blocks of ino that were spooled before it reached the server. */
+/*
+ * Replay blocks of ino that were spooled before it reached the server, or
+ * before the kernel's size for it did.  Entries leave the list as they are
+ * replayed (the last one moves into their place), so step only past those
+ * that stay.
+ */
 static void
 replay(ino)
 	unsigned ino;
 {
 	struct pmap pm;
-	long list[NSPOOL];
-	int i, n;
+	long idx;
+	int i;
 
-	n = nspooled;
-	for (i = 0; i < n; i++)
-		list[i] = spooled[i];
-	for (i = 0; i < n; i++) {
-		pget(list[i], &pm);
+	for (i = 0; i < nspooled; ) {
+		idx = spooled[i];
+		pget(idx, &pm);
 		if ((pm.flags & PM_MAPPED) && pm.ino == ino &&
 		    pm.gen != itab_gen(ino)) {
 			/* data of an earlier file with this number */
 			pm.flags = 0;
-			pput(list[i], &pm);
-			unspool(list[i]);
-			continue;
-		}
-		if ((pm.flags & PM_MAPPED) && pm.ino == ino &&
+			pput(idx, &pm);
+			unspool(idx);
+		} else if ((pm.flags & PM_MAPPED) && pm.ino == ino &&
 		    (pm.flags & PM_SPOOLED)) {
 			pm.flags &= ~PM_MAPPED;
-			pput(list[i], &pm);
-			mapset(list[i], ino, pm.role);
+			pput(idx, &pm);
+			mapset(idx, ino, pm.role);
 		}
+		if (i < nspooled && spooled[i] == idx)
+			i++;
 	}
 }
 
@@ -793,6 +918,63 @@ added(dir, dfh, name, ino, oldino)
 	bindnew(ino, &fh, &a, dir);
 }
 
+/*
+ * A file removed while a process still has it open (ld and many others
+ * create a scratch file and unlink it at once) must stay usable until the
+ * last close.  On the server it is renamed out of the way instead, and
+ * removed when the kernel frees the inode.
+ */
+#define NSILLY		16
+static struct silly {
+	unsigned ino, dir;
+	char name[20];
+} silly[NSILLY];
+static unsigned sillyseq;
+
+/* Reference count of the kernel's in-core inode, -1 if not in core. */
+static int
+kerncount(ino)
+	unsigned ino;
+{
+	struct nfsd_owner o;
+
+	memset((char *)&o, 0, sizeof(o));
+	o.no_blkno = 0;
+	o.no_ino = (ino_t)ino;
+	if (ioctl(ctl, NFSDIOCOWNER, (char *)&o) < 0 || o.no_ino == 0)
+		return -1;
+	return (int)o.no_count;
+}
+
+/* The kernel is done with ino: remove what was kept for it. */
+static void
+sillydone(ino)
+	unsigned ino;
+{
+	struct irec *r;
+	struct nfsfh dfh;
+	unsigned dir;
+	int i, e;
+
+	for (i = 0; i < NSILLY; i++) {
+		if (silly[i].ino != ino)
+			continue;
+		dir = silly[i].dir;
+		silly[i].ino = 0;
+		r = itab_get(dir);
+		if (r == 0)
+			continue;
+		vd_recfh(r, &dfh);
+		e = nfs_remove(&vd_mnt, &dfh, silly[i].name);
+		if (e && e != ENOENT)
+			syslog(LOG_ERR, "remove %s: %s", silly[i].name,
+			    nfs_strerror(e));
+		if (vd_debug)
+			syslog(LOG_DEBUG, "ino %u closed: %s removed", ino,
+			    silly[i].name);
+	}
+}
+
 /* A name disappeared from directory dir. */
 static void
 removed(dir, dfh, name, ino)
@@ -836,6 +1018,30 @@ removed(dir, dfh, name, ino)
 			if (pend[i].ino == ino)
 				pend[i].dir = 0;
 		return;			/* never reached the server */
+	}
+	/*
+	 * unlink() itself holds one reference while it writes the
+	 * directory; any more means the file is open somewhere.
+	 */
+	if (r && (r->mode & IFMT) != IFDIR && r->nlink <= 1 &&
+	    kerncount(ino) >= 2) {
+		for (i = 0; i < NSILLY && silly[i].ino; i++)
+			;
+		if (i < NSILLY) {
+			sprintf(silly[i].name, ".nfs%u.%u", ino, ++sillyseq);
+			vw_flush();
+			e = nfs_rename(&vd_mnt, dfh, name, dfh, silly[i].name);
+			if (e == 0) {
+				silly[i].ino = ino;
+				silly[i].dir = dir;
+				if (vd_debug)
+					syslog(LOG_DEBUG, "ino %u open: %s kept "
+					    "as %s", ino, name, silly[i].name);
+				return;
+			}
+		} else
+			syslog(LOG_WARNING, "%s removed while open; too many "
+			    "such files to keep it", name);
 	}
 	if (r && (r->mode & IFMT) == IFDIR)
 		e = nfs_rmdir(&vd_mnt, dfh, name);
@@ -966,12 +1172,16 @@ blockwrite(ino, sub, buf, idx)
 		shadow(ino, &sh, 0);
 		mode = sh.di_mode & IFMT;
 	}
-	if (sub >= VD_MAXLBN)
-		return indwrite(ino, sub, buf);
+	if (sub >= VD_MAXLBN) {
+		vw_flush();
+		return indwrite(ino, sub, buf, idx);
+	}
 	switch (mode) {
 	case IFDIR:
+		vw_flush();
 		return dirwrite(ino, sub, buf);
 	case IFLNK:
+		vw_flush();
 		e = linkwrite(ino, buf);
 		break;
 	default:
@@ -981,6 +1191,81 @@ blockwrite(ino, sub, buf, idx)
 	if (e == EAGAIN && idx > 0)
 		spool(idx, buf);
 	return e == EAGAIN ? EAGAIN : 0;
+}
+
+/* The kernel's copy of indirect block bn into buf, if we have it. */
+static int
+keptind(bn, ino, sub, buf)
+	daddr_t bn;
+	unsigned ino, sub;
+	u8 *buf;
+{
+	struct pmap pm;
+	long idx;
+
+	if (bn == 0)
+		return 0;
+	idx = poolidx(bn);
+	if (idx <= 0)
+		return vw_indread(ino, sub, buf);
+	pget(idx, &pm);
+	if ((pm.flags & PM_MAPPED) == 0 || (pm.flags & PM_KEPT) == 0 ||
+	    pm.ino != ino || pm.role != sub || pm.gen != itab_gen(ino))
+		return 0;
+	return fileat(spoolfd, idx * (long)DEV_BSIZE, (char *)buf,
+	    DEV_BSIZE, 0) >= 0;
+}
+
+/*
+ * Does the file a map entry names still have block bn there, as far as
+ * the kernel has told us?  The kernel reuses freed blocks at once, and a
+ * write for the new owner can come while that file's inode is out of core
+ * and before the inode or indirect block that names the block.  "No" is
+ * always safe: the block is kept until its owner is named.
+ */
+static int
+mapvalid(pm, bn)
+	struct pmap *pm;
+	daddr_t bn;
+{
+	static u8 ib[DEV_BSIZE];
+	struct dinode sh;
+	daddr_t *ap;
+	u32 lbn, k;
+
+	if (itab_get(pm->ino) == 0 || pm->gen != itab_gen(pm->ino))
+		return 0;
+	shadow(pm->ino, &sh, 0);
+	if (sh.di_mode == 0)
+		return 0;
+	ap = (daddr_t *)ib;
+	if (pm->role == VD_IND1)
+		return sh.di_addr[NDADDR] == bn;
+	if (pm->role == VD_IND2)
+		return sh.di_addr[NDADDR + 1] == bn;
+	if (pm->role > VD_MAXLBN) {		/* single under the double */
+		if (sh.di_addr[NDADDR + 1] == 0)
+			return 0;
+		if (!keptind(sh.di_addr[NDADDR + 1], pm->ino, VD_IND2, ib))
+			return 1;
+		return ap[VD_IND2 - 1 - pm->role] == bn;
+	}
+	lbn = pm->role;
+	if (lbn < NDADDR)
+		return sh.di_addr[lbn] == bn;
+	if (lbn < NDADDR + NINDIR) {
+		if (sh.di_addr[NDADDR] == 0)
+			return 0;
+		if (!keptind(sh.di_addr[NDADDR], pm->ino, VD_IND1, ib))
+			return 1;
+		return ap[lbn - NDADDR] == bn;
+	}
+	k = (lbn - NDADDR - NINDIR) / NINDIR;
+	if (!keptind(sh.di_addr[NDADDR + 1], pm->ino, VD_IND2, ib))
+		return 1;
+	if (!keptind(ap[k], pm->ino, (unsigned)(VD_IND2 - 1 - k), ib))
+		return 1;
+	return ap[(lbn - NDADDR - NINDIR) % NINDIR] == bn;
 }
 
 static int
@@ -995,45 +1280,62 @@ poolwrite(bn, buf)
 
 	idx = poolidx(bn);
 	pget(idx, &pm);
-	if ((pm.flags & PM_MAPPED) == 0) {
-		memset((char *)&o, 0, sizeof(o));
-		o.no_blkno = bn;
-		if (ioctl(ctl, NFSDIOCOWNER, (char *)&o) == 0 && o.no_ino) {
-			if (o.no_slot >= 0)
-				role = (unsigned)o.no_slot;
-			else if (o.no_slot == -1)
-				role = VD_IND1;
-			else if (o.no_slot == -2)
-				role = VD_IND2;
-			else {
-				syslog(LOG_ERR, "file too large for NFS disk");
-				return EFBIG;
-			}
+	/*
+	 * Ask the kernel first.  The map entry may be left from a removed
+	 * file: the kernel reuses freed blocks at once (compiler temporary
+	 * files), and the data of the new file can come before the inode
+	 * block that names the block.
+	 */
+	memset((char *)&o, 0, sizeof(o));
+	o.no_blkno = bn;
+	if (ioctl(ctl, NFSDIOCOWNER, (char *)&o) == 0 && o.no_ino) {
+		if (o.no_slot >= 0)
+			role = (unsigned)o.no_slot;
+		else if (o.no_slot == -1)
+			role = VD_IND1;
+		else if (o.no_slot == -2)
+			role = VD_IND2;
+		else {
+			syslog(LOG_ERR, "file too large for NFS disk");
+			return EFBIG;
+		}
+		if ((pm.flags & PM_MAPPED) == 0 || pm.ino != o.no_ino ||
+		    pm.role != role || pm.gen != itab_gen(o.no_ino)) {
+			if ((pm.flags & PM_MAPPED) && (pm.flags & PM_SPOOLED))
+				unspool(idx);
 			pm.ino = o.no_ino;
 			pm.role = (unsigned short)role;
 			pm.gen = (unsigned short)itab_gen(o.no_ino);
 			pm.flags = PM_MAPPED;
 			pput(idx, &pm);
-		} else {
-			spool(idx, buf);	/* owner learned later */
-			return 0;
 		}
-	}
-	if (pm.gen != itab_gen(pm.ino)) {
-		/* a late write of a file that is gone; its number is reused */
+	} else if ((pm.flags & PM_MAPPED) == 0) {
+		spool(idx, buf);	/* owner learned later */
+		return 0;
+	} else if (!mapvalid(&pm, bn)) {
+		/*
+		 * The mapped file no longer has the block and no inode in
+		 * core has it: either a late write of that file, or the first
+		 * write of a new one whose inode block is still to come.
+		 * Keep it.
+		 */
 		if (vd_debug)
-			syslog(LOG_DEBUG, "block %ld: stale, ino %u reused",
+			syslog(LOG_DEBUG, "block %ld: no longer in ino %u, kept",
 			    (long)bn, pm.ino);
 		if (pm.flags & PM_SPOOLED)
 			unspool(idx);
 		pm.flags = 0;
+		pput(idx, &pm);
+		spool(idx, buf);
+		pget(idx, &pm);
+		pm.flags |= PM_ORPHAN;
 		pput(idx, &pm);
 		return 0;
 	}
 	if (blockwrite(pm.ino, pm.role, buf, idx) == EAGAIN)
 		return 0;
 	if (pm.flags & PM_SPOOLED) {
-		pm.flags &= ~PM_SPOOLED;
+		pm.flags &= ~(PM_SPOOLED|PM_ORPHAN);
 		pput(idx, &pm);
 		unspool(idx);
 	}
@@ -1051,6 +1353,7 @@ inowrite(bn, buf)
 	struct nfsfh fh;
 	struct nfsattr a;
 	unsigned ino, k;
+	long ks;
 	int i, e, wrote;
 
 	wrote = 0;
@@ -1060,6 +1363,7 @@ inowrite(bn, buf)
 		shadow(ino, &sh, 0);
 		if (memcmp((char *)&sh, (char *)nd, sizeof(sh)) == 0)
 			continue;
+		ks = kernsize(ino);
 		r = itab_get(ino);
 		if (r == 0) {
 			/* any free number may be reused, pool or not */
@@ -1067,6 +1371,7 @@ inowrite(bn, buf)
 				itab_newlocal(ino, nd->di_mode, nd->di_uid,
 				    nd->di_gid, nd->di_nlink);
 		} else if (nd->di_mode == 0) {
+			sillydone(ino);
 			itab_drop(ino);		/* freed after its last unlink */
 		} else if ((r->flags & IR_LOCAL) == 0 && nd->di_nlink > 0) {
 			sa.mask = 0;
@@ -1090,9 +1395,16 @@ inowrite(bn, buf)
 				sa.gid = (u32)nd->di_gid;
 			}
 			(void)dataclear(ino);
+			/*
+			 * Not while the kernel holds the inode with another
+			 * size: this copy is then an old one, written back
+			 * with a neighbour's inode, and setting its size
+			 * would cut off data written since.
+			 */
 			if ((nd->di_mode & IFMT) == IFREG && sh.di_mode &&
 			    nd->di_size != sh.di_size &&
-			    (u32)nd->di_size != r->size) {
+			    (u32)nd->di_size != r->size &&
+			    (ks < 0 || ks == nd->di_size)) {
 				sa.mask |= SA_SIZE;
 				sa.size.hi = 0;
 				sa.size.lo = (u32)nd->di_size;
@@ -1115,7 +1427,19 @@ inowrite(bn, buf)
 					    (int)sa.mode, (long)sa.uid, (long)sa.size.lo);
 				vd_recfh(r, &fh);
 				a.type = 0;
-				if ((e = nfs_setattr(&vd_mnt, &fh, &sa, &a)) != 0)
+				e = nfs_setattr(&vd_mnt, &fh, &sa, &a);
+				if (e && (sa.mask & (SA_UID | SA_GID)) &&
+				    (sa.mask & ~(SA_UID | SA_GID))) {
+					/*
+					 * The server refuses the change of
+					 * owner (we are not root there); do
+					 * not lose the mode or size with it.
+					 */
+					sa.mask &= ~(SA_UID | SA_GID);
+					a.type = 0;
+					e = nfs_setattr(&vd_mnt, &fh, &sa, &a);
+				}
+				if (e != 0)
 					syslog(LOG_WARNING,
 					    "setattr ino %u mask %o: %s", ino,
 					    sa.mask, nfs_strerror(e));
@@ -1133,6 +1457,8 @@ inowrite(bn, buf)
 		 * blocks: datawrite() clamps them to this size.
 		 */
 		shadow(ino, nd, 1);
+		if ((nd->di_mode & IFMT) == IFREG)
+			rwmark(ino);
 		sizeok = ino;
 		/* The block map names the owners of new blocks. */
 		if (nd->di_mode != 0) {
@@ -1144,9 +1470,34 @@ inowrite(bn, buf)
 			if (poolidx(nd->di_addr[NDADDR + 1]) > 0)
 				mapset(poolidx(nd->di_addr[NDADDR + 1]), ino, VD_IND2);
 			replay(ino);	/* blocks spooled for this inode */
-			redorun(ino);	/* blocks clamped to the old size */
 		}
 		sizeok = 0;
+		/*
+		 * A file the kernel wrote carries the kernel's modification
+		 * time, as on a local disk, not the server's time of the
+		 * last WRITE: the two clocks differ, and ld compares an
+		 * archive's time with the one ranlib stored inside it.
+		 * Last, so that no WRITE of ours moves it again.
+		 */
+		if ((nd->di_mode & IFMT) == IFREG && nd->di_nlink > 0 &&
+		    nd->di_mtime != 0 && (ks < 0 || ks == nd->di_size)) {
+			vw_flush();
+			r = itab_get(ino);
+			if (r && (r->flags & IR_LOCAL) == 0 &&
+			    rwrecent(ino) && (u32)nd->di_mtime != r->mtime) {
+				sa.mask = SA_MTIME;
+				sa.mtime = (u32)nd->di_mtime;
+				vd_recfh(r, &fh);
+				a.type = 0;
+				if (nfs_setattr(&vd_mnt, &fh, &sa, &a) == 0) {
+					r = itab_get(ino);
+					if (r && a.type) {
+						itab_setattr(r, &a);
+						itab_put(ino, r);
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -1161,7 +1512,9 @@ vw_write(bn, buf)
 	if (bn < 2)
 		return 0;
 	if (bn < VD_ISIZE) {
+		vw_flush();
 		inowrite(bn, buf);
+		vw_flush();
 		return 0;
 	}
 	if (VD_ISPOOLBN(bn))
@@ -1199,7 +1552,9 @@ vw_poolread(bn, buf)
 		return 0;
 	}
 	pget(idx, &pm);
-	if (pm.flags & PM_SPOOLED)
+	if ((pm.flags & PM_SPOOLED) ||
+	    ((pm.flags & PM_MAPPED) && (pm.flags & PM_KEPT) &&
+	    pm.role >= VD_MAXLBN && pm.gen == itab_gen(pm.ino)))
 		return fileat(spoolfd, idx * (long)DEV_BSIZE, (char *)buf,
 		    DEV_BSIZE, 0) < 0 ? EIO : 0;
 	if (pm.flags & PM_MAPPED)
@@ -1214,25 +1569,44 @@ vw_inoread(bn, buf)
 	u8 *buf;
 {
 	struct dinode *dp;
-	unsigned ino;
-	int i;
-
 	struct dinode sh;
+	struct irec *r;
+	unsigned ino;
+	int i, k, pool;
 
 	dp = (struct dinode *)buf;
 	ino = (unsigned)((bn - 2) * INOPB + 1);
 	for (i = 0; i < INOPB; i++, ino++, dp++) {
+		shadow(ino, &sh, 0);
+		/*
+		 * A regular file the kernel wrote: keep its block map, and
+		 * while it is in use its size too (the server may not have
+		 * all of it yet).  See the comment at ik[].
+		 */
+		if (sh.di_mode != 0 && (sh.di_mode & IFMT) == IFREG &&
+		    (dp->di_mode & IFMT) == IFREG && sh.di_nlink > 0) {
+			pool = 0;
+			for (k = 0; k < NDADDR + 2; k++)
+				if (poolidx(sh.di_addr[k]) > 0)
+					pool = 1;
+			r = itab_get(ino);
+			if (r && (r->flags & IR_LOCAL))
+				*dp = sh;	/* exists only here so far */
+			else if (pool && (rwrecent(ino) ||
+			    sh.di_size == dp->di_size)) {
+				dp->di_size = sh.di_size;
+				for (k = 0; k < NDADDR + NIADDR; k++)
+					dp->di_addr[k] = sh.di_addr[k];
+			}
+		}
 		/*
 		 * An inode the kernel holds keeps the copy it has, not
 		 * this one: leave its shadow alone.  (The inode being
 		 * loaded is in the table too, but its shadow is either
 		 * empty or what it got last time.)
 		 */
-		if (kernsize(ino) >= 0) {
-			shadow(ino, &sh, 0);
-			if (sh.di_mode != 0)
-				continue;
-		}
+		if (kernsize(ino) >= 0 && sh.di_mode != 0)
+			continue;
 		shadow(ino, dp, 1);
 	}
 }
@@ -1246,6 +1620,11 @@ vw_idle()
 	int i, e;
 	long t;
 
+	vw_flush();
+	/* A kept file whose inode left the kernel without a freeing write. */
+	for (i = 0; i < NSILLY; i++)
+		if (silly[i].ino && kerncount(silly[i].ino) < 0)
+			sillydone(silly[i].ino);
 	t = (long)vd_now();
 	for (i = 0; i < NPEND; i++) {
 		if (pend[i].dir == 0 || t - (long)pend[i].when < 1)

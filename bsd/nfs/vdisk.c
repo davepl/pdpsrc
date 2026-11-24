@@ -64,13 +64,20 @@ vd_freshrec(ino, force)
 	return r;
 }
 
+/*
+ * Two chunks, so that reading two files in step (cmp, or a copy within
+ * the share) does not refetch a chunk for every block.
+ */
+#define NRC	2
 static struct rcache {
 	unsigned ino;
 	u32 off;
 	unsigned len;
 	u32 when;
+	u32 used;
 	u8 data[RCHUNK];
-} rc;
+} rcs[NRC];
+static u32 rcclock;
 
 /* ---- directory images ---- */
 
@@ -79,11 +86,11 @@ static struct dslot {
 	u32 size;		/* bytes, multiple of DIRBLKSIZ */
 	u32 built;		/* time built */
 	u32 mtime;		/* directory mtime when built */
-	unsigned age;
+	u32 age;
 	int kern;		/* holds blocks written by the kernel */
 	u32 kwhen;		/* time of the kernel's last write */
 } dslot[NDSLOT];
-static unsigned dage;
+static u32 dage;
 static int dfd = -1;		/* all images: slot i at i * DSLOTMAX */
 
 #define DBASE(ds)	((long)((ds) - dslot) * DSLOTMAX)
@@ -529,8 +536,11 @@ void
 vd_rcinval(ino)
 	unsigned ino;
 {
-	if (rc.ino == ino)
-		rc.ino = 0;
+	int i;
+
+	for (i = 0; i < NRC; i++)
+		if (rcs[i].ino == ino)
+			rcs[i].ino = 0;
 }
 
 /* ---- file data ---- */
@@ -544,33 +554,45 @@ fread_block(ino, r, lbn, buf)
 	u8 *buf;
 {
 	struct nfsfh fh;
+	struct rcache *rc;
 	u32 off, base;
 	unsigned got, n;
-	int e, eof;
+	int e, eof, i;
 
 	off = (u32)lbn * DEV_BSIZE;
 	memset((char *)buf, 0, DEV_BSIZE);
 	if (off >= r->size)
 		return 0;
 	base = off & ~(u32)(RCHUNK - 1);
-	if (rc.ino != ino || rc.off != base || vd_now() - rc.when > (u32)vd_actimeo) {
+	rc = &rcs[0];
+	for (i = 0; i < NRC; i++) {
+		if (rcs[i].ino == ino && rcs[i].off == base &&
+		    vd_now() - rcs[i].when <= (u32)vd_actimeo) {
+			rc = &rcs[i];
+			break;
+		}
+		if (rcs[i].ino == 0 || rcs[i].used < rc->used)
+			rc = &rcs[i];
+	}
+	if (i == NRC) {
 		vd_recfh(r, &fh);
-		rc.ino = 0;
-		e = nfs_read(&vd_mnt, &fh, base, RCHUNK, rc.data, &got, &eof,
+		rc->ino = 0;
+		e = nfs_read(&vd_mnt, &fh, base, RCHUNK, rc->data, &got, &eof,
 		    (struct nfsattr *)0);
 		if (e)
 			return e;
-		rc.ino = ino;
-		rc.off = base;
-		rc.len = got;
-		rc.when = vd_now();
+		rc->ino = ino;
+		rc->off = base;
+		rc->len = got;
+		rc->when = vd_now();
 	}
-	if (off - base >= rc.len)
+	rc->used = ++rcclock;
+	if (off - base >= rc->len)
 		return 0;
-	n = rc.len - (unsigned)(off - base);
+	n = rc->len - (unsigned)(off - base);
 	if (n > DEV_BSIZE)
 		n = DEV_BSIZE;
-	memcpy((char *)buf, (char *)rc.data + (off - base), n);
+	memcpy((char *)buf, (char *)rc->data + (off - base), n);
 	return 0;
 }
 
@@ -809,6 +831,8 @@ vd_read(bn, buf)
 
 	if (bn < 0)
 		return EINVAL;
+	if (!vd_readonly)
+		vw_flush();		/* reads see what was written */
 	if (bn == 0) {
 		memset((char *)buf, 0, DEV_BSIZE);
 		return 0;
@@ -827,8 +851,11 @@ vd_read(bn, buf)
 		memset((char *)buf, 0, DEV_BSIZE);	/* unused pool block */
 		return 0;
 	}
-	if (sub >= VD_MAXLBN)
+	if (sub >= VD_MAXLBN) {
+		if (!vd_readonly && vw_indread(ino, sub, buf))
+			return 0;
 		return indblock(ino, sub, buf);
+	}
 	r = itab_get(ino);
 	if (r == 0)
 		return ESTALE;

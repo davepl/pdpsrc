@@ -42,7 +42,15 @@ static int
 numopt(s)
 	char *s;
 {
-	return atoi(s);
+	long v;
+
+	/* seconds: a negative or huge value would never expire anything */
+	v = atol(s);
+	if (v < 0)
+		v = 0;
+	if (v > 3600)
+		v = 3600;
+	return (int)v;
 }
 
 static int
@@ -79,8 +87,13 @@ parseopts(o, flags)
 			rpc_cred.uid = (u32)atol(v);
 		else if (strcmp(p, "gid") == 0 && v)
 			rpc_cred.gid = (u32)atol(v);
-		else if (strcmp(p, "tmp") == 0 && v)
+		else if (strcmp(p, "tmp") == 0 && v) {
+			if (strlen(v) > 60) {
+				fprintf(stderr, "mount_nfs: tmp= path too long\n");
+				return -1;
+			}
 			tmpdir = v;
+		}
 		else if (strcmp(p, "debug") == 0)
 			debug = vd_debug = 1;
 		else if (strcmp(p, "nfs") == 0 || strcmp(p, "nfsv3") == 0 ||
@@ -116,7 +129,7 @@ serve()
 	struct nfsd_rep *rp;
 	fd_set rfds;
 	struct timeval tv;
-	long lastinval, laststat, t;
+	long lastinval, laststat, lastidle, t;
 	int n, e;
 	daddr_t bn;
 
@@ -137,11 +150,23 @@ serve()
 			sync();
 		}
 	}
-	lastinval = laststat = (long)time((time_t *)0);
+	lastinval = laststat = lastidle = (long)time((time_t *)0);
 	for (;;) {
 		if (stopping) {
+			if (!vd_readonly)
+				vw_flush();
 			syslog(LOG_NOTICE, "terminated; /dev/nfs%d now fails", unit);
 			exit(1);
+		}
+		if (!vd_readonly && vw_dirty()) {
+			/* Send gathered writes as soon as no request waits. */
+			FD_ZERO(&rfds);
+			FD_SET(ctlfd, &rfds);
+			tv.tv_sec = 0;
+			tv.tv_usec = 0;
+			if (select(ctlfd + 1, &rfds, (fd_set *)0, (fd_set *)0,
+			    &tv) <= 0)
+				vw_flush();
 		}
 		FD_ZERO(&rfds);
 		FD_SET(ctlfd, &rfds);
@@ -160,13 +185,26 @@ serve()
 			ioctl(ctlfd, NFSDIOCSTAT, (char *)&st);
 			laststat = t;
 		}
+		/*
+		 * Housekeeping (pending links, changed directories) at least
+		 * every few seconds even when requests never pause.
+		 */
 		if (n <= 0) {
 			vd_idle();
+			lastidle = t;
 			continue;
 		}
+		if (t - lastidle >= 5) {
+			if (!vd_readonly)
+				vw_idle();	/* pending names only */
+			lastidle = t;
+		}
 		n = read(ctlfd, (char *)reqbuf, sizeof(reqbuf));
-		if (n == 0)
+		if (n == 0) {
+			if (!vd_readonly)
+				vw_flush();
 			break;			/* unmounted */
+		}
 		if (n < 0) {
 			if (errno == EINTR || errno == EWOULDBLOCK)
 				continue;

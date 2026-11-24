@@ -215,5 +215,8 @@ void vw_inoread(daddr_t bn, u8 *buf);
 void vw_idle(void);
 void vw_freelist(struct fs *fs);
 long vw_ksize(unsigned ino);		/* -1 if unknown */
+int vw_indread(unsigned ino, unsigned sub, u8 *buf);
+void vw_flush(void);
+int vw_dirty(void);
 
 #endif
