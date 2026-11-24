@@ -30,6 +30,26 @@ else
 	    grep -s nfsdisk $CONF/Make.sys >/dev/null || {
 		echo "kernel.diff did not apply"; exit 1; }
 fi
+# The config's Makefile differs from machine to machine, so it is edited
+# in place: -DNFSDISK on the OPTS line, and the driver (about 2 KB of
+# text) in the first overlay the config does not use yet.
+if grep -s nfsdisk $CONF/Makefile >/dev/null; then
+	echo "$CONF/Makefile already has the driver"
+else
+	ov=
+	for n in 10 11 12 13 14 15; do
+		if grep -s "^OV$n=" $CONF/Makefile >/dev/null; then :; else
+			ov=$n; break
+		fi
+	done
+	test -n "$ov" || { echo "no free overlay in $CONF/Makefile"; exit 1; }
+	sed -e "s/^OPTS=.*/& -DNFSDISK/" -e "/^KERNOBJ=/i\\
+OV$ov=	nfsdisk.o" $CONF/Makefile.pre-nfs > $CONF/Makefile || exit 1
+	grep -s "DNFSDISK" $CONF/Makefile >/dev/null &&
+	    grep -s "^OV$ov=	nfsdisk.o" $CONF/Makefile >/dev/null || {
+		echo "could not edit $CONF/Makefile"; exit 1; }
+	echo "driver placed in overlay OV$ov"
+fi
 cp $here/nfsdisk.c sys/nfsdisk.c || exit 1
 cp $here/nfsdisk.h h/nfsdisk.h || exit 1
 

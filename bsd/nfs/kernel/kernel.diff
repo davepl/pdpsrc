@@ -78,29 +78,6 @@
   	fs = ip->i_fs;
   	if (badblock(fs, bno)) {
   		printf("bad block %D, ino %d\n", bno, ip->i_number);
-*** sys/MINERVA/Makefile	Mon Nov 23 01:45:51 2026
---- sys/MINERVA/Makefile	Mon Nov 23 01:46:00 2026
-***************
-*** 1,4 ****
-! OPTS=-DMINERVA -DUCB_METER -DINET -DUCB_CLIST
-  #
-  # Copyright (c) 1988 Regents of the University of California.
-  # All rights reserved.
---- 1,4 ----
-! OPTS=-DMINERVA -DUCB_METER -DINET -DUCB_CLIST -DNFSDISK
-  #
-  # Copyright (c) 1988 Regents of the University of California.
-  # All rights reserved.
-***************
-*** 76,81 ****
---- 76,82 ----
-  OV7=	ufs_disksubr.o ufs_dsort.o ufs_syscalls2.o kern_sig2.o
-  OV8=	mch_fpsim.o kern_sysctl.o kern_xxx.o ingreslock.o vm_text.o
-  OV9=	tmscp.o tmscpdump.o
-+ OV10=	nfsdisk.o
-  
-  KERNOBJ=${CONF} ${BASE} ${OV1} ${OV2} ${OV3} ${OV4} ${OV5} \
-  	${OV6} ${OV7} ${OV8} ${OV9} ${OV10} ${OV11} ${OV12} \
 *** sys/MINERVA/Make.sys	Mon Nov 23 01:45:51 2026
 --- sys/MINERVA/Make.sys	Mon Nov 23 01:46:00 2026
 ***************

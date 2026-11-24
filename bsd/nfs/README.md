@@ -174,8 +174,12 @@ This changes `/usr/src/sys` and does nothing else:
 
 * applies `kernel.diff`: device entries in `pdp/conf.c` (block major 13,
   character major 27), a three-line change to `free()` in
-  `sys/ufs_alloc.c`, `-DNFSDISK` in the config's `Makefile`, and the driver
-  in overlay OV10 in its `Make.sys`;
+  `sys/ufs_alloc.c`, and the driver's source and object in the config's
+  `Make.sys`;
+* edits the config's `Makefile` itself, because that file differs from
+  machine to machine: it adds `-DNFSDISK` to the `OPTS` line and puts
+  `nfsdisk.o` in the first overlay the config does not use yet (OV10 on
+  MINERVA), and says which one it chose;
 * copies the driver to `sys/nfsdisk.c` and its header to `h/nfsdisk.h`
   (which is also `/usr/include/sys/nfsdisk.h`);
 * creates `/dev/nfs0`–`nfs3` and `/dev/nfsd0`–`nfsd3`.
@@ -183,9 +187,12 @@ This changes `/usr/src/sys` and does nothing else:
 The four patched files are first saved as `*.pre-nfs`. Running the script
 again is safe: it re-copies the driver and header but patches only once.
 `kernel.diff` was made against MINERVA's config; on another config the
-script stops with "kernel.diff did not apply" if that config's `Makefile` or
-`Make.sys` differs, and you have to add the two changes by hand. Majors 13
-and 27 are free on a stock 2.11BSD tree.
+script stops with "kernel.diff did not apply" if that config's `Make.sys`
+differs, and you have to add `nfsdisk.c` and `nfsdisk.o` to it by hand.
+Majors 13 and 27 are free on a stock 2.11BSD tree.
+
+A machine without a floating-point unit must keep `-DFPSIM` on its `OPTS`
+line; the script only appends to that line and leaves the rest alone.
 
 ### 3. Build the kernel
 
@@ -195,7 +202,7 @@ make
 ```
 
 If the link step says an overlay is too big, move `nfsdisk.o` to another
-overlay with room in `Make.sys`.
+overlay with room in the config's `Makefile`.
 
 ### 4. Install the kernel and reboot
 
@@ -385,5 +392,7 @@ messages, and `rm -r` of the copy removed everything on the server.
 same place on the PDP-11 by FTP, and `tools/pdp "commands"` runs a shell
 command line there as root over telnet and prints its output and exit code.
 Both need `PDP_PASS` set to the PDP's root password; `PDP_HOST` defaults to
-192.168.1.26 and `PDPT` sets the `pdp` timeout in seconds. They use `curl`
-and `expect`, which ship with macOS.
+192.168.1.26, `PDPT` sets the `pdp` timeout in seconds, and `PDPL` sets how
+long `pdp` waits for the login prompt (30 seconds unless set; a machine
+with slow name lookups may need more). They use `curl` and `expect`, which
+ship with macOS.

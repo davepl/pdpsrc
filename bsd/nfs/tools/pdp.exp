@@ -2,10 +2,13 @@
 # pdp "shell commands" : run as root on the PDP-11 via telnet (/bin/sh). PDPT=seconds timeout.
 set timeout 300
 if {[info exists env(PDPT)]} { set timeout $env(PDPT) }
+# PDPL=seconds to wait for the login prompt (telnetd can be slow to answer)
+set lt 30
+if {[info exists env(PDPL)]} { set lt $env(PDPL) }
 set cmd [join $argv " "]
 log_user 0
 spawn telnet $env(PDP_HOST)
-expect -timeout 30 "login:" { send "root\r" } timeout { puts "*** no login prompt"; exit 125 }
+expect -timeout $lt "login:" { send "root\r" } timeout { puts "*** no login prompt"; exit 125 }
 expect -timeout 30 "assword:" { send "$env(PDP_PASS)\r" } timeout { puts "*** no password prompt"; exit 125 }
 expect -timeout 30 "pdpfetch" {} timeout {}
 sleep 1
