@@ -1,0 +1,8 @@
+# Directories shared by nfsd(8).  See bsd/nfsd/README.md.
+#
+#	/path  [-option[,option...]]  [host | network/bits] ...
+#
+# Options: ro (default), rw, root, mapall=uid[:gid], resvport.
+#
+#/usr/src
+#/usr/dave	-rw,mapall=100:10	10.1.2.0/24
