@@ -39,8 +39,13 @@ So `mount(2)`, `umount(2)`, namei, `stat`, `ls -i`, `pwd`, `exec`, `df` and
 existing kernel code is a three-line early return in `free()`, and the
 driver lives in its own overlay.
 
-Kernel cost on MINERVA: base text +64 bytes (56,832 of 57,344), new overlay
-2,240 bytes, data/bss +88 bytes.
+Kernel cost, measured by building the same kernel with and without
+`-DNFSDISK`: base text +64 to +128 bytes (it is rounded to 64-byte clicks;
+MINERVA's is 56,832 of 57,344), a new overlay of 2,240 bytes, data +42
+bytes and bss +64 bytes. The data is the two device-table entries in
+`conf.c` (12 and 18 bytes) and 12 bytes in the driver; the bss is the
+driver's table of four units at 16 bytes each. The driver uses no sockets
+and no mbufs: all networking is in the `mount_nfs` process.
 
 ### Read-write (experimental)
 
