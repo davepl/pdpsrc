@@ -421,7 +421,10 @@ def main():
             exps.append(u.opaque().decode())
             while u.u32():
                 u.opaque()
-        check('mount %s: export list has %s' % (kind, export), export in exps, exps)
+        # the path under test may be a subdirectory of an exported one
+        check('mount %s: export list covers %s' % (kind, export),
+              any(export == e or e == '/' or export.startswith(e + '/')
+                  for e in exps), exps)
         u = mn.call(1, Pack().opaque(export).b)
         st = u.u32()
         check('mount %s: MNT %s' % (kind, export), st == 0, st)
