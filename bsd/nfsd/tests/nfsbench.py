@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Throughput of nfsd: write a file, read it back, compare.
 
-    nfsbench.py [-u uid] [-g gid] [-n kilobytes] host /export
+    nfsbench.py [-u uid] [-g gid] [-n kilobytes] [-p port] host /export
 """
 import getopt, os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -9,16 +9,17 @@ import nfstest as t
 
 
 def main():
-    opts, args = getopt.getopt(sys.argv[1:], 'u:g:n:')
+    opts, args = getopt.getopt(sys.argv[1:], 'u:g:n:p:')
     o = dict(opts)
     host, export = args
     uid, gid = int(o.get('-u', os.getuid())), int(o.get('-g', os.getgid()))
     size = int(o.get('-n', 1024)) * 1024
-    mn = t.Rpc(host, 2049, t.MNT, 3, uid, gid)
+    port = int(o.get('-p', 2049))
+    mn = t.Rpc(host, port, t.MNT, 3, uid, gid)
     u = mn.call(1, t.Pack().opaque(export).b)
     assert u.u32() == 0, 'mount refused'
     root = u.opaque()
-    n = t.Nfs(t.Rpc(host, 2049, t.NFS, 3, uid, gid))
+    n = t.Nfs(t.Rpc(host, port, t.NFS, 3, uid, gid))
     io = n.fsinfo(root)[1][0]
     name = 'nfsbench.%d' % os.getpid()
     st, f, a = n.create(root, name, mode=0o644)

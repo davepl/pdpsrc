@@ -6,7 +6,7 @@
  * port 2049.  NFS is served over TCP; the portmapper and MOUNT are also
  * answered over UDP, which some clients use for them by default.
  *
- *	nfsd [-d] [-f exports] [-p port] [-P pmapport]
+ *	nfsd [-d] [-f exports] [-p port] [-P pmapport] [-w window]
  */
 #include "nfsd.h"
 #include <signal.h>
@@ -39,6 +39,30 @@ static u32 connclock;
 
 static unsigned nfsport = 2049, pmapport = 111;
 static char *expfile = "/etc/exports";
+
+/*
+ * The socket buffer size of each TCP connection, in bytes (-w): the
+ * receive window a client is offered, and how much of a reply waits in
+ * the kernel.  It bounds the kernel memory one connection can tie up,
+ * and on 2.11BSD that matters more than speed.  The whole network has
+ * about 170 mbufs of 118 bytes and 12 pages of 1 KB, and most of the
+ * mbufs are in use before any data moves.  The DEUNA driver copies
+ * every received frame into mbufs alone, 13 for a full-size frame, and
+ * the other paths do the same once the pages run out.  When no mbuf is
+ * free, nothing more can be received and whoever tries to send sleeps
+ * uninterruptibly: the machine looks dead from the network although
+ * its console still works.  8 KB of buffer can take 70 mbufs, 4 KB 37,
+ * 1 KB about 10.
+ */
+#ifdef PDP11
+#define RCVWIN 1024
+#define MAXWIN 6144		/* more than the kernel allows anyway */
+#else
+#define RCVWIN 32768
+#define MAXWIN 32768
+#endif
+#define MINWIN 512
+static int rcvwin = RCVWIN;
 static int gothup, gotterm;
 static char mpath[PATHMAX + NAMEMAX + 2];
 static char wpath[PATHMAX + NAMEMAX + 2];
@@ -666,6 +690,29 @@ serve_udp(fd)
 		    (struct sockaddr *)&sin, sizeof(sin));
 }
 
+/*
+ * Set the socket buffer sizes.  They are set on the listening sockets
+ * too, so that a connection starts out with them rather than with the
+ * system's.
+ */
+static void
+setwindow(fd)
+	int fd;
+{
+	static int told;
+	int sz;
+
+	sz = rcvwin;
+	if ((setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (char *)&sz,
+	    sizeof(sz)) < 0 ||
+	    setsockopt(fd, SOL_SOCKET, SO_SNDBUF, (char *)&sz,
+	    sizeof(sz)) < 0) && !told) {
+		told = 1;
+		syslog(LOG_WARNING, "socket buffers of %d not accepted: %m",
+		    rcvwin);
+	}
+}
+
 static void
 newconn(lfd)
 	int lfd;
@@ -678,7 +725,7 @@ newconn(lfd)
 #else
 	socklen_t slen;
 #endif
-	int fd, one, sz;
+	int fd, one;
 
 	slen = sizeof(sin);
 	fd = accept(lfd, (struct sockaddr *)&sin, &slen);
@@ -701,14 +748,7 @@ newconn(lfd)
 	    sizeof(one));
 	(void)setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, (char *)&one,
 	    sizeof(one));
-	for (sz = 16384; sz >= 4096; sz >>= 1)
-		if (setsockopt(fd, SOL_SOCKET, SO_RCVBUF, (char *)&sz,
-		    sizeof(sz)) == 0)
-			break;
-	for (sz = 16384; sz >= 4096; sz >>= 1)
-		if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, (char *)&sz,
-		    sizeof(sz)) == 0)
-			break;
+	setwindow(fd);
 	p = (u8 *)&sin.sin_addr;
 	c->fd = fd;
 	c->peer = getbe32(p);
@@ -730,6 +770,8 @@ mksock(type, port)
 	one = 1;
 	(void)setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *)&one,
 	    sizeof(one));
+	if (type == SOCK_STREAM)
+		setwindow(fd);
 	memset((char *)&sin, 0, sizeof(sin));
 	sin.sin_family = AF_INET;
 	sin.sin_port = htons((unsigned short)port);
@@ -775,13 +817,22 @@ main(argc, argv)
 		case 'f':
 		case 'p':
 		case 'P':
+		case 'w':
 			if (argc < 3)
 				goto usage;
 			if (argv[1][1] == 'f')
 				expfile = argv[2];
 			else if (argv[1][1] == 'p')
 				nfsport = atoi(argv[2]);
-			else
+			else if (argv[1][1] == 'w') {
+				rcvwin = atoi(argv[2]);
+				if (rcvwin < MINWIN || rcvwin > MAXWIN) {
+					fprintf(stderr,
+				    "nfsd: window must be %d to %d bytes\n",
+					    MINWIN, MAXWIN);
+					exit(1);
+				}
+			} else
 				pmapport = atoi(argv[2]);
 			argc--;
 			argv++;
@@ -789,7 +840,7 @@ main(argc, argv)
 		default:
 		usage:
 			fprintf(stderr,
-		    "usage: nfsd [-d] [-f exports] [-p port] [-P pmapport]\n");
+	    "usage: nfsd [-d] [-f exports] [-p port] [-P pmapport] [-w window]\n");
 			exit(1);
 		}
 		argc--;
@@ -828,8 +879,8 @@ main(argc, argv)
 	(void)time(&now);
 	putbe32(wverf, (u32)now);
 	putbe32(wverf + 4, (u32)getpid());
-	syslog(LOG_INFO, "serving %d director%s", nexports,
-	    nexports == 1 ? "y" : "ies");
+	syslog(LOG_INFO, "serving %d director%s, window %d", nexports,
+	    nexports == 1 ? "y" : "ies", rcvwin);
 
 	while (!gotterm) {
 		if (gothup) {

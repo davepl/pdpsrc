@@ -96,7 +96,56 @@ kill -TERM <pid>          # stop
 
 It logs mounts and problems through syslog (facility `daemon`).
 `nfsd -d` stays in the foreground and prints each request; `-d -d` prints
-more. `-p port` and `-P port` move the NFS and portmap ports.
+more. `-p port` and `-P port` move the NFS and portmap ports, and
+`-w bytes` sets the socket buffer size (see the next section).
+
+### Socket buffers: read this before raising `-w`
+
+`-w` is the size of each connection's socket buffers: the TCP window a
+client is offered, and how much of a reply waits in the kernel. The
+default is 1024 bytes, which is slow and is the only size that is safe
+everywhere.
+
+The reason is the 2.11BSD network's memory. The whole network has about
+170 mbufs of 118 bytes and 12 pages of 1 KB, and 100 to 130 of the mbufs
+are in use before any data moves (`netstat -m` shows the numbers). When
+no mbuf is free, received frames are dropped and any process that tries
+to send sleeps uninterruptibly waiting for one. If the mbufs are all
+held by data that only those sleeping processes can read, that is
+permanent: the machine answers nothing on the network, not even ping,
+while its console keeps working, until it is rebooted.
+
+How many mbufs a buffer of data takes depends on the Ethernet driver:
+
+| Driver | A full-size received frame | 1 KB | 2 KB | 4 KB | 8 KB |
+|---|---|---|---|---|---|
+| `de` (DEUNA, DELUA) | 13 mbufs, no pages | 10 | 18 | 37 | 73 |
+| `qe` (DEQNA, DELQA) | 6 mbufs and 1 page | 10 | 11 + 1 page | 18 + 3 pages | 36 + 6 pages |
+
+Those are for one connection whose client is sending; every client that
+is sending at the same moment costs that much again, replies cost about
+one page per KB, and when the 12 pages run out everything falls back to
+mbufs alone. An earlier version of this server asked for the largest
+buffers the kernel would give, 8 KB or more, and a PDP-11/44 with a
+DEUNA dropped off the network about 100 KB into the first large copy.
+
+So: leave the default on a `de` interface. On a `qe` interface 2048 is
+a reasonable choice. 4096 is the system's own default for TCP and is
+faster again, but two clients copying at once can use up the pool.
+Measured on simh, 1 MB written and read back:
+
+| `-w` | Write | Read |
+|---|---|---|
+| 1024 (default) | 54 KB/s | 54 KB/s |
+| 2048 | 94 KB/s | 96 KB/s |
+| 4096 | 159 KB/s | 159 KB/s |
+
+On real hardware the processor sets the pace: a PDP-11/73 with a DEQNA at
+2048 writes 46 KB/s and reads 42 KB/s, and a PDP-11/44 with a DEUNA at the
+default writes 6 KB/s and reads 12 KB/s. On that 11/44, with two clients
+writing at once, mbuf use peaked at 118 of 170 and nothing was dropped;
+with the old buffers a single client took it to 170 of 170 in under a
+minute.
 
 To start it at boot, add to `/etc/rc.local`:
 
@@ -105,6 +154,8 @@ if [ "$INET" = YES -a -f /usr/sbin/nfsd -a -f /etc/exports ]; then
 	/usr/sbin/nfsd && echo "nfsd started"		>/dev/console 2>&1
 fi
 ```
+
+Add `-w 2048` there on a machine with a DEQNA or DELQA.
 
 ## Mounting from a client
 
@@ -175,7 +226,12 @@ of data.
   clients may not.
 * **Size.** 2 GB files at most, user and group ids below 65536, names up
   to 63 characters, paths up to 255.
-* **One request at a time**, at most 10 connections, 8 exports.
+* **One request at a time**, at most 10 connections, 8 exports. Each
+  connection also costs about 5 mbufs just to exist.
+* **Network memory.** See *Socket buffers* above: the kernel's mbuf pool
+  is small enough that a server can exhaust it, and the kernel does not
+  recover from that. The default buffer size is chosen to stay clear of
+  it, at a cost in speed.
 * **No duplicate-request cache.** A client that reconnects and repeats a
   `REMOVE` or `RENAME` that had already been done gets an error for it.
 * **A 2.11BSD oddity.** `rmdir(2)` of a directory that is not empty
@@ -197,17 +253,8 @@ python3 tests/nfsbench.py -u 501 -g 20 -n 2048 pdp11 /some/exported/dir
 Both need the export to be writable by that uid. Neither needs root or a
 mount: they speak the protocols directly.
 
-Measured with `nfsbench.py` (one request at a time), data identical in
-every run:
-
-| Server | Write | Read |
-|---|---|---|
-| simh, emulated DEQNA | 235 KB/s | 238 KB/s |
-| PDP-11/73, DEQNA | 66 KB/s | 50 KB/s |
-
-A kernel client does better than that because it sends several requests
-at once: macOS copies a 2 MB file to and from the simh machine at about
-400 KB/s, and a 1 MB file to and from the 11/73 at 65 to 70 KB/s.
+`nfsbench.py` writes a file one request at a time, reads it back and
+compares. The speeds for each buffer size are in *Socket buffers* above.
 
 Also tested: the macOS client (copying a tree in, `diff -r`, large files,
 rename, symlinks, removal) against both machines, and the 2.11BSD client
