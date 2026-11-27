@@ -1,0 +1,208 @@
+/* OS mocks for the actual native server identify helpers. */
+#include <assert.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+/* PROTOCOL_DEFINITIONS */
+/* IDENTIFY_MESSAGE */
+struct client {
+	int flags;
+};
+struct msg_print_data {
+	char msg[512];
+};
+#define CLIENT_BAD 4
+#define MSG_ERROR 2
+#define MSG_EXIT 3
+static int failure, opens, closes, groups, checks, writes, lasttype, lastfd;
+static char selected[128], message[512];
+static int mock_lstat(const char *p, struct stat *s)
+{
+	(void)p;
+	if (failure == 1) {
+		errno = EACCES;
+		return -1;
+	}
+	memset(s, 0, sizeof *s);
+	s->st_mode = failure == 2 ? S_IFREG : failure == 3 ? S_IFLNK : S_IFCHR;
+	s->st_dev = 1;
+	s->st_ino = 101;
+	s->st_rdev = 55;
+	return 0;
+}
+static int mock_fstat(int fd, struct stat *s)
+{
+	(void)fd;
+	if (failure == 6) {
+		errno = EIO;
+		return -1;
+	}
+	mock_lstat("", s);
+	if (failure == 7)
+		s->st_mode = S_IFREG;
+	if (failure == 8)
+		s->st_dev++;
+	if (failure == 9)
+		s->st_ino++;
+	if (failure == 10)
+		s->st_rdev++;
+	return 0;
+}
+static int mock_setpgrp(int a, int b)
+{
+	assert(a == 0 && b == 4242);
+	groups++;
+	if (failure == 4) {
+		errno = EPERM;
+		return -1;
+	}
+	return 0;
+}
+static int mock_getpid(void)
+{
+	return 4242;
+}
+static int mock_open(const char *p, int flags)
+{
+	opens++;
+	assert(!strcmp(p, selected));
+	assert((flags & O_RDWR) == O_RDWR && (flags & O_NONBLOCK));
+	if (failure == 5) {
+		errno = EACCES;
+		return -1;
+	}
+	return 42;
+}
+static int mock_isatty(int fd)
+{
+	assert(fd == 42);
+	return failure != 11;
+}
+static char *mock_ttyname(int fd)
+{
+	assert(fd == 42);
+	return failure == 12   ? NULL
+	       : failure == 13 ? "/dev/ttyOTHER"
+			       : selected;
+}
+static int mock_fcntl(int fd, int op, int flag)
+{
+	assert(fd == 42 && op == F_SETFD && flag == FD_CLOEXEC);
+	checks++;
+	if (failure == 14) {
+		errno = EBADF;
+		return -1;
+	}
+	return 0;
+}
+static int mock_close(int fd)
+{
+	assert(fd == 42);
+	closes++;
+	errno = EINTR;
+	return 0;
+}
+static size_t mock_strlcpy(char *d, const char *s, size_t n)
+{
+	size_t l = strlen(s);
+	if (n) {
+		size_t m = l < n - 1 ? l : n - 1;
+		memcpy(d, s, m);
+		d[m] = 0;
+	}
+	return l;
+}
+static void server_write_client(struct client *c, int type, const void *data,
+				size_t n)
+{
+	(void)c;
+	writes++;
+	lasttype = type;
+	if (type == MSG_ERROR) {
+		assert(n == sizeof(struct msg_print_data));
+		memcpy(message, data, n);
+	} else
+		assert(type == MSG_EXIT && data == NULL && n == 0);
+}
+#define lstat mock_lstat
+#define fstat mock_fstat
+#define setpgrp mock_setpgrp
+#define getpid mock_getpid
+#define open mock_open
+#define isatty mock_isatty
+#define ttyname mock_ttyname
+#define fcntl mock_fcntl
+#define close mock_close
+#define strlcpy mock_strlcpy
+/* TESTED_FUNCTIONS */
+
+static void reset(const char *p)
+{
+	failure = opens = closes = groups = checks = 0;
+	mock_strlcpy(selected, p, sizeof selected);
+}
+int main(void)
+{
+	struct msg_identify_data d;
+	struct client c;
+	int f, r;
+	const char *bad[] = {"",
+			     "/dev/tty",
+			     "/etc/passwd",
+			     "/dev/tty../console",
+			     "/dev/ttyx/y",
+			     "/dev/tty-a"};
+	size_t i;
+	for (i = 0; i < sizeof bad / sizeof bad[0]; i++) {
+		reset(bad[i]);
+		mock_strlcpy(d.tty, bad[i], sizeof d.tty);
+		errno = 0;
+		assert(server_client_open_tty(&d) == -1 && errno == EINVAL &&
+		       opens == 0 && closes == 0);
+	}
+	reset("none");
+	memset(d.tty, 'x', sizeof d.tty);
+	assert(server_client_open_tty(&d) == -1 && opens == 0 && closes == 0);
+	for (f = 0; f <= 14; f++) {
+		reset("/dev/ttyp0");
+		strcpy(d.tty, selected);
+		failure = f;
+		errno = 0;
+		r = server_client_open_tty(&d);
+		if (f == 0) {
+			assert(r == 42 && opens == 1 && closes == 0 &&
+			       groups == 1 && checks == 1);
+		} else {
+			assert(r == -1);
+			assert(closes == (f >= 6 ? 1 : 0));
+			if (f == 1 || f == 5)
+				assert(errno == EACCES);
+			if (f == 2 || f == 3)
+				assert(errno == EINVAL);
+			if (f == 4)
+				assert(errno == EPERM);
+			if (f == 6)
+				assert(errno == EIO);
+			if (f >= 7 && f <= 13)
+				assert(errno == ENOTTY);
+			if (f == 14)
+				assert(errno == EBADF);
+		}
+	}
+	reset("/dev/console");
+	strcpy(d.tty, selected);
+	assert(server_client_open_tty(&d) == 42 && closes == 0);
+	reset("/dev/ttyS0");
+	strcpy(d.tty, selected);
+	assert(server_client_open_tty(&d) == 42 && closes == 0);
+	memset(&c, 0, sizeof c);
+	writes = 0;
+	server_client_identify_error(&c, "bad terminal");
+	assert(writes == 2 && lasttype == MSG_EXIT && (c.flags & CLIENT_BAD) &&
+	       !strcmp(message, "bad terminal"));
+	lastfd = 0;
+	return 0;
+}

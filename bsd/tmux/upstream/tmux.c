@@ -1,0 +1,730 @@
+/* $Id: tmux.c,v 1.184 2009-11-04 23:09:09 tcunha Exp $ */
+
+/*
+ * Copyright (c) 2007 Nicholas Marriott <nicm@users.sourceforge.net>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF MIND, USE, DATA OR PROFITS, WHETHER
+ * IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING
+ * OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+#include <sys/types.h>
+#include <sys/stat.h>
+
+#include <errno.h>
+#include <pwd.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <syslog.h>
+#include <unistd.h>
+
+#include "tmux.h"
+
+#if defined(DEBUG) && defined(__OpenBSD__)
+extern char	*malloc_options;
+#endif
+
+volatile sig_atomic_t sigwinch;
+volatile sig_atomic_t sigterm;
+volatile sig_atomic_t sigcont;
+volatile sig_atomic_t sigchld;
+volatile sig_atomic_t sigusr1;
+volatile sig_atomic_t sigusr2;
+
+char		*cfg_file;
+struct options	 global_s_options;	/* session options */
+struct options	 global_w_options;	/* window options */
+struct environ	 global_environ;
+
+int		 debug_level;
+int		 be_quiet;
+time_t		 start_time;
+char		*socket_path;
+int		 login_shell;
+
+/* Keep the launch packet out of main's persistent server stack frame. */
+static struct msg_command_data *startup_command;
+
+void
+tmux_free_startup_command(void)
+{
+	if (startup_command != NULL) {
+		xfree(startup_command);
+		startup_command = NULL;
+	}
+}
+
+__dead void	 usage(void);
+void	 	 fill_session(struct msg_command_data *);
+char 		*makesockpath(const char *);
+int		 dispatch_imsg(struct imsgbuf *, const char *, int *);
+__dead void	 shell_exec(const char *, const char *);
+
+#ifndef HAVE_PROGNAME
+char      *__progname = (char *) "tmux";
+#endif
+
+__dead void
+usage(void)
+{
+	fprintf(stderr,
+	    "usage: %s [-28lquv] [-c shell-command] [-f file] [-L socket-name]\n"
+	    "            [-S socket-path] [command [flags]]\n",
+	    __progname);
+	exit(1);
+}
+
+void
+logfile(const char *name)
+{
+	char	*path;
+
+	log_close();
+	if (debug_level > 0) {
+		xasprintf(&path, "tmux-%s-%ld.log", name, (long) getpid());
+		log_open_file(debug_level, path);
+		xfree(path);
+	}
+}
+
+void
+sighandler(int sig)
+{
+	int	saved_errno;
+
+	saved_errno = errno;
+	switch (sig) {
+	case SIGWINCH:
+		sigwinch = 1;
+		break;
+	case SIGTERM:
+		sigterm = 1;
+		break;
+	case SIGCHLD:
+		sigchld = 1;
+		break;
+	case SIGCONT:
+		sigcont = 1;
+		break;
+	case SIGUSR1:
+		sigusr1 = 1;
+		break;
+	case SIGUSR2:
+		sigusr2 = 1;
+		break;
+	}
+	errno = saved_errno;
+}
+
+void
+siginit(void)
+{
+	struct sigaction	 act;
+
+	memset(&act, 0, sizeof act);
+	sigemptyset(&act.sa_mask);
+	act.sa_flags = SA_RESTART;
+
+	act.sa_handler = SIG_IGN;
+	if (sigaction(SIGPIPE, &act, NULL) != 0)
+		fatal("sigaction failed");
+	if (sigaction(SIGINT, &act, NULL) != 0)
+		fatal("sigaction failed");
+	if (sigaction(SIGTSTP, &act, NULL) != 0)
+		fatal("sigaction failed");
+	if (sigaction(SIGQUIT, &act, NULL) != 0)
+		fatal("sigaction failed");
+
+	act.sa_handler = sighandler;
+	if (sigaction(SIGWINCH, &act, NULL) != 0)
+		fatal("sigaction failed");
+	if (sigaction(SIGTERM, &act, NULL) != 0)
+		fatal("sigaction failed");
+	if (sigaction(SIGCHLD, &act, NULL) != 0)
+		fatal("sigaction failed");
+	if (sigaction(SIGUSR1, &act, NULL) != 0)
+		fatal("sigaction failed");
+	if (sigaction(SIGUSR2, &act, NULL) != 0)
+		fatal("sigaction failed");
+}
+
+void
+sigreset(void)
+{
+	struct sigaction act;
+
+	memset(&act, 0, sizeof act);
+	sigemptyset(&act.sa_mask);
+
+	act.sa_handler = SIG_DFL;
+	if (sigaction(SIGPIPE, &act, NULL) != 0)
+		fatal("sigaction failed");
+	if (sigaction(SIGUSR1, &act, NULL) != 0)
+		fatal("sigaction failed");
+	if (sigaction(SIGUSR2, &act, NULL) != 0)
+		fatal("sigaction failed");
+	if (sigaction(SIGINT, &act, NULL) != 0)
+		fatal("sigaction failed");
+	if (sigaction(SIGTSTP, &act, NULL) != 0)
+		fatal("sigaction failed");
+	if (sigaction(SIGQUIT, &act, NULL) != 0)
+		fatal("sigaction failed");
+	if (sigaction(SIGWINCH, &act, NULL) != 0)
+		fatal("sigaction failed");
+	if (sigaction(SIGTERM, &act, NULL) != 0)
+		fatal("sigaction failed");
+	if (sigaction(SIGCHLD, &act, NULL) != 0)
+		fatal("sigaction failed");
+}
+
+const char *
+getshell(void)
+{
+	struct passwd	*pw;
+	const char	*shell;
+
+	shell = getenv("SHELL");
+	if (checkshell(shell))
+		return (shell);
+
+	pw = getpwuid(getuid());
+	if (pw != NULL && checkshell(pw->pw_shell))
+		return (pw->pw_shell);
+
+	return (_PATH_BSHELL);
+}
+
+int
+checkshell(const char *shell)
+{
+	if (shell == NULL || *shell == '\0' || areshell(shell))
+		return (0);
+	if (access(shell, X_OK) != 0)
+		return (0);
+	return (1);
+}
+
+int
+areshell(const char *shell)
+{
+	const char	*progname, *ptr;
+
+	if ((ptr = strrchr(shell, '/')) != NULL)
+		ptr++;
+	else
+		ptr = shell;
+	progname = __progname;
+	if (*progname == '-')
+		progname++;
+	if (strcmp(ptr, progname) == 0)
+		return (1);
+	return (0);
+}
+
+void
+fill_session(struct msg_command_data *data)
+{
+	char		*env, *ptr1, *ptr2, buf[256];
+	size_t		 len;
+	const char	*errstr;
+	tmux_num	 ll;
+
+	data->pid = -1;
+	if ((env = getenv("TMUX")) == NULL)
+		return;
+
+	if ((ptr2 = strrchr(env, ',')) == NULL || ptr2 == env)
+		return;
+	for (ptr1 = ptr2 - 1; ptr1 > env && *ptr1 != ','; ptr1--)
+		;
+	if (*ptr1 != ',')
+		return;
+	ptr1++;
+	ptr2++;
+
+	len = ptr2 - ptr1 - 1;
+	if (len > (sizeof buf) - 1)
+		return;
+	memcpy(buf, ptr1, len);
+	buf[len] = '\0';
+
+	ll = strtonum(buf, 0, LONG_MAX, &errstr);
+	if (errstr != NULL)
+		return;
+	data->pid = ll;
+
+	ll = strtonum(ptr2, 0, UINT_MAX, &errstr);
+	if (errstr != NULL)
+		return;
+	data->idx = ll;
+}
+
+char *
+makesockpath(const char *label)
+{
+	char		base[MAXPATHLEN], *path;
+	struct stat	sb;
+	u_int		uid;
+
+	uid = getuid();
+	xsnprintf(base, MAXPATHLEN, "%s/tmux-%d", _PATH_TMP, uid);
+
+	if (mkdir(base, S_IRWXU) != 0 && errno != EEXIST)
+		return (NULL);
+
+	if (lstat(base, &sb) != 0)
+		return (NULL);
+	if (!S_ISDIR(sb.st_mode)) {
+		errno = ENOTDIR;
+		return (NULL);
+	}
+	if (sb.st_uid != uid || (sb.st_mode & (S_IRWXG|S_IRWXO)) != 0) {
+		errno = EACCES;
+		return (NULL);
+	}
+
+	xasprintf(&path, "%s/%s", base, label);
+	return (path);
+}
+
+int
+main(int argc, char **argv)
+{
+	struct cmd_list		*cmdlist;
+ 	struct cmd		*cmd;
+	struct pollfd		 pfd;
+	enum msgtype		 msg;
+	struct passwd		*pw;
+	struct options		*so, *wo;
+	struct keylist		*keylist;
+	struct imsgbuf		*ibuf;
+	struct msg_command_data	*cmddata;
+	char			*s, *shellcmd, *path, *label, *home, *cause;
+	char			*cwd, **var;
+	void			*buf;
+	size_t			 len;
+	int	 		 nfds, retcode, opt, flags, cmdflags = 0;
+
+#if defined(DEBUG) && defined(__OpenBSD__)
+	malloc_options = (char *) "AFGJPX";
+#endif
+
+	grid_init_default();
+#ifdef TMUX_GENERATED_COPY
+	/* Before anything can fail: error text is read from a file. */
+	tmux_msg_init(argv[0]);
+#endif
+	flags = 0;
+	shellcmd = label = path = NULL;
+	login_shell = (**argv == '-');
+	while ((opt = getopt(argc, argv, "28c:df:lL:qS:uUv")) != -1) {
+		switch (opt) {
+		case '2':
+			flags |= IDENTIFY_256COLOURS;
+			flags &= ~IDENTIFY_88COLOURS;
+			break;
+		case '8':
+			flags |= IDENTIFY_88COLOURS;
+			flags &= ~IDENTIFY_256COLOURS;
+			break;
+		case 'c':
+			if (shellcmd != NULL)
+				xfree(shellcmd);
+			shellcmd = xstrdup(optarg);
+			break;
+		case 'f':
+			if (cfg_file != NULL)
+				xfree(cfg_file);
+			cfg_file = xstrdup(optarg);
+			break;
+		case 'l':
+			login_shell = 1;
+			break;
+		case 'L':
+			if (label != NULL)
+				xfree(label);
+			label = xstrdup(optarg);
+			break;
+		case 'q':
+			be_quiet = 1;
+			break;
+		case 'S':
+			if (path != NULL)
+				xfree(path);
+			path = xstrdup(optarg);
+			break;
+		case 'u':
+			flags |= IDENTIFY_UTF8;
+			break;
+		case 'v':
+			debug_level++;
+			break;
+		default:
+			usage();
+		}
+	}
+	argc -= optind;
+	argv += optind;
+
+	if (shellcmd != NULL && argc != 0)
+		usage();
+
+	log_open_tty(debug_level);
+	siginit();
+
+	if (!(flags & IDENTIFY_UTF8)) {
+		/*
+		 * If the user has set whichever of LC_ALL, LC_CTYPE or LANG
+		 * exist (in that order) to contain UTF-8, it is a safe
+		 * assumption that either they are using a UTF-8 terminal, or
+		 * if not they know that output from UTF-8-capable programs may
+		 * be wrong.
+		 */
+		if ((s = getenv("LC_ALL")) == NULL) {
+			if ((s = getenv("LC_CTYPE")) == NULL)
+				s = getenv("LANG");
+		}
+		if (s != NULL && (strcasestr(s, "UTF-8") != NULL ||
+		    strcasestr(s, "UTF8") != NULL))
+			flags |= IDENTIFY_UTF8;
+	}
+
+	environ_init(&global_environ);
+ 	for (var = environ; *var != NULL; var++)
+		environ_put(&global_environ, *var);
+
+	options_init(&global_s_options, NULL);
+	so = &global_s_options;
+	options_set_number(so, "base-index", 0);
+	options_set_number(so, "bell-action", BELL_ANY);
+#ifdef TMUX_NATIVE_211BSD
+	options_set_number(so, "buffer-limit", 1);
+#else
+	options_set_number(so, "buffer-limit", 9);
+#endif
+	options_set_string(so, "default-command", "%s", "");
+	options_set_string(so, "default-shell", "%s", getshell());
+	options_set_string(so, "default-terminal", "screen");
+	options_set_number(so, "display-panes-colour", 4);
+	options_set_number(so, "display-panes-time", 1000);
+	options_set_number(so, "display-time", 750);
+/* Native PDP-11 data space is 64K including heap and stack. */
+#if defined(GRID_VMF_HISTORY)
+	/* History rows go to a paging file instead; see grid-history.c. */
+	options_set_number(so, "history-limit", GRID_HISTORY_ROWS);
+#elif defined(TMUX_NATIVE_211BSD)
+	options_set_number(so, "history-limit", 0);
+#else
+	options_set_number(so, "history-limit", 2000);
+#endif
+	options_set_number(so, "lock-after-time", 0);
+	options_set_string(so, "lock-command", "lock -np");
+	options_set_number(so, "lock-server", 1);
+	options_set_number(so, "message-attr", 0);
+	options_set_number(so, "message-bg", 3);
+	options_set_number(so, "message-fg", 0);
+	options_set_number(so, "mouse-select-pane", 0);
+	options_set_number(so, "repeat-time", 500);
+	options_set_number(so, "set-remain-on-exit", 0);
+	options_set_number(so, "set-titles", 0);
+	options_set_string(so, "set-titles-string", "#S:#I:#W - \"#T\"");
+	options_set_number(so, "status", 1);
+	options_set_number(so, "status-attr", 0);
+	options_set_number(so, "status-bg", 2);
+	options_set_number(so, "status-fg", 0);
+	options_set_number(so, "status-interval", 15);
+	options_set_number(so, "status-justify", 0);
+	options_set_number(so, "status-keys", MODEKEY_EMACS);
+	options_set_string(so, "status-left", "[#S]");
+	options_set_number(so, "status-left-attr", 0);
+	options_set_number(so, "status-left-bg", 8);
+	options_set_number(so, "status-left-fg", 8);
+	options_set_number(so, "status-left-length", 10);
+#ifdef TMUX_MILESTONE
+	options_set_string(so, "status-right", "\"#22T\"");
+#else
+	options_set_string(so, "status-right", "\"#22T\" %%H:%%M %%d-%%b-%%y");
+#endif
+	options_set_number(so, "status-right-attr", 0);
+	options_set_number(so, "status-right-bg", 8);
+	options_set_number(so, "status-right-fg", 8);
+	options_set_number(so, "status-right-length", 40);
+	options_set_string(so, "terminal-overrides",
+	    "*88col*:colors=88,*256col*:colors=256");
+	options_set_string(so, "update-environment", "DISPLAY "
+	    "WINDOWID SSH_ASKPASS SSH_AUTH_SOCK SSH_AGENT_PID SSH_CONNECTION");
+	options_set_number(so, "visual-activity", 0);
+	options_set_number(so, "visual-bell", 0);
+	options_set_number(so, "visual-content", 0);
+
+	keylist = xmalloc(sizeof *keylist);
+	ARRAY_INIT(keylist);
+	ARRAY_ADD(keylist, '\002');
+	options_set_data(so, "prefix", keylist, xfree);
+
+	options_init(&global_w_options, NULL);
+	wo = &global_w_options;
+	options_set_number(wo, "aggressive-resize", 0);
+	options_set_number(wo, "automatic-rename", 1);
+	options_set_number(wo, "clock-mode-colour", 4);
+	options_set_number(wo, "clock-mode-style", 1);
+	options_set_number(wo, "force-height", 0);
+	options_set_number(wo, "force-width", 0);
+	options_set_number(wo, "main-pane-height", 24);
+	options_set_number(wo, "main-pane-width", 81);
+	options_set_number(wo, "mode-attr", 0);
+	options_set_number(wo, "mode-bg", 3);
+	options_set_number(wo, "mode-fg", 0);
+	options_set_number(wo, "mode-keys", MODEKEY_EMACS);
+	options_set_number(wo, "mode-mouse", 0);
+	options_set_number(wo, "monitor-activity", 0);
+	options_set_string(wo, "monitor-content", "%s", "");
+	options_set_number(wo, "window-status-attr", 0);
+	options_set_number(wo, "window-status-bg", 8);
+	options_set_number(wo, "window-status-current-attr", 0);
+	options_set_number(wo, "window-status-current-bg", 8);
+	options_set_number(wo, "window-status-current-fg", 8);
+	options_set_number(wo, "window-status-fg", 8);
+	options_set_number(wo, "xterm-keys", 0);
+ 	options_set_number(wo, "remain-on-exit", 0);
+	options_set_number(wo, "synchronize-panes", 0);
+
+ 	if (flags & IDENTIFY_UTF8) {
+		options_set_number(so, "status-utf8", 1);
+		options_set_number(wo, "utf8", 1);
+	} else {
+		options_set_number(so, "status-utf8", 0);
+		options_set_number(wo, "utf8", 0);
+	}
+
+	cwd = xmalloc(MAXPATHLEN);
+	if (getcwd(cwd, MAXPATHLEN) == NULL) {
+		pw = getpwuid(getuid());
+		if (pw->pw_dir != NULL && *pw->pw_dir != '\0')
+			strlcpy(cwd, pw->pw_dir, MAXPATHLEN);
+		else
+			strlcpy(cwd, "/", MAXPATHLEN);
+	}
+	options_set_string(so, "default-path", "%s", cwd);
+	xfree(cwd);
+
+	if (cfg_file == NULL) {
+		home = getenv("HOME");
+		if (home == NULL || *home == '\0') {
+			pw = getpwuid(getuid());
+			if (pw != NULL)
+				home = pw->pw_dir;
+		}
+		xasprintf(&cfg_file, "%s/%s", home, DEFAULT_CFG);
+		if (access(cfg_file, R_OK) != 0) {
+			xfree(cfg_file);
+			cfg_file = NULL;
+		}
+	} else {
+		if (access(cfg_file, R_OK) != 0) {
+			log_warn("%s", cfg_file);
+			exit(1);
+		}
+	}
+	
+	if (label == NULL)
+		label = xstrdup("default");
+	if (path == NULL && (path = makesockpath(label)) == NULL) {
+		log_warn("can't create socket");
+		exit(1);
+	}
+	xfree(label);
+
+	if (shellcmd != NULL) {
+		msg = MSG_SHELL;
+		buf = NULL;
+		len = 0;
+	} else {
+		cmddata = xmalloc(sizeof *cmddata);
+		startup_command = cmddata;
+		fill_session(cmddata);
+	
+		cmddata->argc = argc;
+		if (cmd_pack_argv(
+		    argc, argv, cmddata->argv, sizeof cmddata->argv) != 0) {
+			log_warnx("command too long");
+			exit(1);
+		}
+		
+		msg = MSG_COMMAND;
+		buf = cmddata;
+		len = sizeof *cmddata;
+	}
+
+	if (shellcmd != NULL)
+		cmdflags |= CMD_STARTSERVER;
+	else if (argc == 0)	/* new-session is the default */
+		cmdflags |= CMD_STARTSERVER|CMD_SENDENVIRON;
+	else {
+		/*
+		 * It sucks parsing the command string twice (in client and
+		 * later in server) but it is necessary to get the start server
+		 * flag.
+		 */
+		if ((cmdlist = cmd_list_parse(argc, argv, &cause)) == NULL) {
+			log_warnx("%s", cause);
+			exit(1);
+		}
+		cmdflags &= ~CMD_STARTSERVER;
+		TAILQ_FOREACH(cmd, cmdlist, qentry) {
+			if (cmd->entry->flags & CMD_STARTSERVER)
+				cmdflags |= CMD_STARTSERVER;
+			if (cmd->entry->flags & CMD_SENDENVIRON)
+				cmdflags |= CMD_SENDENVIRON;
+		}
+		cmd_list_free(cmdlist);
+	}
+
+	if ((ibuf = client_init(path, cmdflags, flags)) == NULL)
+		exit(1);
+	xfree(path);
+
+	retcode = imsg_compose(ibuf, msg, PROTOCOL_VERSION, -1, -1, buf, len);
+	tmux_free_startup_command();
+	if (retcode == -1)
+		fatal("imsg_compose failed");
+
+	retcode = 0;
+	for (;;) {
+		pfd.fd = ibuf->fd;
+		pfd.events = POLLIN;
+		if (ibuf->w.queued != 0)
+			pfd.events |= POLLOUT;
+
+		if ((nfds = poll(&pfd, 1, INFTIM)) == -1) {
+			if (errno == EAGAIN || errno == EINTR)
+				continue;
+			fatal("poll failed");
+		}
+		if (nfds == 0)
+			continue;
+
+		if (pfd.revents & (POLLERR|POLLHUP|POLLNVAL))
+			fatalx("socket error");
+
+		if (pfd.revents & POLLIN) {
+			if (dispatch_imsg(ibuf, shellcmd, &retcode) != 0)
+				break;
+		}
+
+		if (pfd.revents & POLLOUT) {
+			if (msgbuf_write(&ibuf->w) < 0)
+				fatalx("msgbuf_write failed");
+		}
+	}
+
+	options_free(&global_s_options);
+	options_free(&global_w_options);
+
+	return (retcode);
+}
+
+int
+dispatch_imsg(struct imsgbuf *ibuf, const char *shellcmd, int *retcode)
+{
+	struct imsg		imsg;
+	ssize_t			n, datalen;
+	struct msg_print_data	printdata;
+	struct msg_shell_data	shelldata;
+
+	if ((n = imsg_read(ibuf)) == -1 || n == 0)
+		fatalx("imsg_read failed");
+
+	for (;;) {
+		if ((n = imsg_get(ibuf, &imsg)) == -1)
+			fatalx("imsg_get failed");
+		if (n == 0)
+			return (0);
+		datalen = imsg.hdr.len - IMSG_HEADER_SIZE;
+
+		switch (imsg.hdr.type <= (u_int32_t)INT_MAX ?
+		    (int)imsg.hdr.type : -1) {
+		case MSG_EXIT:
+		case MSG_SHUTDOWN:
+			if (datalen != 0)
+				fatalx("bad MSG_EXIT size");
+
+			return (-1);
+		case MSG_ERROR:
+			*retcode = 1;
+			/* FALLTHROUGH */
+		case MSG_PRINT:
+#ifdef TMUX_NATIVE_211BSD
+			/* Native text messages arrive at their used length. */
+			if (datalen <= 0 || (size_t)datalen > sizeof printdata)
+				fatalx("bad MSG_PRINT size");
+			memcpy(&printdata, imsg.data, datalen);
+			printdata.msg[datalen - 1] = '\0';
+#else
+			if (datalen != sizeof printdata)
+				fatalx("bad MSG_PRINT size");
+			memcpy(&printdata, imsg.data, sizeof printdata);
+			printdata.msg[(sizeof printdata.msg) - 1] = '\0';
+#endif
+
+			log_info("%s", printdata.msg);
+			break;
+		case MSG_READY:
+			if (datalen != 0)
+				fatalx("bad MSG_READY size");
+
+			client_main();	/* doesn't return */
+		case MSG_VERSION:
+			if (datalen != 0)
+				fatalx("bad MSG_VERSION size");
+
+			log_warnx("protocol version mismatch (client %u, "
+			    "server %u)", PROTOCOL_VERSION, imsg.hdr.peerid);
+			*retcode = 1;
+			return (-1);
+		case MSG_SHELL:
+			if (datalen != sizeof shelldata)
+				fatalx("bad MSG_SHELL size");
+			memcpy(&shelldata, imsg.data, sizeof shelldata);
+			shelldata.shell[(sizeof shelldata.shell) - 1] = '\0';
+			
+			shell_exec(shelldata.shell, shellcmd);
+		default:
+			fatalx("unexpected message");
+		}
+
+		imsg_free(&imsg);
+	}
+}
+
+__dead void
+shell_exec(const char *shell, const char *shellcmd)
+{
+	const char	*shellname, *ptr;
+	char		*argv0;
+
+	sigreset();
+				
+	ptr = strrchr(shell, '/');
+	if (ptr != NULL && *(ptr + 1) != '\0')
+		shellname = ptr + 1;
+	else
+		shellname = shell;
+	if (login_shell)
+		xasprintf(&argv0, "-%s", shellname);
+	else
+		xasprintf(&argv0, "%s", shellname);
+	setenv("SHELL", shell, 1);
+
+	execl(shell, argv0, "-c", shellcmd, (char *) NULL);
+	fatal("execl failed");
+}

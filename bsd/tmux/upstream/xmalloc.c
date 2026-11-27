@@ -1,0 +1,415 @@
+/* $Id: xmalloc.c,v 1.12 2009-10-28 23:12:38 tcunha Exp $ */
+
+/*
+ * Copyright (c) 2004 Nicholas Marriott <nicm@users.sourceforge.net>
+ *
+ * Permission to use, copy, modify, and distribute this software for any
+ * purpose with or without fee is hereby granted, provided that the above
+ * copyright notice and this permission notice appear in all copies.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF MIND, USE, DATA OR PROFITS, WHETHER
+ * IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING
+ * OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+#include <sys/param.h>
+
+#include <errno.h>
+#include <libgen.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#if defined(TMUX_NATIVE_211BSD) && defined(TMUX_ALLOC_STATS)
+#include <fcntl.h>
+#include <unistd.h>
+#endif
+
+#include "tmux.h"
+
+#ifdef TMUX_NATIVE_211BSD
+extern char *sbrk(intptr_t);
+#endif
+
+#if defined(TMUX_NATIVE_211BSD) && defined(TMUX_ALLOC_STATS)
+/*
+ * Optional diagnostics for the installed 2.11BSD first-fit allocator only.
+ * Its two-byte headers contain the next header address and a low busy bit.
+ * Leave one allocation live so that its header remains in the arena ring.
+ */
+static char *xmalloc_stats_anchor;
+static int xmalloc_stats_attempted;
+
+/* Begin allocator-ring walker (also exercised with synthetic addresses). */
+struct xmalloc_stats {
+	unsigned int freebytes, largestfree, usedbytes;
+	unsigned int freeblocks, usedblocks, steps;
+};
+
+#ifndef TMUX_ALLOC_STATS_WORD
+#define TMUX_ALLOC_STATS_WORD(address) (*(uint16_t *)(uintptr_t)(address))
+#endif
+
+static int
+xmalloc_stats_walk(uintptr_t low, uintptr_t heap, uintptr_t high,
+    uintptr_t start, struct xmalloc_stats *stats)
+{
+	uintptr_t p, q, first;
+	unsigned int word, bytes;
+	int wrapped;
+
+	memset(stats, 0, sizeof *stats);
+	if (low >= heap || heap >= high || high < 2 || high > 65535U || (heap & 1) ||
+	    (high & 1) || start < heap || start > high - 2 || (start & 1))
+		return (0);
+	p = start;
+	first = 0;
+	wrapped = 0;
+	while (stats->steps < 32767) {
+		if (p < low || p > high - 2 || (p & 1))
+			return (0);
+		word = TMUX_ALLOC_STATS_WORD(p);
+		stats->steps++;
+		if (p == start && !(word & 1))
+			return (0);
+		q = (uintptr_t)(word & ~1U);
+		if (q < low || q > high - 2)
+			return (0);
+		if (q <= p) {
+			/* Only the final, busy sentinel may wrap to allocs[0]. */
+			if (wrapped || p != high - 2 || q >= heap ||
+			    heap - q < 4 || !(word & 1))
+				return (0);
+			wrapped = 1;
+			first = q;
+		} else {
+			/* After wrapping, do not pass the anchor without finding it. */
+			if (wrapped && q > start)
+				return (0);
+			if (p < heap) {
+				/* The initial arena consists of two adjacent busy words. */
+				if (!(word & 1) ||
+				    (p == first && q != p + 2) ||
+				    (p == first + 2 && q < heap) ||
+				    (p != first && p != first + 2))
+					return (0);
+			} else {
+				bytes = q - p - 2;
+				if (word & 1) {
+					stats->usedbytes += bytes;
+					stats->usedblocks++;
+				} else {
+					stats->freebytes += bytes;
+					stats->freeblocks++;
+					if (bytes > stats->largestfree)
+						stats->largestfree = bytes;
+				}
+			}
+		}
+		p = q;
+		if (p == start)
+			return (wrapped);
+	}
+	return (0);
+}
+/* End allocator-ring walker. */
+
+static void
+xmalloc_stats_init(void)
+{
+	int saved_errno;
+
+	if (xmalloc_stats_attempted)
+		return;
+	xmalloc_stats_attempted = 1;
+	saved_errno = errno;
+	xmalloc_stats_anchor = malloc(1);
+	errno = saved_errno;
+}
+
+/*
+ * Stack high-water mark. The first report paints the bytes below its own
+ * frame; the deepest later frame is where the pattern first stops, scanning
+ * up. (The server unit is too close to the native compiler's limits to carry
+ * a diagnostic call of its own, so startup depth is not covered.)
+ */
+#define XMALLOC_STACK_PAINT 5632	/* keeps the stack within one 8 KiB segment */
+#define XMALLOC_STACK_PATTERN 0x5a
+static char *xmalloc_stack_floor;
+
+static void
+xmalloc_stats_paint_stack(void)
+{
+	char	pad[XMALLOC_STACK_PAINT];
+
+	memset(pad, XMALLOC_STACK_PATTERN, sizeof pad);
+	xmalloc_stack_floor = pad;
+}
+
+static unsigned int
+xmalloc_stack_peak(void)
+{
+	char	*p;
+
+	if (xmalloc_stack_floor == NULL)
+		return (0);
+	p = xmalloc_stack_floor;
+	while (p < xmalloc_stack_floor + XMALLOC_STACK_PAINT &&
+	    *p == XMALLOC_STACK_PATTERN)
+		p++;
+	/* Bytes between the deepest use and the top of the address space. */
+	return (0U - (unsigned int)(uintptr_t)p);
+}
+
+/*
+ * Describe the arena and stack for diagnostics. The walk neither allocates
+ * nor alters the arena; busy gaps made by external sbrk users count as used.
+ */
+char *
+xmalloc_stats_string(char *buf, size_t len)
+{
+	extern char edata, end;
+	struct xmalloc_stats stats;
+	uintptr_t high;
+	int saved_errno;
+
+	saved_errno = errno;
+	xmalloc_stats_init();
+	if (xmalloc_stack_floor == NULL)
+		xmalloc_stats_paint_stack();
+	high = (uintptr_t)sbrk(0);
+	if (sizeof(void *) != 2 || sizeof(uintptr_t) != 2 ||
+	    xmalloc_stats_anchor == NULL ||
+	    !xmalloc_stats_walk((uintptr_t)&edata, (uintptr_t)&end, high,
+	    (uintptr_t)xmalloc_stats_anchor - 2, &stats))
+		xsnprintf(buf, len, "allocator: unavailable (layout or ring validation failed)");
+	else {
+		xsnprintf(buf, len, "allocator: free=%u maxfree=%u busy=%u freeblocks=%u busyblocks=%u end=%u brk=%u stack=%u stackpeak=%u",
+		    stats.freebytes, stats.largestfree, stats.usedbytes,
+		    stats.freeblocks, stats.usedblocks,
+		    (unsigned int)(uintptr_t)&end, (unsigned int)high,
+		    0U - (unsigned int)(uintptr_t)&stats, xmalloc_stack_peak());
+	}
+	errno = saved_errno;
+	return (buf);
+}
+
+/*
+ * Write one line per arena block (address, payload bytes, b or f) to a file.
+ * Diagnostic only: it follows the validated ring and allocates nothing.
+ */
+void
+xmalloc_stats_dump(const char *path)
+{
+	extern char edata, end;
+	struct xmalloc_stats stats;
+	uintptr_t p, q, high, start;
+	unsigned int word;
+	char line[32];
+	int fd, saved_errno;
+
+	saved_errno = errno;
+	high = (uintptr_t)sbrk(0);
+	if (sizeof(void *) != 2 || xmalloc_stats_anchor == NULL ||
+	    !xmalloc_stats_walk((uintptr_t)&edata, (uintptr_t)&end, high,
+	    (uintptr_t)xmalloc_stats_anchor - 2, &stats) ||
+	    (fd = open(path, O_WRONLY|O_CREAT|O_TRUNC, 0600)) == -1) {
+		errno = saved_errno;
+		return;
+	}
+	start = (uintptr_t)xmalloc_stats_anchor - 2;
+	p = start;
+	do {
+		word = TMUX_ALLOC_STATS_WORD(p);
+		q = (uintptr_t)(word & ~1U);
+		if (q > p && p >= (uintptr_t)&end) {
+			xsnprintf(line, sizeof line, "%u %u %c\n", (unsigned int)p,
+			    (unsigned int)(q - p - 2), (word & 1) ? 'b' : 'f');
+			write(fd, line, strlen(line));
+		}
+		p = q;
+	} while (p != start);
+	close(fd);
+	errno = saved_errno;
+}
+
+static void
+xmalloc_stats_report(void)
+{
+	char	buf[160];
+
+	/* Capture before logging: the logger itself can allocate temporary data. */
+	log_warnx("%s", xmalloc_stats_string(buf, sizeof buf));
+}
+#endif
+
+char *
+xstrdup(const char *s)
+{
+	char	*ptr;
+	size_t	 len;
+
+	len = strlen(s) + 1;
+	ptr = xmalloc(len);
+
+	strlcpy(ptr, s, len);
+	return (ptr);
+}
+
+void *
+xcalloc(size_t nmemb, size_t size)
+{
+	void	*ptr;
+
+	if (size == 0 || nmemb == 0)
+		fatalx("zero size");
+	if (SIZE_MAX / nmemb < size)
+		fatalx("nmemb * size > SIZE_MAX");
+#if defined(TMUX_NATIVE_211BSD) && defined(TMUX_ALLOC_STATS)
+	xmalloc_stats_init();
+#endif
+	if ((ptr = calloc(nmemb, size)) == NULL) {
+#if defined(TMUX_NATIVE_211BSD) && defined(TMUX_ALLOC_STATS)
+		xmalloc_stats_report();
+#endif
+		fatal("xcalloc failed");
+	}
+
+	return (ptr);
+}
+
+void *
+xmalloc(size_t size)
+{
+	void	*ptr;
+
+	if (size == 0)
+		fatalx("zero size");
+#if defined(TMUX_NATIVE_211BSD) && defined(TMUX_ALLOC_STATS)
+	xmalloc_stats_init();
+#endif
+	if ((ptr = malloc(size)) == NULL) {
+#if defined(TMUX_NATIVE_211BSD) && defined(TMUX_ALLOC_STATS)
+		xmalloc_stats_report();
+#endif
+		fatal("xmalloc failed");
+	}
+
+	return (ptr);
+}
+
+void *
+xrealloc(void *oldptr, size_t nmemb, size_t size)
+{
+	size_t	 newsize = nmemb * size;
+	void	*newptr;
+#ifdef TMUX_NATIVE_211BSD
+	int	 saved_errno;
+#endif
+
+	if (newsize == 0)
+		fatalx("zero size");
+	if (SIZE_MAX / nmemb < size)
+		fatalx("nmemb * size > SIZE_MAX");
+#if defined(TMUX_NATIVE_211BSD) && defined(TMUX_ALLOC_STATS)
+	xmalloc_stats_init();
+#endif
+#ifdef TMUX_NATIVE_211BSD
+	/* The native realloc inspects oldptr[-1], including for a NULL input. */
+	if (oldptr == NULL)
+		newptr = malloc(newsize);
+	else
+		newptr = realloc(oldptr, newsize);
+#else
+	newptr = realloc(oldptr, newsize);
+#endif
+	if (newptr == NULL) {
+#ifdef TMUX_NATIVE_211BSD
+		saved_errno = errno;
+#ifdef TMUX_ALLOC_STATS
+		xmalloc_stats_report();
+#endif
+		log_warnx("xrealloc failure: nmemb=%u size=%u bytes=%u brk=%u stack=%u",
+		    (unsigned)nmemb, (unsigned)size, (unsigned)newsize,
+		    (unsigned)(uintptr_t)sbrk(0), (unsigned)(uintptr_t)&newptr);
+		errno = saved_errno;
+#endif
+		fatal("xrealloc failed");
+	}
+
+	return (newptr);
+}
+
+void
+xfree(void *ptr)
+{
+	if (ptr == NULL)
+		fatalx("null pointer");
+	free(ptr);
+}
+
+int printflike2
+xasprintf(char **ret, const char *fmt, ...)
+{
+	va_list ap;
+	int	i;
+
+	va_start(ap, fmt);
+	i = xvasprintf(ret, fmt, ap);
+	va_end(ap);
+
+	return (i);
+}
+
+int
+xvasprintf(char **ret, const char *fmt, va_list ap)
+{
+	int	i;
+
+	i = vasprintf(ret, fmt, ap);
+	if (i < 0 || *ret == NULL)
+		fatal("xvasprintf failed");
+
+	return (i);
+}
+
+int printflike3
+xsnprintf(char *buf, size_t len, const char *fmt, ...)
+{
+	va_list ap;
+	int	i;
+
+	va_start(ap, fmt);
+	i = xvsnprintf(buf, len, fmt, ap);
+	va_end(ap);
+
+	return (i);
+}
+
+int
+xvsnprintf(char *buf, size_t len, const char *fmt, va_list ap)
+{
+	int	i;
+#ifdef TMUX_NATIVE_211BSD
+	char	measure;
+#endif
+
+	if (len > INT_MAX)
+		fatalx("len > INT_MAX");
+
+#ifdef TMUX_NATIVE_211BSD
+	/* Native snprintf counts truncated output, but rejects size zero. */
+	if (len == 0) {
+		buf = &measure;
+		len = 1;
+	}
+#endif
+	i = vsnprintf(buf, len, fmt, ap);
+	if (i < 0)
+		fatal("vsnprintf failed");
+
+	return (i);
+}

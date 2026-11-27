@@ -1,0 +1,3 @@
+#!/bin/sh
+# Invoke the installed first pass through the shell, as for c1.
+/lib/c0 "$@"
