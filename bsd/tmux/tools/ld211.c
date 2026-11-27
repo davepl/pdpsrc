@@ -1,6 +1,14 @@
 /* Project-private tmux linker, copied from the native Links port.
  * Retains its audited finishout() N_EXT+N_TEXT equality correction and
- * ../native-tmp scratch path. Never install over the system linker. */
+ * ../native-tmp scratch path. Never install over the system linker.
+ *
+ * This is the 2.11BSD linker, not original to this project; its authors'
+ * change history follows. 2.11BSD derives from Research UNIX Version 7 and
+ * the Berkeley 2BSD releases. It is distributed under the Caldera
+ * International license of January 23, 2002 for the 16-bit UNIX releases and
+ * the license of The Regents of the University of California; both are
+ * reproduced in ../LICENSE.md, section 4. The local changes are offered on
+ * the same terms. */
 #if	defined(DOSCCS) && !defined(lint)
 static char *sccsid = "@(#)ld.c	4.6 1998/01/19";
 #endif

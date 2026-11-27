@@ -26,6 +26,13 @@ The first milestone binary passed descriptors over the Unix socket and
 reproduced a kernel panic in an isolated Minerva clone. Native builds have not
 used that path since protocol 6; see [native/IPC.md](native/IPC.md).
 
+## License
+
+tmux and the port's own code are under the ISC license. The compatibility
+files tmux ships are ISC or BSD licensed, and three build-tool files come
+from 2.11BSD under the Caldera and Berkeley licenses. [LICENSE.md](LICENSE.md)
+lists every part, its owners and its terms.
+
 ## Source layout
 
 | Path | Purpose |

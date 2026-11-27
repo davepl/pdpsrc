@@ -1,6 +1,13 @@
 /* Minerva /usr/src/bin/cc.c snapshot. Only temporary prefix changed so
  * large compiler intermediates stay on the source (/usr) filesystem.
- * Run from bsd/tmux/upstream or bsd/tmux/tools; keep this project-local. */
+ * Run from bsd/tmux/upstream or bsd/tmux/tools; keep this project-local.
+ *
+ * This is the 2.11BSD C compiler driver, not original to this project.
+ * 2.11BSD derives from Research UNIX Version 7 and the Berkeley 2BSD
+ * releases. It is distributed under the Caldera International license of
+ * January 23, 2002 for the 16-bit UNIX releases and the license of The
+ * Regents of the University of California; both are reproduced in
+ * ../LICENSE.md, section 4. The local change is offered on the same terms. */
 #if !defined(lint) && defined(DOSCCS)
 static	char sccsid[] = "@(#)cc.c 5.1 (2.11BSD) 2025/8/16";
 #endif
