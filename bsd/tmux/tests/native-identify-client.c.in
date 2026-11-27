@@ -1,0 +1,120 @@
+/* OS and framing mocks for the actual native and host client encoder. */
+#include <assert.h>
+#include <setjmp.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/types.h>
+#define STDIN_FILENO 0
+#define MSG_IDENTIFY 6
+/* PROTOCOL_DEFINITIONS */
+/* IDENTIFY_MESSAGE */
+struct imsgbuf {
+	int unused;
+};
+static struct imsgbuf client_ibuf;
+static struct msg_identify_data captured;
+static int calls, dups, fdvalue, failing;
+static jmp_buf failure;
+static char pathname[140] = "/dev/ttyp0";
+static int mock_ioctl(int fd, unsigned long op, void *p)
+{
+	(void)op;
+	(void)p;
+	assert(fd == 0);
+	return 0;
+}
+static char *mock_getcwd(char *p, size_t n)
+{
+	assert(n > 5);
+	strcpy(p, "/tmp");
+	return p;
+}
+static char *mock_getenv(const char *n)
+{
+	assert(!strcmp(n, "TERM"));
+	return "vt100";
+}
+static char *mock_ttyname(int fd)
+{
+	assert(fd == 0);
+	return failing == 1 ? NULL : pathname;
+}
+static int mock_dup(int fd)
+{
+	assert(fd == 0);
+	dups++;
+	return 73;
+}
+static size_t mock_strlcpy(char *d, const char *s, size_t n)
+{
+	size_t l = strlen(s);
+	if (n) {
+		size_t m = l < n - 1 ? l : n - 1;
+		memcpy(d, s, m);
+		d[m] = 0;
+	}
+	return l;
+}
+static int imsg_compose(struct imsgbuf *b, int type, int peer, int pid, int fd,
+			void *d, size_t n)
+{
+	assert(b == &client_ibuf && type == MSG_IDENTIFY &&
+	       peer == PROTOCOL_VERSION && pid == -1 && n == sizeof captured);
+	calls++;
+	fdvalue = fd;
+	memcpy(&captured, d, n);
+	return failing == 3 ? -1 : 1;
+}
+static void mock_fatal(void)
+{
+	longjmp(failure, 1);
+}
+#define ioctl mock_ioctl
+#define getcwd mock_getcwd
+#define getenv mock_getenv
+#define ttyname mock_ttyname
+#define dup mock_dup
+#define strlcpy mock_strlcpy
+#define fatal(s) mock_fatal()
+#define fatalx(s) mock_fatal()
+/* TESTED_FUNCTIONS */
+
+int main(void)
+{
+	if (setjmp(failure))
+		return 2;
+	client_send_identify(3);
+	assert(calls == 1 && captured.flags == 3 &&
+	       !strcmp(captured.cwd, "/tmp") &&
+	       !strcmp(captured.term, "vt100"));
+#ifdef TMUX_NATIVE_211BSD
+	assert(dups == 0 && fdvalue == -1 &&
+	       !strcmp(captured.tty, "/dev/ttyp0") && PROTOCOL_VERSION == 7);
+	failing = 1;
+	if (!setjmp(failure)) {
+		client_send_identify(0);
+		assert(0);
+	}
+	assert(calls == 1 && dups == 0);
+	failing = 2;
+	memset(pathname, 'x', sizeof pathname - 1);
+	pathname[sizeof pathname - 1] = 0;
+	if (!setjmp(failure)) {
+		client_send_identify(0);
+		assert(0);
+	}
+	assert(calls == 1 && dups == 0);
+	strcpy(pathname, "/dev/ttyp0");
+	failing = 3;
+	if (!setjmp(failure)) {
+		client_send_identify(0);
+		assert(0);
+	}
+	assert(calls == 2 && dups == 0);
+#else
+	assert(dups == 1 && fdvalue == 73 && PROTOCOL_VERSION == 5);
+#endif
+	return 0;
+}

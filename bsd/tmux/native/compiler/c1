@@ -1,0 +1,4 @@
+#!/bin/sh
+# The installed cc driver can crash c1 when it launches it directly.
+# Invoke the same pass through the shell, preserving its exit status.
+/lib/c1 "$@"

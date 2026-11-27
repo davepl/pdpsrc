@@ -1,0 +1,204 @@
+tmux frequently asked questions
+
+* How is tmux different from GNU screen? What else does it offer?
+
+tmux offers several advantages over screen:
+
+- a clearly-defined client-server model: windows are independent entities which
+  may be attached simultaneously to multiple sessions and viewed from multiple
+  clients (terminals), as well as moved freely between sessions within the same
+  tmux server;
+- a consistent, well-documented command interface, with the same syntax
+  whether used interactively, as a key binding, or from the shell;
+- easily scriptable from the shell;
+- multiple paste buffers;
+- choice of vi or emacs key layouts;
+- an option to limit the window size;
+- a more usable status line syntax, with the ability to display the first line
+  of output of a specific command;
+- a cleaner, modern, easily extended, BSD-licensed codebase.
+
+There are still a few features screen includes that tmux omits:
+
+- builtin serial and telnet support; this is bloat and is unlikely to be added
+  to tmux;
+- wider platform support, for example IRIX and HP-UX, and for odd terminals.
+
+* I found a bug! What do I do?
+
+Please send bug reports by email to nicm@users.sourceforge.net. Please
+include as much of the following information as possible:
+
+- the version of tmux you are running;
+- the operating system you are using and its version;
+- the terminal emulator you are using and the TERM setting when tmux was
+  started;
+- a description of the problem;
+- if the problem is repeatable, the steps to repeat the problem;
+- for screen corruption issues, a screenshot and the output of "infocmp $TERM"
+  from outside tmux are often very useful.
+
+* Why doesn't tmux do $x?
+
+Please send feature requests by email to nicm@users.sourceforge.net.
+
+* Why do you use the screen terminal description inside tmux? It sucks.
+
+It is already widely available. It is planned to change to something else such
+as xterm-xfree86 at some point, if possible.
+
+* I don't see any colour in my terminal! Help!
+
+On some platforms, common terminal descriptions such as xterm do not include
+colour. screen ignores this, tmux does not. If the terminal emulator in use
+supports colour, use a value for TERM which correctly lists this, such as
+xterm-color.
+
+* tmux freezes my terminal when I attach to a session. I even have to kill -9
+  the shell it was started from to recover!
+
+Some consoles really really don't like attempts to set the window title. Tell
+tmux not to do this by turning off the "set-titles" option (you can do this
+in .tmux.conf):
+
+     set -g set-titles off
+
+If this doesn't fix it, send a bug report.
+
+* Why is C-b the prefix key? How do I change it?
+
+The default key is C-b because the prototype of tmux was originally developed
+inside screen and C-b was chosen not to clash with the screen meta key. It
+also has the advantage of not interfering with the use of C-a for start-of-line
+in emacs and the shell (although it does interfere with previous-character).
+
+Changing is simple: change the "prefix-key" option, and - if required - move
+the binding of the "send-prefix" command from C-b (C-b C-b sends C-b by
+default) to the new key. For example:
+
+	set -g prefix C-a
+	unbind C-b
+	bind C-a send-prefix
+
+* How do I use UTF-8?
+
+When running tmux in a UTF-8 capable terminal, two things must be done to
+enable support. UTF-8 must be turned on in tmux; this may be done separately
+for each tmux window or globally by setting the "utf8" flag:
+
+	setw -g utf8 on
+
+As of release 0.9, tmux attempts to autodetect a UTF-8-capable terminal by
+checking the LC_ALL, LC_CTYPE and LANG environment variables. list-clients may
+be used to check if this is detected correctly; if not, the -u command-line
+flag may be specified when creating or attaching a client to a tmux session:
+
+	$ tmux -u new
+
+* How do I use a 256 colour terminal?
+
+Provided the underlying terminal supports 256 colours, it is usually sufficient
+to add the following to ~/.tmux.conf:
+
+	set -g default-terminal "screen-256color"
+
+Note that some platforms do not support "screen-256color" ("infocmp
+screen-256color" will return an error) - in this case see the next entry in
+this FAQ.
+
+tmux attempts to detect a 256 colour terminal both by looking at the colors
+terminfo entry and by looking for the string "256col" in the TERM environment
+variable.
+
+If both these methods fail, the -2 flag may be passed to tmux when attaching
+to a session to indicate the terminal supports 256 colours.
+
+* vim or $otherprogram doesn't display 256 colours. What's up?
+
+Some programs attempt to detect the number of colours a terminal is capable of
+by checking the colors terminfo or Co termcap entry. However, this is not
+reliable, and in any case is missing from the "screen" terminal description
+used inside tmux.
+
+There are two options (aside from using "screen-256color") to allow programs to
+recognise they are running on a 256-colour terminal inside tmux:
+
+- Manually force the application to use 256 colours always or if TERM is set to
+  screen. For vim, you can do this by overriding the t_Co option, see
+  http://vim.wikia.com/wiki/256_colors_in_vim.
+- Creating a custom terminfo file that includes colors#256 in ~/.terminfo and
+  using it instead. These may be compiled with tic(1).
+
+* How do I make Ctrl-PgUp and Ctrl-PgDn work in vim?
+
+tmux supports passing through ctrl (and where supported by the client terminal,
+alt and shift) modifiers to function keys using xterm(1)-style key sequences.
+This may be enabled per window, or globally with the tmux command:
+
+	setw -g xterm-keys on
+
+Because the TERM variable inside tmux must be set to "screen", vim will not
+automatically detect these keys are available; however, the appropriate key
+sequences can be overridden in .vimrc using the following:
+
+	if &term == "screen"
+	set t_kN=^[[6;*~
+	set t_kP=^[[5;*~
+	endif
+
+And similarly for any other keys for which modifiers are desired.
+
+Please note that the "xterm-keys" setting may affect other programs, in the
+same way as running them in a standard xterm; for example most shells do not
+expect to receive xterm(1)-style key sequences so this setting may prevent keys
+such as ctrl-left and ctrl-right working correctly. tmux also passes through
+the ctrl (bit 5 set, for example ^[[5~ to ^[[5^) modifier in non-xterm(1) mode;
+it may be possible to configure vim to accept these, an example of how to do so
+would be welcome.
+
+* Why doesn't elinks set the window title inside tmux?
+
+There isn't a way to detect if a terminal supports setting the window title, so
+elinks attempts to guess by looking at the environment. Rather than looking for
+TERM=screen, it uses the STY variable to detect if it is running in screen;
+tmux does not use this so the check fails. A workaround is to set STY before
+running elinks.
+
+The following shell function does this, and also clears the window title on
+exit (elinks, for some strange reason, sets it to the value of TERM):
+
+	elinks() {
+        	STY= `which elinks` $*
+	        echo -ne \\033]0\;\\007;
+	}
+
+* What is the proper way to escape characters with #(command)?
+
+When using the #(command) construction to include the output from a command in
+the status line, the command will be parsed twice. First, when it's read by the
+configuration file or the command-prompt parser, and second when the status
+line is being drawn and the command is passed to the shell. For example, to
+echo the string "(test)" to the status line, either single or double quotes
+could be used:
+
+	set -g status-right "#(echo \\\\(test\\\\))"
+	set -g status-right '#(echo \\\(test\\\))'
+
+In both cases, the status-right option will be set to the string "#(echo
+\\(test\\))" and the command executed will be "echo \(test\)".
+
+* tmux uses too much CPU. What do I do?
+
+Automatic window renaming may use a lot of CPU, particularly on slow computers:
+if this is a problem, turn it off with "setw -g automatic-rename off". If this
+doesn't fix it, please report the problem.
+
+* I use PuTTY and my tmux window pane separators are all qqqqqqqqq's! 
+
+PuTTY is using a character set translation that doesn't support ACS line
+drawing. With a Unicode font, try setting PuTTY to use a different translation
+on the Window -> Translation configuration page. For example, change UTF-8 to
+ISO-8859-1 or CP437. It may also be necessary to adjust the way PuTTY treats
+line drawing characters in the lower part of the same configuration page.
+
+$Id: FAQ,v 1.29 2009-08-08 20:46:26 nicm Exp $

@@ -1,0 +1,9 @@
+*.o
+*.log
+*.core
+upstream/tmux
+native-tmp/
+upstream/tmux-full
+native/size-probe
+__pycache__/
+.DS_Store

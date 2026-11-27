@@ -1,0 +1,97 @@
+- window creation/idle time
+- better errors when creating new windows/sessions (how?)
+- implicitly add exec to the commands for new windows (switch to disable it)?
+- it would be nice to have multichar commands eg C-b K K
+- commands:
+ 	extend list-clients to list clients attached to a session (-a for all?)
+	bring back detach-session to detach all clients on a session?
+- allow fnmatch for -c, so that you can, eg, detach all clients
+- garbage collect window history (100 lines at a time?) if it hasn't been used
+  in $x time (need window creation/use times)
+- lift SHRT_MAX limits for history?
+- flags to centre screen in window
+- better terminal emulation
+- activity/bell should be per-window not per-link? what if it is cur win in
+  session not being watched?
+- next prev word etc in command prompt
+- many more info() displays for various things
+- input.c is too complicated. simplify?
+- use a better termcap internally instead of screen, perhaps xterm
+- fix rxvt cursor fg issue (text under cursor can have non-white fg)
+- should be able to move to a hidden pane and it would be moved into view. pane
+  number in status line/top-right would be cool for this
+- support other mouse modes (highlight etc) and use it in copy mode
+- set-remain-on-exit is a bit of a hack, some way to do it generically?
+- set-option should be set-session-option and should be overall global options
+      also quiet, utf8 and maybe other flags?
+  -g is a bit unexpected in conf file
+- clear window title on exit
+- the output code (tty.c) could do with optimisation depending on term
+  capabilities
+- would be nice to be able to use "--" to mark start of command w/ neww etc
+  to avoid quoting
+- make command sequences more usable: don't require space after ;, handle
+  errors better
+- attach should have a flag to create session if it doesn't exist
+- choice and more mode would be better per client than per window?
+- hooks to which commands may be attached, for example: tmux add-hook
+  "new-session" if-shell "[ -e $HOME/.tmux-session.conf ]" source-file
+  $HOME/.tmux-session.conf
+- get it passing all the vttest tests that don't require resizing the terminal
+- esc seq to set window title should be documented and should set
+  automatic-rename
+- way to set socket path from config file
+- XXX once env stuff is in, default-path and VISUAL/EDITOR should be picked up
+  when session is started
+- what about utmp etc? can tmux update it like screen? setgid?
+- warts on current naming:
+  	- display-time but message-fg/bg/attr
+	- list-* vs show-*
+	- server-info
+	- up-pane/down-pane/swap-pane -U/swap-pane -D vs next-*/previous-*
+	- split-window -> split-pane??
+- tidy up and prioritise todo list ;-)
+- neww and attach can create a session if none exists?
+       would work fine with config file since
+- a way for force-width/height to apply to only one pane (how?)
+- command to list what is actually running in each window with command line,
+  pid (need some adaption of the osdep code)
+- string option to change/remove the symbols (*-+ etc) in status line
+  * or to set entire format, eg window-list-format '#N:#W#P' or something,
+  then could use embedded colours
+- support for bce
+- it would be nice if the start/end line keys in copy mode were aware of
+  wrapped lines
+- some way to force a screen to use the entire terminal even if it is forced
+  to be smaller by other clients. pan smaller terminal? (like screen F)
+		-- idea of a "view" onto a window, need base x/y offsets
+		   for redraw
+- handle resize better in copy mode
+- way to copy stuff that is off screen due to resize
+- a way to address panes by name ("top-left") and position ("0,0")
+- commands should be able to succeed or fail and have || or && for command
+  lists
+- support the mouse wheel to scroll through history
+- some way to KEEP a command running continually and just use its LAST line of
+  output
+- bind commands to mouse buttons
+- UTF-8 to a non-UTF-8 terminal should not be able to balls up
+  the terminal - www/ruby-addressable; make regress
+- copy mode needs a tidy/cleanup
+- things like display-message will leak job entries if #() is used
+- message log
+- an option to NOT remove message when key pressed
+- would be nice to be able to press 0-9a-zA-Z to select window in choose-window
+  mode, also to start typing and it searches
+- the wrapping stuff should work when redrawn from scroll mode too (screen_write_copy)
+- ability to save history (to buffer?)
+- multiple keys could be done with tables, ie have prefixes go and instead
+	bind -n ^A prefix-table "default"
+  where prefix-table sets command lookup table and sets prefix flag, then next key
+  is looked up in that table
+- check fix UTF-8 and split-window? should be okay
+- UTF-8 should be a pointer into a combined string buffer
+- check irssi (term_charset) works with UTF-8
+- rectangle copy/paste
+- half page/up down are missing from key table
+- support esc-esc to quit in modes
