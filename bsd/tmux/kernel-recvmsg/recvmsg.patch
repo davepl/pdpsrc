@@ -1,0 +1,12 @@
+*** /usr/src/sys/sys/uipc_syscalls.c.old
+--- /usr/src/sys/sys/uipc_syscalls.c
+***************
+*** 503,508 ****
+--- 503,509 ----
+  		(unsigned)(msg.msg_iovlen * sizeof(aiov[0])));
+  	if (u.u_error)
+  		return;
++ 	msg.msg_iov = aiov;
+  	recvit(uap->s, &msg, uap->flags,
+  	    (caddr_t)&uap->msg->msg_namelen,
+  	    (caddr_t)&uap->msg->msg_accrightslen);

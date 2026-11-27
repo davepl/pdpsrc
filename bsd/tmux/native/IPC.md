@@ -57,20 +57,26 @@ using the existing kernel; no external gateway or kernel modification is needed.
 
 An isolated SIMH clone of Minerva reproduced the kernel panic when launching the
 exact previous milestone binary. The console reached `unp_internalize` and then
-reported trap 0. This identifies the Unix-socket rights path as a concrete
-porting obstacle; it is not evidence of a successful tmux session.
+reported trap 0.
 
 That pre-transport binary linked with resident text 28224 bytes, data 25046 bytes
 and BSS 1452 bytes, plus seven overlay banks (six at 24576 bytes, one at 5376).
 These are historical baseline measurements, not sizes or runtime results for
 the protocol-6 executable. Overlays do not enlarge the flat data/heap/stack space.
 
-A separate static audit of 2.11BSD `uipc_syscalls.c` version 7.1.3 (1999/9/13)
-also found that `recvmsg`
-copies user iovecs but omits switching to the copied array before `recvit`.
-This is an additional reason to avoid that syscall; it has not been established
-as the cause of the observed rights-path trap. The running kernel was not
-changed.
+The cause was found on November 26, 2026, and it is in `recvmsg`, not in the
+rights code. `recvmsg` in 2.11BSD `uipc_syscalls.c` version 7.1.3 (1999/9/13)
+copies the caller's iovec array into the kernel but never points `msg.msg_iov`
+at the copy, so `recvit` reads the user's iovec address as a kernel address.
+With the iovec on the user stack, that address is in the kernel's I/O page and
+the read traps. The `unp_internalize` line is a debug `printf` from the sender,
+whose `sendmsg` had already succeeded.
+
+A short test program reproduces the panic on a stock patch level 482 system, and
+a one-line fix makes descriptor passing work there.
+[../kernel-recvmsg/](../kernel-recvmsg/README.md) has the patch, the test
+programs and the evidence. Minerva's kernel was not changed, and the port does
+not depend on the fix.
 
 ## Validation status
 
