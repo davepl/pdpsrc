@@ -55,6 +55,8 @@ class NativeMakefiles(unittest.TestCase):
             (self.work / name).write_text('/* header sentinel */\n')
         for name in ['termios.h', 'utf8-width.inc']:
             (self.root / 'native' / name).write_text('/* native header sentinel */\n')
+        # The link step installs the error text beside the executable.
+        (self.root / 'native/tmux.msg').write_bytes(b'tmuxmsg 00000000\nmessage sentinel\0')
         for tree in (ROOT / 'native/trees').glob('*.inc'):
             (self.root / 'native/trees' / tree.name).write_text('/* tree sentinel */\n')
         self.commands = self.root / 'commands.jsonl'
@@ -132,6 +134,8 @@ for name in names:
             result = self.make('all')
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertTrue((self.work / binary).exists())
+            self.assertEqual((self.work / 'tmux.msg').read_bytes(),
+                             (self.root / 'native/tmux.msg').read_bytes())
             rows = self.records()
             self.assertEqual([row['object'] for row in rows], selected)
             for row in rows:

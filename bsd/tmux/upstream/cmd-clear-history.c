@@ -48,8 +48,7 @@ cmd_clear_history_exec(struct cmd *self, struct cmd_ctx *ctx)
 		return (-1);
 	gd = wp->base.grid;
 
-	grid_move_lines(gd, 0, gd->hsize, gd->sy);
-	gd->hsize = 0;
+	grid_clear_history(gd);
 
 	return (0);
 }

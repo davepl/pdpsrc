@@ -3,6 +3,7 @@ buffer.o
 buffer-poll.o
 cfg.o
 client.o
+client-tty.o
 clock.o
 cmd.o
 cmd-attach-session.o
@@ -91,6 +92,7 @@ colour.o
 environ.o
 grid.o
 grid-view.o
+grid-history.o
 input.o
 input-keys.o
 job.o
@@ -147,3 +149,4 @@ compat/imsg-buffer.o
 ../native/protocol-check.o
 ../native/libc.o
 ../native/line-reader.o
+../native/xstr.o

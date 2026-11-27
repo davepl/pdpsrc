@@ -95,6 +95,19 @@ log_fatalx(const char *fmt, ...)
 	abort();
 }
 
+/*
+ * The generated copies under test fetch error text through this; log.o, which
+ * reads it from the message file, is not linked here.
+ */
+char *
+tmux_msg(unsigned offset)
+{
+	static char text[32];
+
+	snprintf(text, sizeof text, "message %u", offset);
+	return (text);
+}
+
 void *
 memory_profile_realloc(void *p, size_t size)
 {
@@ -259,9 +272,12 @@ check_mode_keys(void)
 	assert(SPLAY_EMPTY(&mode_key_tree_vi_choice));
 	table = mode_key_findtable("VI-choice");
 	assert(table != NULL && !SPLAY_EMPTY(table->tree));
+	/* A copy table is built on first use; the milestone has the emacs one. */
+	assert(SPLAY_EMPTY(&mode_key_tree_emacs_copy));
+	table = mode_key_findtable("emacs-copy");
+	assert(table != NULL && !SPLAY_EMPTY(table->tree));
 #ifdef TMUX_MILESTONE
 	assert(mode_key_findtable("vi-copy") == NULL);
-	assert(mode_key_findtable("emacs-copy") == NULL);
 #else
 	assert(SPLAY_EMPTY(&mode_key_tree_vi_copy));
 #endif

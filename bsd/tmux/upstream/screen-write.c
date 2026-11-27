@@ -371,32 +371,37 @@ screen_write_copy(struct screen_write_ctx *ctx,
 {
 	struct screen		*s = ctx->s;
 	struct grid		*gd = src->grid;
-	struct grid_line	*gl;
 	const struct grid_cell	*gc;
 #ifdef GRID_COMPACT_ROWS
 	struct grid_cell	 copy_gc;
+#else
+	struct grid_line	*gl;
 #endif
 	const struct grid_utf8	*gu;
 	struct utf8_data	 utf8data;
-	u_int		 	 xx, yy, cx, cy, ax, bx, i;
+	u_int		 	 xx, yy, cx, cy, ax, bx, i, cellsize;
 
 	cx = s->cx;
 	cy = s->cy;
 	for (yy = py; yy < py + ny; yy++) {
-		gl = &gd->linedata[yy];
 		if (yy < gd->hsize + gd->sy) {
+			/* The row may be history kept outside the grid. */
+			cellsize = grid_line_cellsize(gd, yy);
+#ifndef GRID_COMPACT_ROWS
+			gl = GRID_LINE(gd, yy);
+#endif
 			/*
 			 * Find start and end position and copy between
 			 * them. Limit to the real end of the line then use a
 			 * clear EOL only if copying to the end, otherwise
 			 * could overwrite whatever is there already.
 			 */
-			if (px > gl->cellsize)
-				ax = gl->cellsize;
+			if (px > cellsize)
+				ax = cellsize;
 			else
 				ax = px;
-			if (px + nx == gd->sx && px + nx > gl->cellsize)
-				bx = gl->cellsize;
+			if (px + nx == gd->sx && px + nx > cellsize)
+				bx = cellsize;
 			else
 				bx = px + nx;
 			
@@ -406,7 +411,7 @@ screen_write_copy(struct screen_write_ctx *ctx,
 				 * A peeked cell lasts only until the next
 				 * peek, and writing a cell peeks.
 				 */
-				if (xx >= gl->cellsize)
+				if (xx >= cellsize)
 					memcpy(&copy_gc,
 					    &grid_default_cell, sizeof copy_gc);
 				else {
@@ -415,13 +420,13 @@ screen_write_copy(struct screen_write_ctx *ctx,
 				}
 				gc = &copy_gc;
 #else
-				if (xx >= gl->cellsize)
+				if (xx >= cellsize)
 					gc = &grid_default_cell;
 				else
 					gc = &gl->celldata[xx];
 #endif
 				if (gc->flags & GRID_FLAG_UTF8) {
-					gu = &gl->utf8data[xx]; 
+					gu = grid_peek_utf8(gd, xx, yy);
 					memcpy(utf8data.data,
 					    gu->data, sizeof utf8data.data);
 					utf8data.width = gu->width;
@@ -434,7 +439,7 @@ screen_write_copy(struct screen_write_ctx *ctx,
 				}
 				screen_write_cell(ctx, gc, &utf8data);
 			}
-			if (px + nx == gd->sx && px + nx > gl->cellsize)
+			if (px + nx == gd->sx && px + nx > cellsize)
 				screen_write_clearendofline(ctx);
 		} else
 			screen_write_clearline(ctx);
@@ -572,7 +577,7 @@ screen_write_backspace(struct screen_write_ctx *ctx)
 	if (s->cx == 0) {
 		if (s->cy == 0)
 			return;
-		gl = &s->grid->linedata[s->grid->hsize + s->cy - 1];
+		gl = GRID_LINE(s->grid, s->grid->hsize + s->cy - 1);
 		if (gl->flags & GRID_LINE_WRAPPED) {
 			s->cy--;
 			s->cx = screen_size_x(s) - 1;
@@ -892,7 +897,7 @@ screen_write_linefeed(struct screen_write_ctx *ctx, int wrapped)
 
 	screen_write_initctx(ctx, &ttyctx, 0);
 
-	gl = &s->grid->linedata[s->grid->hsize + s->cy];
+	gl = GRID_LINE(s->grid, s->grid->hsize + s->cy);
 	if (wrapped)
 		gl->flags |= GRID_LINE_WRAPPED;
 	else

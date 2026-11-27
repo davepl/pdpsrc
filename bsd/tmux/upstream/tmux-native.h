@@ -129,9 +129,25 @@ extern char   **environ;
 #define SHELL_LENGTH MAXPATHLEN	/* default shell pathname */
 #endif
 
-/* Fatal errors. */
+/*
+ * Fatal errors.
+ *
+ * The native compiler keeps a private copy of every string literal, so the
+ * usual form costs a format and a file name at each of some 190 calls. There
+ * the format lives once in log.c, and each generated native unit defines
+ * TMUX_UNIT as its name in the shared string array before this header is
+ * read (tools/generate_native_sources.py).
+ */
+#ifdef TMUX_NATIVE_211BSD
+#ifndef TMUX_UNIT
+#define TMUX_UNIT __FILE__
+#endif
+#define fatal(msg) log_fatal_unit(TMUX_UNIT, msg);
+#define fatalx(msg) log_fatalx_unit(TMUX_UNIT, msg);
+#else
 #define fatal(msg) log_fatal("%s: %s", __func__, msg);
 #define fatalx(msg) log_fatalx("%s: %s", __func__, msg);
+#endif
 
 /* Definition to shut gcc up about unused arguments. */
 #define unused __attribute__ ((unused))
@@ -682,6 +698,26 @@ struct grid_utf8 {
 #define GRID_COMPACT_ROWS 1
 #define GRID_ROW_QUANTUM 80U	/* cells per row allocation step */
 #define GRID_STYLE_BYTES 3U	/* attr, flags, fg | bg << 4 */
+
+/*
+ * History outside the data space. The native process has no room for
+ * scrollback in its heap, so rows that scroll off a window go to a paging
+ * file through the 2.11BSD vmf(3) library: fixed records in 1024-byte
+ * segments, of which a few are in memory at a time. linedata then holds the
+ * visible rows only, and hsize counts rows in the file. A history row keeps
+ * its characters and its wrapped flag, not colours or attributes, and cannot
+ * be written after it is stored. See grid-history.c.
+ */
+#if defined(TMUX_NATIVE_211BSD) || defined(TMUX_VMF_HISTORY_TEST)
+#define GRID_VMF_HISTORY 1
+#define GRID_HISTORY_COLUMNS 80U	/* characters kept from a row */
+#define GRID_HISTORY_RECORD 85U		/* flags, length, characters, spare */
+#define GRID_HISTORY_PERSEG 12U		/* records in a 1024-byte segment */
+#define GRID_HISTORY_SEGMENTS 40U	/* segments reserved for one grid */
+#define GRID_HISTORY_SLOTS 12U		/* grids with history: 480 of 512 segments */
+#define GRID_HISTORY_ROWS (GRID_HISTORY_SEGMENTS * GRID_HISTORY_PERSEG)
+#define GRID_HISTORY_BUFFERS 2		/* segments held in memory */
+#endif
 #endif
 
 /* Grid line. */
@@ -711,8 +747,23 @@ struct grid {
 	u_int	hsize;
 	u_int	hlimit;
 
+#ifdef GRID_VMF_HISTORY
+	u_short	hhead;		/* ring position of the oldest history row */
+	u_char	hslot;		/* history slot + 1, or 0 without history */
+#endif
+
 	struct grid_line *linedata;
 };
+
+/*
+ * The stored line for an absolute row. With history outside the data space
+ * only visible rows have one, so py must not be below hsize there.
+ */
+#ifdef GRID_VMF_HISTORY
+#define GRID_LINE(gd, py) (&(gd)->linedata[(py) - (gd)->hsize])
+#else
+#define GRID_LINE(gd, py) (&(gd)->linedata[py])
+#endif
 
 /* Option data structures. */
 struct options_entry {
@@ -2036,6 +2087,7 @@ void	tty_cmd_reverseindex(struct tty *, const struct tty_ctx *);
     defined(PDP11_UNIT_buffer_poll) || \
     defined(PDP11_UNIT_cfg) || \
     defined(PDP11_UNIT_client) || \
+    defined(PDP11_UNIT_client_tty) || \
     defined(PDP11_UNIT_clock) || \
     defined(PDP11_UNIT_cmd) || \
     defined(PDP11_UNIT_cmd_attach_session) || \
@@ -2130,6 +2182,7 @@ void	tty_cmd_reverseindex(struct tty *, const struct tty_ctx *);
     defined(PDP11_UNIT_getcwd) || \
     defined(PDP11_UNIT_getopt) || \
     defined(PDP11_UNIT_grid) || \
+    defined(PDP11_UNIT_grid_history) || \
     defined(PDP11_UNIT_grid_view) || \
     defined(PDP11_UNIT_imsg) || \
     defined(PDP11_UNIT_imsg_buffer) || \
@@ -2189,6 +2242,7 @@ void	tty_cmd_reverseindex(struct tty *, const struct tty_ctx *);
     defined(PDP11_UNIT_window_copy) || \
     defined(PDP11_UNIT_window_more) || \
     defined(PDP11_UNIT_xmalloc) || \
+    defined(PDP11_UNIT_xstr) || \
     defined(PDP11_UNIT_xterm_keys)
 extern struct tty_terms tty_terms;
 #endif
@@ -3404,6 +3458,15 @@ __dead void	client_main(void);
 #endif
 
 
+/* client-tty.c */
+#ifdef TMUX_NATIVE_211BSD
+#if defined(PDP11_UNIT_client) || \
+    defined(PDP11_UNIT_client_tty)
+void	client_check_tty(const char *);
+#endif
+
+#endif
+
 /* key-bindings.c */
 #if defined(PDP11_UNIT_asprintf) || \
     defined(PDP11_UNIT_attributes) || \
@@ -3412,6 +3475,7 @@ __dead void	client_main(void);
     defined(PDP11_UNIT_buffer_poll) || \
     defined(PDP11_UNIT_cfg) || \
     defined(PDP11_UNIT_client) || \
+    defined(PDP11_UNIT_client_tty) || \
     defined(PDP11_UNIT_clock) || \
     defined(PDP11_UNIT_cmd) || \
     defined(PDP11_UNIT_cmd_attach_session) || \
@@ -3506,6 +3570,7 @@ __dead void	client_main(void);
     defined(PDP11_UNIT_getcwd) || \
     defined(PDP11_UNIT_getopt) || \
     defined(PDP11_UNIT_grid) || \
+    defined(PDP11_UNIT_grid_history) || \
     defined(PDP11_UNIT_grid_view) || \
     defined(PDP11_UNIT_imsg) || \
     defined(PDP11_UNIT_imsg_buffer) || \
@@ -3565,6 +3630,7 @@ __dead void	client_main(void);
     defined(PDP11_UNIT_window_copy) || \
     defined(PDP11_UNIT_window_more) || \
     defined(PDP11_UNIT_xmalloc) || \
+    defined(PDP11_UNIT_xstr) || \
     defined(PDP11_UNIT_xterm_keys)
 extern struct key_bindings key_bindings;
 #endif
@@ -3668,6 +3734,7 @@ const char *key_string_lookup_key(key_code);
     defined(PDP11_UNIT_buffer_poll) || \
     defined(PDP11_UNIT_cfg) || \
     defined(PDP11_UNIT_client) || \
+    defined(PDP11_UNIT_client_tty) || \
     defined(PDP11_UNIT_clock) || \
     defined(PDP11_UNIT_cmd) || \
     defined(PDP11_UNIT_cmd_attach_session) || \
@@ -3762,6 +3829,7 @@ const char *key_string_lookup_key(key_code);
     defined(PDP11_UNIT_getcwd) || \
     defined(PDP11_UNIT_getopt) || \
     defined(PDP11_UNIT_grid) || \
+    defined(PDP11_UNIT_grid_history) || \
     defined(PDP11_UNIT_grid_view) || \
     defined(PDP11_UNIT_imsg) || \
     defined(PDP11_UNIT_imsg_buffer) || \
@@ -3821,6 +3889,7 @@ const char *key_string_lookup_key(key_code);
     defined(PDP11_UNIT_window_copy) || \
     defined(PDP11_UNIT_window_more) || \
     defined(PDP11_UNIT_xmalloc) || \
+    defined(PDP11_UNIT_xstr) || \
     defined(PDP11_UNIT_xterm_keys)
 extern struct clients clients;
 #endif
@@ -4088,7 +4157,8 @@ char	*status_replace(struct client *, const char *, time_t);
     defined(PDP11_UNIT_cmd_select_prompt) || \
     defined(PDP11_UNIT_key_bindings) || \
     defined(PDP11_UNIT_server_window) || \
-    defined(PDP11_UNIT_status)
+    defined(PDP11_UNIT_status) || \
+    defined(PDP11_UNIT_window_copy)
 void printflike2 status_message_set(struct client *, const char *, ...);
 #endif
 
@@ -4319,7 +4389,8 @@ void	 grid_collect_history(struct grid *);
 #endif
 
 #if defined(PDP11_UNIT_grid) || \
-    defined(PDP11_UNIT_grid_view)
+    defined(PDP11_UNIT_grid_view) || \
+    defined(PDP11_UNIT_screen)
 void	 grid_scroll_history(struct grid *);
 #endif
 
@@ -4357,6 +4428,7 @@ void	 grid_set_cell(struct grid *, u_int, u_int, const struct grid_cell *);
 
 #if defined(PDP11_UNIT_grid) || \
     defined(PDP11_UNIT_grid_view) || \
+    defined(PDP11_UNIT_screen_write) || \
     defined(PDP11_UNIT_window_copy)
 const struct grid_utf8 *grid_peek_utf8(struct grid *, u_int, u_int);
 #endif
@@ -4382,8 +4454,7 @@ void	 grid_clear(struct grid *, u_int, u_int, u_int, u_int);
 void	 grid_clear_lines(struct grid *, u_int, u_int);
 #endif
 
-#if defined(PDP11_UNIT_cmd_clear_history) || \
-    defined(PDP11_UNIT_grid) || \
+#if defined(PDP11_UNIT_grid) || \
     defined(PDP11_UNIT_grid_view)
 void	 grid_move_lines(struct grid *, u_int, u_int, u_int);
 #endif
@@ -4405,6 +4476,51 @@ void	 grid_duplicate_lines(
     	     struct grid *, u_int, struct grid *, u_int, u_int);
 #endif
 
+#if defined(PDP11_UNIT_grid) || \
+    defined(PDP11_UNIT_screen_write) || \
+    defined(PDP11_UNIT_window_copy)
+u_int	 grid_line_cellsize(struct grid *, u_int);
+#endif
+
+#if defined(PDP11_UNIT_grid) || \
+    defined(PDP11_UNIT_window_copy)
+int	 grid_line_flags(struct grid *, u_int);
+#endif
+
+#if defined(PDP11_UNIT_cmd_clear_history) || \
+    defined(PDP11_UNIT_grid)
+void	 grid_clear_history(struct grid *);
+#endif
+
+
+/* grid-history.c */
+#ifdef GRID_VMF_HISTORY
+#if defined(PDP11_UNIT_grid) || \
+    defined(PDP11_UNIT_grid_history)
+void	 grid_history_open(struct grid *);
+#endif
+
+#if defined(PDP11_UNIT_grid) || \
+    defined(PDP11_UNIT_grid_history)
+void	 grid_history_close(struct grid *);
+#endif
+
+#if defined(PDP11_UNIT_grid) || \
+    defined(PDP11_UNIT_grid_history)
+void	 grid_history_push(struct grid *, const struct grid_line *);
+#endif
+
+#if defined(PDP11_UNIT_grid) || \
+    defined(PDP11_UNIT_grid_history)
+const u_char *grid_history_row(struct grid *, u_int);
+#endif
+
+#if defined(PDP11_UNIT_grid) || \
+    defined(PDP11_UNIT_grid_history)
+void	 grid_history_clear(struct grid *);
+#endif
+
+#endif
 
 /* grid-view.c */
 #if defined(PDP11_UNIT_grid_view) || \
@@ -4817,6 +4933,7 @@ int	 screen_check_selection(struct screen *, u_int, u_int);
     defined(PDP11_UNIT_buffer_poll) || \
     defined(PDP11_UNIT_cfg) || \
     defined(PDP11_UNIT_client) || \
+    defined(PDP11_UNIT_client_tty) || \
     defined(PDP11_UNIT_clock) || \
     defined(PDP11_UNIT_cmd) || \
     defined(PDP11_UNIT_cmd_attach_session) || \
@@ -4911,6 +5028,7 @@ int	 screen_check_selection(struct screen *, u_int, u_int);
     defined(PDP11_UNIT_getcwd) || \
     defined(PDP11_UNIT_getopt) || \
     defined(PDP11_UNIT_grid) || \
+    defined(PDP11_UNIT_grid_history) || \
     defined(PDP11_UNIT_grid_view) || \
     defined(PDP11_UNIT_imsg) || \
     defined(PDP11_UNIT_imsg_buffer) || \
@@ -4970,6 +5088,7 @@ int	 screen_check_selection(struct screen *, u_int, u_int);
     defined(PDP11_UNIT_window_copy) || \
     defined(PDP11_UNIT_window_more) || \
     defined(PDP11_UNIT_xmalloc) || \
+    defined(PDP11_UNIT_xstr) || \
     defined(PDP11_UNIT_xterm_keys)
 extern struct windows windows;
 #endif
@@ -5438,6 +5557,7 @@ char 		*default_window_name(struct window *);
     defined(PDP11_UNIT_buffer_poll) || \
     defined(PDP11_UNIT_cfg) || \
     defined(PDP11_UNIT_client) || \
+    defined(PDP11_UNIT_client_tty) || \
     defined(PDP11_UNIT_clock) || \
     defined(PDP11_UNIT_cmd) || \
     defined(PDP11_UNIT_cmd_attach_session) || \
@@ -5532,6 +5652,7 @@ char 		*default_window_name(struct window *);
     defined(PDP11_UNIT_getcwd) || \
     defined(PDP11_UNIT_getopt) || \
     defined(PDP11_UNIT_grid) || \
+    defined(PDP11_UNIT_grid_history) || \
     defined(PDP11_UNIT_grid_view) || \
     defined(PDP11_UNIT_imsg) || \
     defined(PDP11_UNIT_imsg_buffer) || \
@@ -5591,6 +5712,7 @@ char 		*default_window_name(struct window *);
     defined(PDP11_UNIT_window_copy) || \
     defined(PDP11_UNIT_window_more) || \
     defined(PDP11_UNIT_xmalloc) || \
+    defined(PDP11_UNIT_xstr) || \
     defined(PDP11_UNIT_xterm_keys)
 extern struct sessions sessions;
 #endif
@@ -5607,6 +5729,7 @@ extern struct sessions dead_sessions;
     defined(PDP11_UNIT_buffer_poll) || \
     defined(PDP11_UNIT_cfg) || \
     defined(PDP11_UNIT_client) || \
+    defined(PDP11_UNIT_client_tty) || \
     defined(PDP11_UNIT_clock) || \
     defined(PDP11_UNIT_cmd) || \
     defined(PDP11_UNIT_cmd_attach_session) || \
@@ -5701,6 +5824,7 @@ extern struct sessions dead_sessions;
     defined(PDP11_UNIT_getcwd) || \
     defined(PDP11_UNIT_getopt) || \
     defined(PDP11_UNIT_grid) || \
+    defined(PDP11_UNIT_grid_history) || \
     defined(PDP11_UNIT_grid_view) || \
     defined(PDP11_UNIT_imsg) || \
     defined(PDP11_UNIT_imsg_buffer) || \
@@ -5760,6 +5884,7 @@ extern struct sessions dead_sessions;
     defined(PDP11_UNIT_window_copy) || \
     defined(PDP11_UNIT_window_more) || \
     defined(PDP11_UNIT_xmalloc) || \
+    defined(PDP11_UNIT_xstr) || \
     defined(PDP11_UNIT_xterm_keys)
 extern struct session_groups session_groups;
 #endif
@@ -6032,6 +6157,7 @@ void printflike1 log_warn(const char *, ...);
 #endif
 
 #if defined(PDP11_UNIT_client) || \
+    defined(PDP11_UNIT_client_tty) || \
     defined(PDP11_UNIT_log) || \
     defined(PDP11_UNIT_tmux) || \
     defined(PDP11_UNIT_xmalloc)
@@ -6118,6 +6244,66 @@ __dead void printflike1 log_fatal(const char *, ...);
 __dead void printflike1 log_fatalx(const char *, ...);
 #endif
 
+#ifdef TMUX_NATIVE_211BSD
+#if defined(PDP11_UNIT_client) || \
+    defined(PDP11_UNIT_cmd_new_session) || \
+    defined(PDP11_UNIT_cmd_pipe_pane) || \
+    defined(PDP11_UNIT_forkpty_aix) || \
+    defined(PDP11_UNIT_forkpty_sunos) || \
+    defined(PDP11_UNIT_job) || \
+    defined(PDP11_UNIT_log) || \
+    defined(PDP11_UNIT_names) || \
+    defined(PDP11_UNIT_screen) || \
+    defined(PDP11_UNIT_server) || \
+    defined(PDP11_UNIT_server_client) || \
+    defined(PDP11_UNIT_server_fn) || \
+    defined(PDP11_UNIT_session) || \
+    defined(PDP11_UNIT_status) || \
+    defined(PDP11_UNIT_tmux) || \
+    defined(PDP11_UNIT_tty) || \
+    defined(PDP11_UNIT_tty_keys) || \
+    defined(PDP11_UNIT_window) || \
+    defined(PDP11_UNIT_xmalloc)
+__dead void	 log_fatal_unit(const char *, const char *);
+#endif
+
+#if defined(PDP11_UNIT_buffer) || \
+    defined(PDP11_UNIT_client) || \
+    defined(PDP11_UNIT_cmd) || \
+    defined(PDP11_UNIT_cmd_find_window) || \
+    defined(PDP11_UNIT_forkpty_aix) || \
+    defined(PDP11_UNIT_grid) || \
+    defined(PDP11_UNIT_input) || \
+    defined(PDP11_UNIT_layout) || \
+    defined(PDP11_UNIT_log) || \
+    defined(PDP11_UNIT_options) || \
+    defined(PDP11_UNIT_options_cmd) || \
+    defined(PDP11_UNIT_paste) || \
+    defined(PDP11_UNIT_screen) || \
+    defined(PDP11_UNIT_screen_write) || \
+    defined(PDP11_UNIT_server) || \
+    defined(PDP11_UNIT_server_client) || \
+    defined(PDP11_UNIT_server_fn) || \
+    defined(PDP11_UNIT_session) || \
+    defined(PDP11_UNIT_status) || \
+    defined(PDP11_UNIT_tmux) || \
+    defined(PDP11_UNIT_tty) || \
+    defined(PDP11_UNIT_utf8) || \
+    defined(PDP11_UNIT_window) || \
+    defined(PDP11_UNIT_window_choose) || \
+    defined(PDP11_UNIT_window_more) || \
+    defined(PDP11_UNIT_xmalloc)
+__dead void	 log_fatalx_unit(const char *, const char *);
+#endif
+
+#endif
+#ifdef TMUX_GENERATED_COPY
+#if defined(PDP11_UNIT_log) || \
+    defined(PDP11_UNIT_tmux)
+void		 tmux_msg_init(const char *);
+#endif
+
+#endif
 
 /* xmalloc.c */
 #if defined(PDP11_UNIT_cmd) || \

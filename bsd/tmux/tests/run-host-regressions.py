@@ -2,6 +2,7 @@
 """Build and test a temporary host copy, leaving repository configuration intact."""
 from pathlib import Path
 import argparse
+import os
 import platform
 import re
 import shutil
@@ -24,8 +25,8 @@ def select_milestone_sources(work):
     start = text.index('#ifdef TMUX_MILESTONE', text.index('cmd_table[]'))
     branch = text[start:].split('#else', 1)[0]
     commands = re.findall(r'&cmd_([a-z_]+)_entry', branch)
-    if len(commands) != 26 or len(set(commands)) != 26:
-        raise ValueError('Expected the explicit 26-command milestone allowlist')
+    if len(commands) != 28 or len(set(commands)) != 28:
+        raise ValueError('Expected the explicit 28-command milestone allowlist')
     keep = {'cmd-' + name.replace('_', '-') + '.c' for name in commands}
     keep.update({'cmd-generic.c', 'cmd-list.c', 'cmd-string.c'})
     missing = [name for name in keep if not (work / name).exists()]
@@ -36,7 +37,7 @@ def select_milestone_sources(work):
         if source.name not in keep:
             removed.append(source.name)
             source.unlink()
-    for name in ['window-copy.c', 'window-choose.c', 'window-clock.c',
+    for name in ['window-choose.c', 'window-clock.c',
                  'layout-set.c', 'options-cmd.c']:
         (work / name).unlink()
         removed.append(name)
@@ -50,7 +51,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cc', default='clang')
     parser.add_argument('--milestone', action='store_true',
-                        help='build the explicit 26-command two-window profile')
+                        help='build the explicit 28-command native profile')
     parser.add_argument('--keep', action='store_true', help='retain the scratch build and log')
     args = parser.parse_args()
     subprocess.run(['python3', str(ROOT / 'tests/test-native-allocator.py'),
@@ -63,6 +64,7 @@ def main():
                     '--cc', args.cc], check=True)
     subprocess.run(['python3', str(ROOT / 'tests/test-native-input-args.py'), '--cc', args.cc], check=True)
     subprocess.run(['python3', str(ROOT / 'tests/test-source-generator.py')], check=True)
+    subprocess.run(['python3', str(ROOT / 'tools/generate_native_sources.py'), '--check'], check=True)
     subprocess.run(['python3', str(ROOT / 'tests/test-asprintf.py'), '--cc', args.cc], check=True)
     subprocess.run(['python3', str(ROOT / 'tests/test-xsnprintf-native.py'), '--cc', args.cc], check=True)
     subprocess.run(['python3', str(ROOT / 'tests/test-imsg-native.py'), '--cc', args.cc], check=True)
@@ -79,29 +81,41 @@ def main():
         # The generator also inspects native source/header dependencies, but
         # the host build does not use or execute the target compiler binaries.
         for source in (ROOT / 'native').rglob('*'):
-            if source.suffix not in {'.c', '.h', '.inc'}:
+            if source.suffix not in {'.c', '.h', '.inc', '.list', '.msg'}:
                 continue
             target = scratch / 'native' / source.relative_to(ROOT / 'native')
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
+        # The built copies read their error text from the generated file.
+        os.environ['TMUX_MSGFILE'] = str(scratch / 'native/tmux.msg')
         with log_path.open('w') as log:
             run(['python3', str(ROOT / 'tools/generate_native_widths.py'),
                  '--root', str(scratch)], ROOT, log)
             run(['python3', str(ROOT / 'tools/generate_native_header.py'),
                  '--root', str(scratch)], ROOT, log)
-            run(['python3', str(ROOT / 'tools/generate_native_sources.py'),
-                 '--root', str(scratch)], ROOT, log)
-            # Build precisely the release-generator output. The source files
-            # replace only C copies inside this temporary host build.
-            for generated in (scratch / 'native-src').rglob('*.c'):
-                target = work / generated.relative_to(scratch / 'native-src')
-                shutil.copy2(generated, target)
-            # Exercise pre-expanded trees while retaining host ABI/system types.
-            for source in work.rglob('*.c'):
-                text = source.read_text()
-                text = re.sub(r'#if defined\(TMUX_NATIVE_211BSD\) \|\| defined\(PDP11_NATIVE\)\n'
-                              r'(?=#include "\.\./native/trees/)', '#if 1\n', text)
-                source.write_text(text)
+            def install_generated(*options):
+                """Put the release-generator output in place of the C copies."""
+                run(['python3', str(ROOT / 'tools/generate_native_sources.py'),
+                     '--root', str(scratch), *options], ROOT, log)
+                for generated in (scratch / 'native-src').rglob('*.c'):
+                    target = work / generated.relative_to(scratch / 'native-src')
+                    if target.exists() or not args.milestone or not configured:
+                        shutil.copy2(generated, target)
+                # The copies refer to the shared string array. Here it is
+                # const, so a write through any shared string faults as it
+                # would for a literal on this host.
+                shutil.copy2(scratch / 'native/xstr.c', work / 'xstr.c')
+                # Exercise pre-expanded trees while retaining host ABI/system types.
+                for source in work.rglob('*.c'):
+                    text = source.read_text()
+                    text = re.sub(r'#if defined\(TMUX_NATIVE_211BSD\) \|\| defined\(PDP11_NATIVE\)\n'
+                                  r'(?=#include "\.\./native/trees/)', '#if 1\n', text)
+                    source.write_text(text)
+
+            # First with every literal in place, only to let the compiler
+            # check each format string against its arguments.
+            configured = False
+            install_generated('--no-string-pool')
             if args.milestone:
                 select_milestone_sources(work)
             run(['sh', 'configure'], work, log)
@@ -111,16 +125,30 @@ def main():
             with (work / 'config.h').open('a') as config:
                 config.write('\n#define BUILD "host-regression"\n')
             profile = ['-DTMUX_SMALL_MEMORY=1', '-DTMUX_IO_SIZE=256',
-                       '-DTMUX_NATIVE_WIDTH_CODE=1']
+                       '-DTMUX_NATIVE_WIDTH_CODE=1', '-DTMUX_XSTR_READONLY=1']
             if args.milestone:
                 profile += ['-DTMUX_MILESTONE=1', '-DTMUX_NATIVE_GRID_ALLOC=1',
                             '-DTMUX_NATIVE_HEAP_TEST=1']
+                # Window history in a paging file, against a host build of
+                # the 2.11BSD vmf library the native executable links.
+                profile += ['-DTMUX_VMF_HISTORY_TEST=1', '-isystem', str(ROOT / 'tests/vmf')]
+                for name in ['vmf.c', 'vmf.h']:
+                    shutil.copy2(ROOT / 'tests/vmf' / name, work / name)
             flags = ('-O0 -g -Wno-pointer-sign ' + ' '.join(profile) + ' '
                      '-Werror=implicit-function-declaration '
                      '-Werror=incompatible-function-pointer-types -Werror=format '
                      '-DPDP11_UNIT_$(subst -,_,$(notdir $*))')
+            configured = True
+            (work / 'format-check.mk').write_text('format-check: $(OBJS)\n')
+            run(['make', '-f', 'GNUmakefile', '-f', 'format-check.mk', 'format-check',
+                 'CC=' + args.cc, 'CFLAGS=' + flags + ' -fsyntax-only', '-j4'], work, log)
+            if list(work.glob('*.o')):
+                raise SystemExit('The format check was expected to compile nothing')
+            # Then build precisely what the native compiler is given. A
+            # shared string is no longer a literal the compiler can check.
+            install_generated()
             run(['make', '-f', 'GNUmakefile', 'CC=' + args.cc,
-                 'CFLAGS=' + flags, '-j4'], work, log)
+                 'CFLAGS=' + flags + ' -Wno-format-security', '-j4'], work, log)
             run([args.cc, '-O0', '-g', '-iquote.', *profile, '-DPDP11_UNIT_tmux',
                  '-Dmain=tmux_program_main', '-c', 'tmux.c',
                  '-o', 'regression-globals.o'], work, log)
@@ -138,6 +166,17 @@ def main():
                      *objects, '-lcurses', '-o', name], work, log)
                 subprocess.run([str(work / name)], cwd=work, check=True)
             subprocess.run([str(work / 'zero-history'), '--one-row'], cwd=work, check=True)
+            # Error text read from the message file, and its fallbacks. The
+            # second run finds the file as ./tmux does in its own directory.
+            run([args.cc, '-O0', '-g', '-iquote.', *profile,
+                 str(ROOT / 'tests/message-file.c'), *objects, '-lcurses',
+                 '-o', 'message-file'], work, log)
+            messages = scratch / 'messages'
+            messages.mkdir()
+            subprocess.run([str(work / 'message-file'), str(messages)], cwd=work, check=True)
+            shutil.copy2(scratch / 'native/tmux.msg', messages / 'tmux.msg')
+            subprocess.run([str(work / 'message-file'), str(messages), 'beside'],
+                           cwd=work, check=True)
             capacity_profiles = [profile]
             if not args.milestone:
                 capacity_profiles.append(profile + ['-DTMUX_NATIVE_GRID_ALLOC=1'])
@@ -161,9 +200,20 @@ def main():
                  '-c', 'buffer.c', '-o', 'memory-buffer.o'], work, log)
             run([args.cc, '-O0', '-g', '-iquote.', *profile,
                  str(ROOT / 'tests/memory-profile.c'), 'memory-buffer.o',
-                 'buffer-poll.o', 'mode-key.o', '-o', 'memory-profile'], work, log)
+                 'buffer-poll.o', 'mode-key.o', 'xstr.o', '-o', 'memory-profile'], work, log)
             subprocess.run([str(work / 'memory-profile')], cwd=work, check=True)
             if args.milestone:
+                # History in a paging file. Only this copy of grid-history.c
+                # has its writes routed through the test, which can then
+                # refuse one; the paging library writes for itself.
+                run([args.cc, '-O0', '-g', '-iquote.', *profile,
+                     '-DPDP11_UNIT_grid_history', '-Dwrite=history_test_write',
+                     '-c', 'grid-history.c', '-o', 'history-fault.o'], work, log)
+                history_objects = [obj for obj in objects if obj != 'grid-history.o']
+                run([args.cc, '-O0', '-g', '-iquote.', *profile,
+                     str(ROOT / 'tests/vmf-history.c'), *history_objects,
+                     'history-fault.o', '-lcurses', '-o', 'vmf-history'], work, log)
+                subprocess.run([str(work / 'vmf-history')], cwd=work, check=True)
                 # Keep the real packet dispatcher; control command completion
                 # only to exercise attachment/environment cleanup boundaries.
                 run([args.cc, '-O0', '-g', '-iquote.', *profile,

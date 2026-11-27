@@ -68,6 +68,17 @@ void	window_copy_cursor_previous_word(struct window_pane *);
 void	window_copy_scroll_up(struct window_pane *, u_int);
 void	window_copy_scroll_down(struct window_pane *, u_int);
 
+#ifdef TMUX_SMALL_MEMORY
+/*
+ * A copy and the paste buffer it becomes live in the small heap, so the
+ * copied text is bounded. The selection is walked twice: once to measure,
+ * with no buffer, and once to fill a buffer of exactly that size. Growing a
+ * buffer a character at a time, or allocating it at the bound, would leave
+ * the heap a hole of up to that size after every copy, however short.
+ */
+#define WINDOW_COPY_LIMIT 2048
+#endif
+
 const struct window_mode window_copy_mode = {
 	window_copy_init,
 	window_copy_free,
@@ -138,10 +149,16 @@ window_copy_init(struct window_pane *wp)
 		s->mode |= MODE_MOUSE;
 
 	keys = options_get_number(&wp->window->options, "mode-keys");
+#ifdef TMUX_MILESTONE
+	/* No command of this profile can select the vi keys. */
+	(void)keys;
+	mode_key_init(&data->mdata, &mode_key_tree_emacs_copy);
+#else
 	if (keys == MODEKEY_EMACS)
 		mode_key_init(&data->mdata, &mode_key_tree_emacs_copy);
 	else
 		mode_key_init(&data->mdata, &mode_key_tree_vi_copy);
+#endif
 
 	s->cx = data->cx;
 	s->cy = data->cy;
@@ -369,10 +386,16 @@ input_on:
 
 input_off:
 	keys = options_get_number(&wp->window->options, "mode-keys");
+#ifdef TMUX_MILESTONE
+	/* No command of this profile can select the vi keys. */
+	(void)keys;
+	mode_key_init(&data->mdata, &mode_key_tree_emacs_copy);
+#else
 	if (keys == MODEKEY_EMACS)
 		mode_key_init(&data->mdata, &mode_key_tree_emacs_copy);
 	else
 		mode_key_init(&data->mdata, &mode_key_tree_vi_copy);
+#endif
 
 	data->inputtype = WINDOW_COPY_OFF;
 	data->inputprompt = NULL;
@@ -485,9 +508,12 @@ window_copy_search_compare(
     struct grid *gd, u_int px, u_int py, struct grid *sgd, u_int spx)
 {
 	const struct grid_cell	*gc, *sgc;
+	struct grid_cell	 cell;
 	const struct grid_utf8	*gu, *sgu;
 
-	gc = grid_peek_cell(gd, px, py);
+	/* A peeked cell may last only until the next peek: keep the first. */
+	memcpy(&cell, grid_peek_cell(gd, px, py), sizeof cell);
+	gc = &cell;
 	sgc = grid_peek_cell(sgd, spx, 0);
 	
 	if ((gc->flags & GRID_FLAG_UTF8) != (sgc->flags & GRID_FLAG_UTF8))
@@ -836,10 +862,13 @@ window_copy_copy_selection(struct window_pane *wp, struct client *c)
 	if (!s->sel.flag)
 		return;
 
+#ifdef WINDOW_COPY_LIMIT
+	buf = NULL;		/* the first pass only measures */
+#else
 	buf = xmalloc(1);
-	off = 0;
-
 	*buf = '\0';
+#endif
+	off = 0;
 
 	/*
 	 * The selection extends from selx,sely to (adjusted) cx,cy on
@@ -863,6 +892,9 @@ window_copy_copy_selection(struct window_pane *wp, struct client *c)
 		ex = xx;
 
 	/* Copy the lines. */
+#ifdef WINDOW_COPY_LIMIT
+again:
+#endif
 	if (sy == ey)
 		window_copy_copy_line(wp, &buf, &off, sy, sx, ex);
 	else {
@@ -874,13 +906,32 @@ window_copy_copy_selection(struct window_pane *wp, struct client *c)
 		}
 		window_copy_copy_line(wp, &buf, &off, ey, 0, ex);
 	}
+#ifdef WINDOW_COPY_LIMIT
+	if (buf == NULL && off != 0) {
+		/* Measured: at most the bound, one character and a newline. */
+		buf = xmalloc(off + 1);
+		off = 0;
+		goto again;
+	}
+#endif
 
 	/* Don't bother if no data. */
 	if (off == 0) {
-		xfree(buf);
+#ifdef WINDOW_COPY_LIMIT
+		if (buf != NULL)
+#endif
+			xfree(buf);
 		return;
 	}
 	off--;	/* remove final \n */
+#ifdef WINDOW_COPY_LIMIT
+	if (off >= WINDOW_COPY_LIMIT) {
+		off = WINDOW_COPY_LIMIT;
+		status_message_set(c,
+		    "Copied the first %u bytes", WINDOW_COPY_LIMIT);
+	}
+	buf[off] = '\0';
+#endif
 
 	/* Add the buffer to the stack. */
 	limit = options_get_number(&c->session->options, "buffer-limit");
@@ -894,23 +945,26 @@ window_copy_copy_line(struct window_pane *wp,
 	struct grid		*gd = wp->base.grid;
  	const struct grid_cell	*gc;
  	const struct grid_utf8	*gu;
-	struct grid_line	*gl;
-	u_int			 i, j, xx, wrapped = 0;
+	u_int			 i, j, xx, cellsize, wrapped = 0;
 
 	if (sx > ex)
 		return;
+#ifdef WINDOW_COPY_LIMIT
+	if (*off >= WINDOW_COPY_LIMIT)
+		return;
+#endif
 
 	/*
 	 * Work out if the line was wrapped at the screen edge and all of it is
 	 * on screen.
 	 */
-	gl = &gd->linedata[sy];
- 	if (gl->flags & GRID_LINE_WRAPPED && gl->cellsize <= gd->sx)
+	cellsize = grid_line_cellsize(gd, sy);
+ 	if (grid_line_flags(gd, sy) & GRID_LINE_WRAPPED && cellsize <= gd->sx)
 		wrapped = 1;
 
 	/* If the line was wrapped, don't strip spaces (use the full length). */
 	if (wrapped)
-		xx = gl->cellsize;
+		xx = cellsize;
 	else
 		xx = window_copy_find_length(wp, sy);
 	if (ex > xx)
@@ -920,19 +974,37 @@ window_copy_copy_line(struct window_pane *wp,
 
 	if (sx < ex) {
 		for (i = sx; i < ex; i++) {
+#ifdef WINDOW_COPY_LIMIT
+			if (*off >= WINDOW_COPY_LIMIT)
+				break;
+#endif
 			gc = grid_peek_cell(gd, i, sy);
 			if (gc->flags & GRID_FLAG_PADDING)
 				continue;
 			if (!(gc->flags & GRID_FLAG_UTF8)) {
+#ifdef WINDOW_COPY_LIMIT
+				if (*buf != NULL)
+					(*buf)[*off] = gc->data;
+				(*off)++;
+#else
 				*buf = xrealloc(*buf, 1, (*off) + 1);
 				(*buf)[(*off)++] = gc->data;
+#endif
 			} else {
 				gu = grid_peek_utf8(gd, i, sy);
+#ifndef WINDOW_COPY_LIMIT
 				*buf = xrealloc(*buf, 1, (*off) + UTF8_SIZE);
+#endif
 				for (j = 0; j < UTF8_SIZE; j++) {
 					if (gu->data[j] == 0xff)
 						break;
+#ifdef WINDOW_COPY_LIMIT
+					if (*buf != NULL)
+						(*buf)[*off] = gu->data[j];
+					(*off)++;
+#else
 					(*buf)[(*off)++] = gu->data[j];
+#endif
 				}
 			}
 		}
@@ -940,8 +1012,14 @@ window_copy_copy_line(struct window_pane *wp,
 
 	/* Only add a newline if the line wasn't wrapped. */
  	if (!wrapped) {
+#ifdef WINDOW_COPY_LIMIT
+		if (*buf != NULL)
+			(*buf)[*off] = '\n';
+		(*off)++;
+#else
 		*buf = xrealloc(*buf, 1, (*off) + 1);
 		(*buf)[(*off)++] = '\n';
+#endif
 	}
 }
 
@@ -971,7 +1049,7 @@ window_copy_find_length(struct window_pane *wp, u_int py)
 	 * width of the grid, and screen_write_copy treats them as spaces, so
 	 * ignore them here too.
 	 */
-	px = wp->base.grid->linedata[py].cellsize;
+	px = grid_line_cellsize(wp->base.grid, py);
 	if (px > screen_size_x(&wp->base))
 		px = screen_size_x(&wp->base);
 	while (px > 0) {

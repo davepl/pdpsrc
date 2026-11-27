@@ -57,17 +57,27 @@ grid_init_default(void)
 
 #ifndef GRID_COMPACT_ROWS
 #define grid_put_cell(gd, px, py, gc) do {			\
-	memcpy(&gd->linedata[py].celldata[px], 			\
-	    gc, sizeof gd->linedata[py].celldata[px]);		\
+	memcpy(&GRID_LINE(gd, py)->celldata[px], 		\
+	    gc, sizeof GRID_LINE(gd, py)->celldata[px]);	\
 } while (0)
 #endif
 #define grid_put_utf8(gd, px, py, gc) do {			\
-	memcpy(&gd->linedata[py].utf8data[px], 			\
-	    gc, sizeof gd->linedata[py].utf8data[px]);		\
+	memcpy(&GRID_LINE(gd, py)->utf8data[px], 		\
+	    gc, sizeof GRID_LINE(gd, py)->utf8data[px]);	\
 } while (0)
 
 int	grid_check_x(struct grid *, u_int);
 int	grid_check_y(struct grid *, u_int);
+
+/*
+ * Rows below hsize are in the history file when it is in use: they have no
+ * stored line and are never written. Every writer below checks this first.
+ */
+#ifdef GRID_VMF_HISTORY
+#define grid_row_stored(gd, py) ((py) >= (gd)->hsize)
+#else
+#define grid_row_stored(gd, py) (1)
+#endif
 
 #ifdef GRID_COMPACT_ROWS
 /* Colour byte of the default style: fg 8, bg 8 (attributes and flags zero). */
@@ -174,7 +184,7 @@ grid_store_cell(struct grid_line *gl, u_int px, const struct grid_cell *gc)
 }
 
 #define grid_put_cell(gd, px, py, gc)				\
-	grid_store_cell(&(gd)->linedata[py], px, gc)
+	grid_store_cell(GRID_LINE(gd, py), px, gc)
 #elif defined(TMUX_NATIVE_211BSD) || defined(TMUX_NATIVE_GRID_ALLOC)
 #define GRID_CELL_CAPACITY 16U
 
@@ -242,6 +252,9 @@ grid_create(u_int sx, u_int sy, u_int hlimit)
 	gd->hlimit = hlimit;
 
 	gd->linedata = xcalloc(gd->sy, sizeof *gd->linedata);
+#ifdef GRID_VMF_HISTORY
+	grid_history_open(gd);
+#endif
 
 	return (gd);
 }
@@ -254,7 +267,9 @@ grid_destroy(struct grid *gd)
 	u_int			 yy;
 
 	for (yy = 0; yy < gd->hsize + gd->sy; yy++) {
-		gl = &gd->linedata[yy];
+		if (!grid_row_stored(gd, yy))
+			continue;
+		gl = GRID_LINE(gd, yy);
 #ifdef GRID_COMPACT_ROWS
 		if (gl->chardata != NULL)
 			xfree(gl->chardata);
@@ -269,6 +284,9 @@ grid_destroy(struct grid *gd)
 	}
 
 	xfree(gd->linedata);
+#ifdef GRID_VMF_HISTORY
+	grid_history_close(gd);
+#endif
 
 	xfree(gd);
 }
@@ -328,6 +346,10 @@ grid_compare(struct grid *ga, struct grid *gb)
 void
 grid_collect_history(struct grid *gd)
 {
+#ifdef GRID_VMF_HISTORY
+	/* The history file is a ring: storing a row drops the oldest. */
+	(void)gd;
+#else
 	u_int	yy;
 
  	GRID_DEBUG(gd, "");
@@ -341,7 +363,33 @@ grid_collect_history(struct grid *gd)
 
 	grid_move_lines(gd, 0, yy, gd->hsize + gd->sy - yy);
 	gd->hsize -= yy;
+#endif
 }
+
+#ifdef GRID_VMF_HISTORY
+/*
+ * Send visible row yy (counted from the top of the screen) to the history
+ * file, close the gap by moving the rows from there to row last up one, and
+ * leave row last empty. The stored row's memory is released: a block of the
+ * same size is what the next row written will ask for.
+ */
+static void
+grid_store_history(struct grid *gd, u_int yy, u_int last)
+{
+	struct grid_line	*gl;
+
+	gl = &gd->linedata[yy];
+	grid_history_push(gd, gl);
+	if (gl->chardata != NULL)
+		xfree(gl->chardata);
+	if (gl->styledata != NULL)
+		xfree(gl->styledata);
+	if (gl->utf8data != NULL)
+		xfree(gl->utf8data);
+	memmove(gl, gl + 1, (last - yy) * sizeof *gl);
+	memset(&gd->linedata[last], 0, sizeof *gl);
+}
+#endif
 
 /* 
  * Scroll the entire visible screen, moving one line into the history. Just
@@ -350,6 +398,11 @@ grid_collect_history(struct grid *gd)
 void
 grid_scroll_history(struct grid *gd)
 {
+#ifdef GRID_VMF_HISTORY
+ 	GRID_DEBUG(gd, "");
+
+	grid_store_history(gd, 0, gd->sy - 1);
+#else
 	u_int	yy;
 
  	GRID_DEBUG(gd, "");
@@ -359,12 +412,21 @@ grid_scroll_history(struct grid *gd)
 	memset(&gd->linedata[yy], 0, sizeof gd->linedata[yy]);
 	
 	gd->hsize++;
+#endif
 }
 
 /* Scroll a region up, moving the top line into the history. */
 void
 grid_scroll_history_region(struct grid *gd, u_int upper, u_int lower)
 {
+#ifdef GRID_VMF_HISTORY
+ 	GRID_DEBUG(gd, "upper=%u, lower=%u", upper, lower);
+
+	/* upper and lower are absolute; storing the row may change hsize. */
+	upper -= gd->hsize;
+	lower -= gd->hsize;
+	grid_store_history(gd, upper, lower);
+#else
 	struct grid_line	*gl_history, *gl_upper, *gl_lower;
 	u_int			 yy;
 
@@ -393,6 +455,7 @@ grid_scroll_history_region(struct grid *gd, u_int upper, u_int lower)
 
 	/* Move the history offset down over the line. */
 	gd->hsize++;
+#endif
 }
 
 /* Expand line to fit to cell. */
@@ -407,7 +470,9 @@ grid_expand_line(struct grid *gd, u_int py, u_int sx)
 	u_int			 capacity;
 #endif
 
-	gl = &gd->linedata[py];
+	if (!grid_row_stored(gd, py))
+		return;
+	gl = GRID_LINE(gd, py);
 	if (sx <= gl->cellsize)
 		return;
 
@@ -448,7 +513,9 @@ grid_expand_line_utf8(struct grid *gd, u_int py, u_int sx)
 {
 	struct grid_line	*gl;
 
-	gl = &gd->linedata[py];
+	if (!grid_row_stored(gd, py))
+		return;
+	gl = GRID_LINE(gd, py);
 	if (sx <= gl->utf8size)
 		return;
 
@@ -460,18 +527,34 @@ grid_expand_line_utf8(struct grid *gd, u_int py, u_int sx)
 const struct grid_cell *
 grid_peek_cell(struct grid *gd, u_int px, u_int py)
 {
+#ifdef GRID_VMF_HISTORY
+	const u_char	*rp;
+
+#endif
 	if (grid_check_x(gd, px) != 0)
 		return (&grid_default_cell);
 	if (grid_check_y(gd, py) != 0)
 		return (&grid_default_cell);
 
-	if (px >= gd->linedata[py].cellsize)
+#ifdef GRID_VMF_HISTORY
+	if (!grid_row_stored(gd, py)) {
+		/* Plain characters: history keeps no style. */
+		rp = grid_history_row(gd, py);
+		if (px >= rp[1])
+			return (&grid_default_cell);
+		memcpy(&grid_peeked_cell, &grid_default_cell,
+		    sizeof grid_peeked_cell);
+		grid_peeked_cell.data = rp[2 + px];
+		return (&grid_peeked_cell);
+	}
+#endif
+	if (px >= GRID_LINE(gd, py)->cellsize)
 		return (&grid_default_cell);
 #ifdef GRID_COMPACT_ROWS
-	grid_load_cell(&gd->linedata[py], px, &grid_peeked_cell);
+	grid_load_cell(GRID_LINE(gd, py), px, &grid_peeked_cell);
 	return (&grid_peeked_cell);
 #else
-	return (&gd->linedata[py].celldata[px]);
+	return (&GRID_LINE(gd, py)->celldata[px]);
 #endif
 }
 
@@ -486,7 +569,7 @@ grid_get_cell(struct grid *gd, u_int px, u_int py)
 		return (NULL);
 
 	grid_expand_line(gd, py, px + 1);
-	return (&gd->linedata[py].celldata[px]);
+	return (&GRID_LINE(gd, py)->celldata[px]);
 }
 #endif
 
@@ -498,6 +581,8 @@ grid_set_cell(
 	if (grid_check_x(gd, px) != 0)
 		return;
 	if (grid_check_y(gd, py) != 0)
+		return;
+	if (!grid_row_stored(gd, py))
 		return;
 
 	grid_expand_line(gd, py, px + 1);
@@ -513,9 +598,11 @@ grid_peek_utf8(struct grid *gd, u_int px, u_int py)
 	if (grid_check_y(gd, py) != 0)
 		return (NULL);
 
-	if (px >= gd->linedata[py].utf8size)
+	if (!grid_row_stored(gd, py))
 		return (NULL);
-	return (&gd->linedata[py].utf8data[px]);
+	if (px >= GRID_LINE(gd, py)->utf8size)
+		return (NULL);
+	return (&GRID_LINE(gd, py)->utf8data[px]);
 }
 
 /* Get utf8 at relative position (for writing). */
@@ -526,9 +613,11 @@ grid_get_utf8(struct grid *gd, u_int px, u_int py)
 		return (NULL);
 	if (grid_check_y(gd, py) != 0)
 		return (NULL);
+	if (!grid_row_stored(gd, py))
+		return (NULL);
 
 	grid_expand_line_utf8(gd, py, px + 1);
-	return (&gd->linedata[py].utf8data[px]);
+	return (&GRID_LINE(gd, py)->utf8data[px]);
 }
 
 /* Set utf8 at relative position. */
@@ -540,6 +629,8 @@ grid_set_utf8(
 		return;
 	if (grid_check_y(gd, py) != 0)
 		return;
+	if (!grid_row_stored(gd, py))
+		return;
 
 	grid_expand_line_utf8(gd, py, px + 1);
 	grid_put_utf8(gd, px, py, gc);
@@ -549,7 +640,8 @@ grid_set_utf8(
 void
 grid_clear(struct grid *gd, u_int px, u_int py, u_int nx, u_int ny)
 {
-	u_int	xx, yy;
+	struct grid_line	*gl;
+	u_int			 xx, yy;
 
  	GRID_DEBUG(gd, "px=%u, py=%u, nx=%u, ny=%u", px, py, nx, ny);
 
@@ -571,17 +663,20 @@ grid_clear(struct grid *gd, u_int px, u_int py, u_int nx, u_int ny)
 		return;
 
 	for (yy = py; yy < py + ny; yy++) {
-		if (px >= gd->linedata[yy].cellsize)
+		if (!grid_row_stored(gd, yy))
 			continue;
-		if (px + nx >= gd->linedata[yy].cellsize) {
-			gd->linedata[yy].cellsize = px;
+		gl = GRID_LINE(gd, yy);
+		if (px >= gl->cellsize)
+			continue;
+		if (px + nx >= gl->cellsize) {
+			gl->cellsize = px;
 #ifdef GRID_COMPACT_ROWS
-			grid_line_trim_style(&gd->linedata[yy]);
+			grid_line_trim_style(gl);
 #endif
 			continue;
 		}
 		for (xx = px; xx < px + nx; xx++) {
-			if (xx >= gd->linedata[yy].cellsize)
+			if (xx >= gl->cellsize)
 				break;
 			grid_put_cell(gd, xx, yy, &grid_default_cell);
 		}
@@ -606,7 +701,9 @@ grid_clear_lines(struct grid *gd, u_int py, u_int ny)
 		return;
 
 	for (yy = py; yy < py + ny; yy++) {
-		gl = &gd->linedata[yy];
+		if (!grid_row_stored(gd, yy))
+			continue;
+		gl = GRID_LINE(gd, yy);
 #ifdef GRID_COMPACT_ROWS
 		if (gl->chardata != NULL)
 			xfree(gl->chardata);
@@ -641,6 +738,8 @@ grid_move_lines(struct grid *gd, u_int dy, u_int py, u_int ny)
 		return;
 	if (grid_check_y(gd, dy + ny - 1) != 0)
 		return;
+	if (!grid_row_stored(gd, py) || !grid_row_stored(gd, dy))
+		return;
 
 	/* Free any lines which are being replaced. */
 	for (yy = dy; yy < dy + ny; yy++) {
@@ -650,13 +749,13 @@ grid_move_lines(struct grid *gd, u_int dy, u_int py, u_int ny)
 	}
 
 	memmove(
-	    &gd->linedata[dy], &gd->linedata[py], ny * (sizeof *gd->linedata));
+	    GRID_LINE(gd, dy), GRID_LINE(gd, py), ny * (sizeof *gd->linedata));
 
 	/* Wipe any lines that have been moved (without freeing them). */
 	for (yy = py; yy < py + ny; yy++) {
 		if (yy >= dy && yy < dy + ny)
 			continue;
-		memset(&gd->linedata[yy], 0, sizeof gd->linedata[yy]);
+		memset(GRID_LINE(gd, yy), 0, sizeof *gd->linedata);
 	}
 }
 
@@ -680,7 +779,9 @@ grid_move_cells(struct grid *gd, u_int dx, u_int px, u_int py, u_int nx)
 		return;
 	if (grid_check_y(gd, py) != 0)
 		return;
-	gl = &gd->linedata[py];
+	if (!grid_row_stored(gd, py))
+		return;
+	gl = GRID_LINE(gd, py);
 
 	grid_expand_line(gd, py, px + nx);
 	grid_expand_line(gd, py, dx + nx);
@@ -778,11 +879,14 @@ grid_duplicate_lines(
 		ny = dst->hsize + dst->sy - dy;
 	if (sy + ny > src->hsize + src->sy)
 		ny = src->hsize + src->sy - sy;
+	/* Only stored rows are duplicated; history in the file is not. */
+	if (!grid_row_stored(src, sy) || !grid_row_stored(dst, dy))
+		return;
 	grid_clear_lines(dst, dy, ny);
 
 	for (yy = 0; yy < ny; yy++) {
-		srcl = &src->linedata[sy];
-		dstl = &dst->linedata[dy];
+		srcl = GRID_LINE(src, sy);
+		dstl = GRID_LINE(dst, dy);
 
 		memcpy(dstl, srcl, sizeof *dstl);
 		/* A cleared-to-zero source may still own an allocation. */
@@ -825,4 +929,42 @@ grid_duplicate_lines(
 		sy++;
 		dy++;
 	}
+}
+
+/* Number of cells in a row, history included. */
+u_int
+grid_line_cellsize(struct grid *gd, u_int py)
+{
+	if (grid_check_y(gd, py) != 0)
+		return (0);
+#ifdef GRID_VMF_HISTORY
+	if (!grid_row_stored(gd, py))
+		return (grid_history_row(gd, py)[1]);
+#endif
+	return (GRID_LINE(gd, py)->cellsize);
+}
+
+/* Line flags of a row, history included. */
+int
+grid_line_flags(struct grid *gd, u_int py)
+{
+	if (grid_check_y(gd, py) != 0)
+		return (0);
+#ifdef GRID_VMF_HISTORY
+	if (!grid_row_stored(gd, py))
+		return (grid_history_row(gd, py)[0]);
+#endif
+	return (GRID_LINE(gd, py)->flags);
+}
+
+/* Discard the history, keeping the visible rows. */
+void
+grid_clear_history(struct grid *gd)
+{
+#ifdef GRID_VMF_HISTORY
+	grid_history_clear(gd);
+#else
+	grid_move_lines(gd, 0, gd->hsize, gd->sy);
+	gd->hsize = 0;
+#endif
 }

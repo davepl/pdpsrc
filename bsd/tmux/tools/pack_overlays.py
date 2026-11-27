@@ -235,7 +235,8 @@ def main():
         if args.overlay_library and args.resident_library is None:
             raise ValueError('Supply --resident-library explicitly when adding an overlay library bank')
         if args.resident_library is None:
-            args.resident_library = ['-ltermlib', '-lc']
+            # libvmf holds the milestone's window history; see grid-history.c.
+            args.resident_library = ['-lvmf', '-ltermlib', '-lc']
         expected = object_names(args.objects_from)
         objects, extras = select_objects(parse_sizes(args.sizes.read_text()), expected)
         slots = NOVL - args.reserve_banks - bool(args.overlay_library)

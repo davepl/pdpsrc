@@ -18,13 +18,14 @@
 char *status_prompt_complete(const char *);
 
 static const char *expected_commands[] = {
-	"attach-session", "bind-key", "command-prompt", "detach-client",
-	"display-message", "has-session", "kill-server", "kill-session",
-	"kill-window", "last-window", "list-clients", "list-commands",
-	"list-keys", "list-sessions", "list-windows", "new-session",
-	"new-window", "next-window", "previous-window", "refresh-client",
-	"rename-session", "rename-window", "select-window", "send-keys",
-	"send-prefix", "unbind-key"
+	"attach-session", "bind-key", "command-prompt", "copy-mode",
+	"detach-client", "display-message", "has-session", "kill-server",
+	"kill-session", "kill-window", "last-window", "list-clients",
+	"list-commands", "list-keys", "list-sessions", "list-windows",
+	"new-session", "new-window", "next-window", "paste-buffer",
+	"previous-window", "refresh-client", "rename-session",
+	"rename-window", "select-window", "send-keys", "send-prefix",
+	"unbind-key"
 };
 
 static int
@@ -43,7 +44,7 @@ static void
 check_command_table(void)
 {
 	const struct cmd_entry **p;
-	const char *omitted[] = { "copy-mode", "split-window", "set-option",
+	const char *omitted[] = { "list-buffers", "split-window", "set-option",
 	    "set-window-option", "clock-mode", "choose-window", "find-window",
 	    "move-window", "select-prompt", "confirm-before" };
 	struct cmd *cmd;
@@ -98,6 +99,8 @@ check_cli_parsing(void)
 	char *unbind_key[] = { "unbind-key", "x", NULL };
 	char *attach[] = { "attach", NULL };
 	char *detach[] = { "detach", NULL };
+	char *copy_mode[] = { "copy-mode", "-u", "-t", "milestone:1", NULL };
+	char *paste_buffer[] = { "pasteb", "-t", "milestone:1", NULL };
 
 	check_parse(6, new_session, "new-session");
 	check_parse(5, new_window, "new-window");
@@ -108,6 +111,8 @@ check_cli_parsing(void)
 	check_parse(2, unbind_key, "unbind-key");
 	check_parse(1, attach, "attach-session");
 	check_parse(1, detach, "detach-client");
+	check_parse(4, copy_mode, "copy-mode");
+	check_parse(3, paste_buffer, "paste-buffer");
 }
 
 static void
@@ -140,7 +145,7 @@ check_default_bindings(void)
 			assert(entry_is_available(cmd->entry));
 		count++;
 	}
-	assert(count == 23);
+	assert(count == 26);
 	for (digit = '0'; digit <= '9'; digit++)
 		check_binding(digit, "select-window");
 	check_binding('c', "new-window");
@@ -156,13 +161,16 @@ check_default_bindings(void)
 	check_binding('i', "display-message");
 	check_binding('r', "refresh-client");
 	check_binding('\002', "send-prefix");
+	check_binding('[', "copy-mode");
+	check_binding(']', "paste-buffer");
+	check_binding(KEYC_PPAGE, "copy-mode");
 	binding = key_bindings_lookup(',' | KEYC_PREFIX);
 	cmd_list_print(binding->cmdlist, printed, sizeof printed);
 	assert(strstr(printed, "rename-window") != NULL);
 	assert(key_bindings_lookup('.' | KEYC_PREFIX) == NULL);
 	assert(key_bindings_lookup('f' | KEYC_PREFIX) == NULL);
 	assert(key_bindings_lookup('&' | KEYC_PREFIX) == NULL);
-	assert(key_bindings_lookup('[' | KEYC_PREFIX) == NULL);
+	assert(key_bindings_lookup('#' | KEYC_PREFIX) == NULL);
 	key_bindings_free();
 }
 
@@ -176,7 +184,9 @@ check_completion_and_modes(void)
 	completed = status_prompt_complete("rename-w");
 	assert(completed != NULL && strcmp(completed, "rename-window ") == 0);
 	xfree(completed);
-	assert(status_prompt_complete("copy-m") == NULL);
+	completed = status_prompt_complete("copy-m");
+	assert(completed != NULL && strcmp(completed, "copy-mode ") == 0);
+	xfree(completed);
 	assert(status_prompt_complete("set-o") == NULL);
 	assert(status_prompt_complete("history-l") == NULL);
 	mode_key_init_trees();
@@ -184,11 +194,12 @@ check_completion_and_modes(void)
 	assert(mode_key_findtable("emacs-edit") != NULL);
 	assert(mode_key_findtable("vi-choice") != NULL);
 	assert(mode_key_findtable("emacs-choice") != NULL);
+	/* mode-keys cannot be changed here, so only the emacs copy table. */
 	assert(mode_key_findtable("vi-copy") == NULL);
-	assert(mode_key_findtable("emacs-copy") == NULL);
+	assert(mode_key_findtable("emacs-copy") != NULL);
 	for (count = 0, table = mode_key_tables; table->name != NULL; table++)
 		count++;
-	assert(count == 4);
+	assert(count == 5);
 	mode_key_free_trees();
 }
 

@@ -1,6 +1,6 @@
 # License and attribution
 
-This directory is a port of tmux 1.1 to 2.11BSD. It combines four bodies of
+This directory is a port of tmux 1.1 to 2.11BSD. It combines five bodies of
 code with different owners. No single license covers all of it; each part
 keeps the terms it came with. All of them are permissive.
 
@@ -10,6 +10,7 @@ keeps the terms it came with. All of them are permissive.
 | tmux 1.1 | `upstream/`, and files generated from it | ISC, per file (section 2) |
 | Compatibility code shipped with tmux | `upstream/compat/`, and files generated from it | ISC, BSD 2-clause or BSD 3-clause, per file (section 3) |
 | Build tools taken from 2.11BSD | `tools/cc211.c`, `tools/ld211.c`, `tools/archive.h` | Caldera license and the Berkeley license (section 4) |
+| The 2.11BSD paging library, for host tests | `tests/vmf/vmf.c`, `tests/vmf/vmf.h` | Public domain (section 5) |
 
 Where a file carries its own copyright and license notice, that notice governs
 the file. Keep every notice in place when copying or changing a file.
@@ -20,11 +21,19 @@ This covers the material written for the port: the native adapters and header
 shims in `native/`, the generators and overlay planner in `tools/*.py`, the
 makefiles, link scripts and compiler wrappers, `tools/prepare_libc.sh`, the
 tests in `tests/`, the documentation, and `upstream/tmux.h` and
-`upstream/config.h`. These files carry no notice of their own.
+`upstream/config.h`. These files carry no notice of their own. Two source
+files written for the port sit among tmux's own, `upstream/grid-history.c` and
+`upstream/client-tty.c`; they carry this same notice at their top.
 
 Changes made for the port inside a file that carries another notice (most of
-`upstream/`, and the three files from 2.11BSD) are offered under the terms of
+`upstream/`, and the files from 2.11BSD) are offered under the terms of
 the file they change, so that no file ends up under two licenses.
+
+`kernel-recvmsg/recvmsg.patch` is a change of the same kind to a 2.11BSD kernel
+source that is not in this directory, `sys/sys/uipc_syscalls.c`. It quotes six
+lines of that file as context. The file's notice names the Regents of the
+University of California and the Berkeley license described in section 4, and
+the one added line is offered under those terms.
 
     Copyright (c) 2026 David W Plummer
 
@@ -216,13 +225,29 @@ withdrawal does not change the Caldera terms above.
     OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
     SUCH DAMAGE.
 
+## 5. The 2.11BSD paging library
+
+`tests/vmf/vmf.c` and `tests/vmf/vmf.h` are the source of `libvmf`, the
+disk-backed virtual memory routines of 2.11BSD (`/usr/src/usr.lib/libvmf` and
+`/usr/include/vmf.h`), written by Steven M. Schultz. Their headers record
+that he released them into the public domain in 1993, and that is the whole
+of their terms. They are here only so that the host tests can run the window
+history code against the real library; the port itself links the `libvmf`
+installed on the 2.11BSD system. Each file lists, at its top, what was
+changed for a modern compiler.
+
+Two utilities of the same system shaped this port without contributing code
+to it: `tools/pool_strings.py` does for these sources what `xstr(1)` and
+`mkstr(1)` (University of California, Berkeley) do, and was written for the
+port. Steven Schultz suggested all three.
+
 ## Binaries
 
 This directory holds source only. A `tmux` built from it on 2.11BSD is linked
-statically with that system's C library and termcap library, so the
-executable also contains 2.11BSD code under the terms of section 4. Those
-terms ask anyone distributing such an executable to reproduce the two notices
-above in the accompanying documentation.
+statically with that system's C library, termcap library and paging library,
+so the executable also contains 2.11BSD code under the terms of section 4.
+Those terms ask anyone distributing such an executable to reproduce the two
+notices above in the accompanying documentation.
 
 ## What is not here
 

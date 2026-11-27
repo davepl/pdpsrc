@@ -129,9 +129,16 @@ static void positive_history(void)
     assert(grid_peek_cell(g, 0, 0)->data == 'A');
     assert(grid_peek_cell(g, 0, 1)->data == 'B');
     screen_resize(&p.base, 4, 4);
+#ifdef GRID_VMF_HISTORY
+    /* Rows in the history file stay there; the added row is blank. */
+    assert(g->hsize == 2);
+    row(g, 0, "CCCC"); row(g, 1, "DDDD");
+    row(g, 2, "    "); row(g, 3, "    ");
+#else
     assert(g->hsize == 1);
     row(g, 0, "BBBB"); row(g, 1, "CCCC");
     row(g, 2, "DDDD"); row(g, 3, "    ");
+#endif
     screen_resize(&p.base, 4, 2);
     assert(g->hsize == 3);
     row(g, 0, "DDDD"); row(g, 1, "    ");

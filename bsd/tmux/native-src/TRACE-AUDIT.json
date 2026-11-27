@@ -21,8 +21,13 @@
       "removed_calls": [],
       "preserved_declarations": []
     },
+    "client-tty.c": {
+      "source_sha256": "bdd269f0ab891c63dbfa0a22a1b2950620bc2674d4d3e13d2f25e00a3d33a893",
+      "removed_calls": [],
+      "preserved_declarations": []
+    },
     "client.c": {
-      "source_sha256": "08cf3cff75cf2ed529320203d7b9adf99acd9e85b78b1fa5945c7ffa6f71622d",
+      "source_sha256": "b7e0753e14e052e9bef48c1b3181fdd102c806ed0e84fda65ae1aa72f7aac626",
       "removed_calls": [],
       "preserved_declarations": []
     },
@@ -62,7 +67,7 @@
       "preserved_declarations": []
     },
     "cmd-clear-history.c": {
-      "source_sha256": "65dd501b3db27a2afe65f74a719ac520f3cebaae7ff0cf62f83a1e074eef1a10",
+      "source_sha256": "6008b040fc6a8521c6d45a5e64b0aa0c83c5bd11fb2205ef7a803efe6c8a492b",
       "removed_calls": [],
       "preserved_declarations": []
     },
@@ -442,7 +447,7 @@
       "preserved_declarations": []
     },
     "cmd.c": {
-      "source_sha256": "79083e3c6989b04342f434faca5013db1829b3192870e18695500e7480156f38",
+      "source_sha256": "1d319dc55b16aee9f438e2bd331227332d0f8b971f1684a08a4ebb88bfa4c107",
       "removed_calls": [],
       "preserved_declarations": []
     },
@@ -536,16 +541,21 @@
       "removed_calls": [],
       "preserved_declarations": []
     },
+    "grid-history.c": {
+      "source_sha256": "488d52c7787cfd1713899eb32012871cba6ede6e20b82fd4061686ce7e79263c",
+      "removed_calls": [],
+      "preserved_declarations": []
+    },
     "grid-view.c": {
       "source_sha256": "c48ef9997488f5deba7ddb633a6abfa2d833f350871eeae2584f21dd8646cb89",
       "removed_calls": [],
       "preserved_declarations": []
     },
     "grid.c": {
-      "source_sha256": "94d4ea414b380008c318a6b0b3123e123e9764420e4f607168420a97550880a9",
+      "source_sha256": "3f8f36aadc370a39000b7aa97537245d6301ab47809be01030a8dbd0857c1e16",
       "removed_calls": [
         {
-          "line": 212,
+          "line": 222,
           "name": "log_debug",
           "literal_payload_bytes": 18,
           "literal_tokens": 1,
@@ -553,7 +563,7 @@
           "hazards": []
         },
         {
-          "line": 222,
+          "line": 232,
           "name": "log_debug",
           "literal_payload_bytes": 18,
           "literal_tokens": 1,
@@ -873,7 +883,7 @@
       "preserved_declarations": []
     },
     "key-bindings.c": {
-      "source_sha256": "71d1515b41ed1d74fece699ce3c581acb63fdb95ee335a2f8e1856f1ce78441e",
+      "source_sha256": "6b90324a12825576a13389eff309b8d702f681f2e7934378d834d2fa1cb707e1",
       "removed_calls": [],
       "preserved_declarations": []
     },
@@ -902,21 +912,21 @@
       "preserved_declarations": []
     },
     "log.c": {
-      "source_sha256": "91fb04f571010edfe1927ebcf596bf7bfb28d9afda13540639608d1c8ddcfe47",
+      "source_sha256": "7e50b24efe0aaaf8041354c614e33bea062c420835ef07304fb3811fcd59c103",
       "removed_calls": [],
       "preserved_declarations": [
         {
-          "line": 164,
+          "line": 170,
           "name": "log_debug"
         },
         {
-          "line": 177,
+          "line": 183,
           "name": "log_debug2"
         }
       ]
     },
     "mode-key.c": {
-      "source_sha256": "6599ce38376be5911352247a27e8d7beed0b94f3ac50ed2a734c8eb0da0524b4",
+      "source_sha256": "71543f943a96dea7b5d39715dedcc1a8851ec6396732ce0b6c86f47316e14d92",
       "removed_calls": [],
       "preserved_declarations": []
     },
@@ -1003,12 +1013,12 @@
       "preserved_declarations": []
     },
     "screen-write.c": {
-      "source_sha256": "5c37632fcf97341127470a9b08f837e5056579b9928abaa610c645ad7a29c81b",
+      "source_sha256": "e1e6c4ee7730ce7a9e6ffe8c6f37f96a98d4485d8eeb72c1368c26ffb440012a",
       "removed_calls": [],
       "preserved_declarations": []
     },
     "screen.c": {
-      "source_sha256": "34ebec2c56e955201bcd58366067d0e90c045423b0a71000007b88d711accc3e",
+      "source_sha256": "c1f5801013dba745b7d7fb16bfec9bb872f2836b14a572e18b17e5274e9fa5cb",
       "removed_calls": [],
       "preserved_declarations": []
     },
@@ -1126,7 +1136,7 @@
       "preserved_declarations": []
     },
     "tmux.c": {
-      "source_sha256": "6ea45c3a6b5ecb6478317098ae15abbf67e3d761be69ea52172f31ddb5baa038",
+      "source_sha256": "6d74a4a289045f7dc2097e5ff850444c18c102933865b530ab382ca9d2b69a69",
       "removed_calls": [],
       "preserved_declarations": []
     },
@@ -1199,7 +1209,7 @@
       "preserved_declarations": []
     },
     "tty.c": {
-      "source_sha256": "bbfcc35b5a5d745bb69ac50f70c0739fa344ea7e220ce43831042918854eecba",
+      "source_sha256": "c3414a0d8ff40d61dcf3a3cb18a967ffcf23a80c4e3c23f680e7940616170564",
       "removed_calls": [],
       "preserved_declarations": []
     },
@@ -1219,7 +1229,7 @@
       "preserved_declarations": []
     },
     "window-copy.c": {
-      "source_sha256": "f924450363872b1dc5496b37e2480643a2ea8c3d1e5ce97582f72626a63a416e",
+      "source_sha256": "fe25af1055b291512e65395a38078c36812078ee121111990ae8cb3330cda9da",
       "removed_calls": [],
       "preserved_declarations": []
     },

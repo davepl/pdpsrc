@@ -16,16 +16,22 @@ python3 tests/test-imsg-native.py
 This requires Python 3, Clang, GNU make, and curses development headers/libraries
 (macOS Command Line Tools provide the host dependencies). macOS and Linux are
 supported. The default builds the full command set. `--milestone` independently
-builds the explicit 26-command session/whole-window profile with its inactive
-command and mode objects omitted, matching the native milestone filter.
+builds the explicit 28-command native profile with its inactive command and
+mode objects omitted, matching the native milestone filter.
 `--keep` retains the temporary build and log; failures also retain
 them. The runner copies sources and generates/configures headers only inside a
 temporary directory. It does not alter the repository's native configuration or
 run the PDP-11 compiler.
 
 The build checks the generated per-unit declaration sets using host system types,
-and compiles the debug-stripped release C copies plus pre-expanded trees inside
-the temporary copy. It enables `TMUX_SMALL_MEMORY=1`, `TMUX_IO_SIZE=256` and
+and compiles the generated release C copies plus pre-expanded trees inside
+the temporary copy. It does that twice. The first pass has every string
+literal in place and only checks syntax, so that the compiler can check each
+format string against its arguments. The second builds exactly what the
+native compiler is given: repeated literals are references into the shared
+array `native/xstr.c`, which is `const` here so that a write through a shared
+string faults as it would for a literal, and error text is read from the
+generated message file through `TMUX_MSGFILE`. It enables `TMUX_SMALL_MEMORY=1`, `TMUX_IO_SIZE=256` and
 `TMUX_NATIVE_WIDTH_CODE=1`, so the regular Unicode tests use the native width code.
 The milestone build also enables `TMUX_NATIVE_GRID_ALLOC=1` and
 `TMUX_NATIVE_HEAP_TEST=1` to exercise native grid, option-name and CSI allocation
@@ -34,6 +40,18 @@ The tests link the actual tmux objects and cover:
 
 - Trace-expression removal preserves declarations, literals and unbraced control
   flow, and rejects arguments with possible side effects.
+- Shared strings: which literals may be replaced (not array initializers,
+  `sizeof` operands, text joined to an unknown macro, or escapes compilers read
+  differently), three-valued `#if` evaluation, tail sharing, offsets that
+  survive later additions, and a rewritten program that behaves as the
+  original. Message relocation: only the listed argument positions, offsets
+  that survive additions, and a stamp that changes with the file. The
+  checked-in copies must be current and refer only to offsets that exist.
+- `message-file.c`: every message read back whole from the generated file
+  with `errno` undisturbed, a real command error formatted with its argument,
+  the numbered fallback for a missing file, a file from another build, a
+  truncated file and an offset past the end, and the file found beside a
+  relative executable path.
 - The real fallback `asprintf`/`vasprintf` against old negative-on-truncation
   and C99 formatters: no zero-capacity calls, 64-byte/retry boundaries, varied
   arguments, reusable `va_list`, exact result allocations, every allocation
@@ -79,6 +97,14 @@ The tests link the actual tmux objects and cover:
 - Zero-history scrolling, vertical/horizontal resizing and alternate-screen
   save/restore, including the first scroll after restore and 200 later scrolls.
 - Positive-history line retention, resize recovery and limit collection.
+- `vmf-history.c` (`--milestone`): history in a paging file, run against
+  `tests/vmf/`, the 2.11BSD paging library's own source. 1500 lines through a
+  480-row ring with every row checked; five grids interleaved through the
+  two in-memory segments; slot exhaustion, release and reuse; a paging file that
+  cannot grow, simulated by refusing one write, both mid-ring and at the first
+  segment; history fed by the real input parser, the alternate screen, resize
+  and scroll regions; and copy mode paging, searching and copying from the
+  file, including the 2048-byte bound on a copy.
 - Clearing a one-row screen when zero-history scrolling occurs.
 - Buffer growth, partial consumption, drain compaction/shrinking, failed-shrink
   recovery, reuse, and socket-poll input/output.

@@ -319,6 +319,10 @@ main(int argc, char **argv)
 #endif
 
 	grid_init_default();
+#ifdef TMUX_GENERATED_COPY
+	/* Before anything can fail: error text is read from a file. */
+	tmux_msg_init(argv[0]);
+#endif
 	flags = 0;
 	shellcmd = label = path = NULL;
 	login_shell = (**argv == '-');
@@ -414,7 +418,10 @@ main(int argc, char **argv)
 	options_set_number(so, "display-panes-time", 1000);
 	options_set_number(so, "display-time", 750);
 /* Native PDP-11 data space is 64K including heap and stack. */
-#ifdef TMUX_NATIVE_211BSD
+#if defined(GRID_VMF_HISTORY)
+	/* History rows go to a paging file instead; see grid-history.c. */
+	options_set_number(so, "history-limit", GRID_HISTORY_ROWS);
+#elif defined(TMUX_NATIVE_211BSD)
 	options_set_number(so, "history-limit", 0);
 #else
 	options_set_number(so, "history-limit", 2000);

@@ -28,10 +28,14 @@
 
 const struct cmd_entry *cmd_table[] = {
 #ifdef TMUX_MILESTONE
-	/* Compact native profile: sessions, whole windows and the command prompt. */
+	/*
+	 * Compact native profile: sessions, whole windows, the command prompt,
+	 * and copy mode with one paste buffer.
+	 */
 	&cmd_attach_session_entry,
 	&cmd_bind_key_entry,
 	&cmd_command_prompt_entry,
+	&cmd_copy_mode_entry,
 	&cmd_detach_client_entry,
 	&cmd_display_message_entry,
 	&cmd_has_session_entry,
@@ -47,6 +51,7 @@ const struct cmd_entry *cmd_table[] = {
 	&cmd_new_session_entry,
 	&cmd_new_window_entry,
 	&cmd_next_window_entry,
+	&cmd_paste_buffer_entry,
 	&cmd_previous_window_entry,
 	&cmd_refresh_client_entry,
 	&cmd_rename_session_entry,

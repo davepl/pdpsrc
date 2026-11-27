@@ -128,9 +128,25 @@ extern char   **environ;
 #define SHELL_LENGTH MAXPATHLEN	/* default shell pathname */
 #endif
 
-/* Fatal errors. */
+/*
+ * Fatal errors.
+ *
+ * The native compiler keeps a private copy of every string literal, so the
+ * usual form costs a format and a file name at each of some 190 calls. There
+ * the format lives once in log.c, and each generated native unit defines
+ * TMUX_UNIT as its name in the shared string array before this header is
+ * read (tools/generate_native_sources.py).
+ */
+#ifdef TMUX_NATIVE_211BSD
+#ifndef TMUX_UNIT
+#define TMUX_UNIT __FILE__
+#endif
+#define fatal(msg) log_fatal_unit(TMUX_UNIT, msg);
+#define fatalx(msg) log_fatalx_unit(TMUX_UNIT, msg);
+#else
 #define fatal(msg) log_fatal("%s: %s", __func__, msg);
 #define fatalx(msg) log_fatalx("%s: %s", __func__, msg);
+#endif
 
 /* Definition to shut gcc up about unused arguments. */
 #define unused __attribute__ ((unused))
@@ -681,6 +697,26 @@ struct grid_utf8 {
 #define GRID_COMPACT_ROWS 1
 #define GRID_ROW_QUANTUM 80U	/* cells per row allocation step */
 #define GRID_STYLE_BYTES 3U	/* attr, flags, fg | bg << 4 */
+
+/*
+ * History outside the data space. The native process has no room for
+ * scrollback in its heap, so rows that scroll off a window go to a paging
+ * file through the 2.11BSD vmf(3) library: fixed records in 1024-byte
+ * segments, of which a few are in memory at a time. linedata then holds the
+ * visible rows only, and hsize counts rows in the file. A history row keeps
+ * its characters and its wrapped flag, not colours or attributes, and cannot
+ * be written after it is stored. See grid-history.c.
+ */
+#if defined(TMUX_NATIVE_211BSD) || defined(TMUX_VMF_HISTORY_TEST)
+#define GRID_VMF_HISTORY 1
+#define GRID_HISTORY_COLUMNS 80U	/* characters kept from a row */
+#define GRID_HISTORY_RECORD 85U		/* flags, length, characters, spare */
+#define GRID_HISTORY_PERSEG 12U		/* records in a 1024-byte segment */
+#define GRID_HISTORY_SEGMENTS 40U	/* segments reserved for one grid */
+#define GRID_HISTORY_SLOTS 12U		/* grids with history: 480 of 512 segments */
+#define GRID_HISTORY_ROWS (GRID_HISTORY_SEGMENTS * GRID_HISTORY_PERSEG)
+#define GRID_HISTORY_BUFFERS 2		/* segments held in memory */
+#endif
 #endif
 
 /* Grid line. */
@@ -710,8 +746,23 @@ struct grid {
 	u_int	hsize;
 	u_int	hlimit;
 
+#ifdef GRID_VMF_HISTORY
+	u_short	hhead;		/* ring position of the oldest history row */
+	u_char	hslot;		/* history slot + 1, or 0 without history */
+#endif
+
 	struct grid_line *linedata;
 };
+
+/*
+ * The stored line for an absolute row. With history outside the data space
+ * only visible rows have one, so py must not be below hsize there.
+ */
+#ifdef GRID_VMF_HISTORY
+#define GRID_LINE(gd, py) (&(gd)->linedata[(py) - (gd)->hsize])
+#else
+#define GRID_LINE(gd, py) (&(gd)->linedata[py])
+#endif
 
 /* Option data structures. */
 struct options_entry {
@@ -1649,6 +1700,11 @@ size_t	cmd_buffer_print(struct cmd *, char *, size_t);
 struct imsgbuf *client_init(char *, int, int);
 __dead void	client_main(void);
 
+/* client-tty.c */
+#ifdef TMUX_NATIVE_211BSD
+void	client_check_tty(const char *);
+#endif
+
 /* key-bindings.c */
 extern struct key_bindings key_bindings;
 int	 key_bindings_cmp(struct key_binding *, struct key_binding *);
@@ -1790,6 +1846,18 @@ void	 grid_move_cells(struct grid *, u_int, u_int, u_int, u_int);
 char	*grid_string_cells(struct grid *, u_int, u_int, u_int);
 void	 grid_duplicate_lines(
     	     struct grid *, u_int, struct grid *, u_int, u_int);
+u_int	 grid_line_cellsize(struct grid *, u_int);
+int	 grid_line_flags(struct grid *, u_int);
+void	 grid_clear_history(struct grid *);
+
+/* grid-history.c */
+#ifdef GRID_VMF_HISTORY
+void	 grid_history_open(struct grid *);
+void	 grid_history_close(struct grid *);
+void	 grid_history_push(struct grid *, const struct grid_line *);
+const u_char *grid_history_row(struct grid *, u_int);
+void	 grid_history_clear(struct grid *);
+#endif
 
 /* grid-view.c */
 const struct grid_cell *grid_view_peek_cell(struct grid *, u_int, u_int);
@@ -2047,6 +2115,13 @@ void printflike1 log_debug(const char *, ...);
 void printflike1 log_debug2(const char *, ...);
 __dead void printflike1 log_fatal(const char *, ...);
 __dead void printflike1 log_fatalx(const char *, ...);
+#ifdef TMUX_NATIVE_211BSD
+__dead void	 log_fatal_unit(const char *, const char *);
+__dead void	 log_fatalx_unit(const char *, const char *);
+#endif
+#ifdef TMUX_GENERATED_COPY
+void		 tmux_msg_init(const char *);
+#endif
 
 /* xmalloc.c */
 char		*xstrdup(const char *);

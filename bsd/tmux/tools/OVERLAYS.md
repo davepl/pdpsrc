@@ -1,11 +1,15 @@
 # Planning the native overlay link
 
 A full-profile native executable has linked, but its runtime behavior has not
-been verified. The selected milestone manifest contains 91 application objects
-and the full manifest 149. The milestone executable planned this way passed its
+been verified. The selected milestone manifest contains 97 application objects
+and the full manifest 152. The milestone executable planned this way passed its
 native session tests on November 26, 2026. This planning procedure is not
 itself an interactive acceptance result. See the [port README](../README.md) for the
-26-command profile and its color/status/history limits.
+28-command profile and its color/status/history limits.
+
+The planner's default libraries are `-lvmf -ltermlib -lc`: the milestone keeps
+window history in a paging file through the system's `libvmf`. An object with
+no text, such as the shared string array `native/xstr.o`, is always resident.
 
 Collect sizes only after every application object has compiled with the native
 PDP-11 tools. From `tmux` on Minerva:

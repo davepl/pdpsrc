@@ -541,8 +541,8 @@ tty_draw_line(struct tty *tty, struct screen *s, u_int py, u_int ox, u_int oy)
 	tty_update_mode(tty, tty->mode & ~MODE_CURSOR);
 
 	sx = screen_size_x(s);
-	if (sx > s->grid->linedata[s->grid->hsize + py].cellsize)
-		sx = s->grid->linedata[s->grid->hsize + py].cellsize;
+	if (sx > GRID_LINE(s->grid, s->grid->hsize + py)->cellsize)
+		sx = GRID_LINE(s->grid, s->grid->hsize + py)->cellsize;
 	if (sx > tty->sx)
 		sx = tty->sx;
 
@@ -552,7 +552,7 @@ tty_draw_line(struct tty *tty, struct screen *s, u_int py, u_int ox, u_int oy)
 	 */
 	gl = NULL;
 	if (py != 0)
-		gl = &s->grid->linedata[s->grid->hsize + py - 1];
+		gl = GRID_LINE(s->grid, s->grid->hsize + py - 1);
 	if (oy + py == 0 || (gl != NULL && !(gl->flags & GRID_LINE_WRAPPED)) ||
 	    tty->cx < tty->sx || ox != 0 ||
 	    (oy + py != tty->cy + 1 && tty->cy != s->rlower + oy))

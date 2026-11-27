@@ -75,7 +75,6 @@ struct mode_key_cmdstr mode_key_cmdstr_choice[] = {
 };
 
 /* Copy keys command strings. */
-#ifndef TMUX_MILESTONE
 struct mode_key_cmdstr mode_key_cmdstr_copy[] = {
 	{ MODEKEYCOPY_BACKTOINDENTATION, "back-to-indentation" },
 	{ MODEKEYCOPY_BOTTOMLINE, "bottom-line" },
@@ -104,7 +103,6 @@ struct mode_key_cmdstr mode_key_cmdstr_copy[] = {
 
 	{ 0, NULL }
 };
-#endif
 
 /* vi editing keys. */
 const struct mode_key_entry mode_key_vi_edit[] = {
@@ -158,7 +156,10 @@ const struct mode_key_entry mode_key_vi_choice[] = {
 };
 struct mode_key_tree mode_key_tree_vi_choice;
 
-/* vi copy mode keys. */
+/*
+ * vi copy mode keys. The milestone profile has no command that can set
+ * mode-keys, so it carries only the emacs table.
+ */
 #ifndef TMUX_MILESTONE
 const struct mode_key_entry mode_key_vi_copy[] = {
 	{ ' ',			0, MODEKEYCOPY_STARTSELECTION },
@@ -254,7 +255,6 @@ const struct mode_key_entry mode_key_emacs_choice[] = {
 struct mode_key_tree mode_key_tree_emacs_choice;
 
 /* emacs copy mode keys. */
-#ifndef TMUX_MILESTONE
 const struct mode_key_entry mode_key_emacs_copy[] = {
 	{ ' ',			0, MODEKEYCOPY_NEXTPAGE },
 	{ '\000' /* C-Space */,	0, MODEKEYCOPY_STARTSELECTION },
@@ -295,7 +295,6 @@ const struct mode_key_entry mode_key_emacs_copy[] = {
 	{ 0,			-1, 0 }	
 };
 struct mode_key_tree mode_key_tree_emacs_copy;
-#endif
 
 /* Table mapping key table names to default settings and trees. */
 const struct mode_key_table mode_key_tables[] = {
@@ -311,10 +310,8 @@ const struct mode_key_table mode_key_tables[] = {
 	  &mode_key_tree_emacs_edit, mode_key_emacs_edit },
 	{ "emacs-choice", mode_key_cmdstr_choice,
 	  &mode_key_tree_emacs_choice, mode_key_emacs_choice },
-#ifndef TMUX_MILESTONE
 	{ "emacs-copy", mode_key_cmdstr_copy,
 	  &mode_key_tree_emacs_copy, mode_key_emacs_copy },
-#endif
 
 	{ NULL, NULL, NULL, NULL }
 };

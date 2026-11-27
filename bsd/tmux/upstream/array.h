@@ -30,11 +30,22 @@
 #define ARRAY_ITEMSIZE(a) (sizeof *(a)->list)
 #define ARRAY_INITIALSPACE(a) (10 * ARRAY_ITEMSIZE(a))
 
+/*
+ * The native compiler stores a literal again at every expansion, and
+ * ARRAY_ENSURE expands in a dozen units. The generated native copy of a
+ * unit defines these two as references to the shared string array first
+ * (tools/generate_native_sources.py).
+ */
+#ifndef ARRAY_NUMBER_BIG
+#define ARRAY_NUMBER_BIG "number too big"
+#define ARRAY_SIZE_BIG "size too big"
+#endif
+
 #define ARRAY_ENSURE(a, n) do {						\
 	if (UINT_MAX - (n) < (a)->num)					\
-		fatalx("number too big");				\
+		fatalx(ARRAY_NUMBER_BIG);				\
 	if (SIZE_MAX / ((a)->num + (n)) < ARRAY_ITEMSIZE(a))		\
-		fatalx("size too big");					\
+		fatalx(ARRAY_SIZE_BIG);					\
 	if ((a)->space == 0) {						\
 	       	(a)->space = ARRAY_INITIALSPACE(a);			\
 		(a)->list = xrealloc((a)->list, 1, (a)->space);		\

@@ -50,7 +50,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--cc', default='clang')
     args = parser.parse_args()
-    source = function((ROOT / 'upstream/client.c').read_text(), 'client_tty_refused')
+    source = function((ROOT / 'upstream/client-tty.c').read_text(), 'client_tty_refused')
     program = ('#include <sys/types.h>\n#include <assert.h>\n#include <stdio.h>\n\n' +
                source + HARNESS)
     with tempfile.TemporaryDirectory(prefix='tmux-client-tty-') as temporary:

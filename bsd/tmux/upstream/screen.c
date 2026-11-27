@@ -182,9 +182,15 @@ screen_resize_y(struct screen *s, u_int sy)
 		 * XXX Should apply history limit?
 		 */
 		available = s->cy;
-		if (gd->flags & GRID_HISTORY)
+		if (gd->flags & GRID_HISTORY) {
+#ifdef GRID_VMF_HISTORY
+			/* Each call stores the top row and moves the rest up. */
+			for (i = 0; i < needed; i++)
+				grid_scroll_history(gd);
+#else
 			gd->hsize += needed;
-		else if (needed > 0 && available > 0) {
+#endif
+		} else if (needed > 0 && available > 0) {
 			if (available > needed)
 				available = needed;
 			grid_view_delete_lines(gd, 0, available);
@@ -193,8 +199,12 @@ screen_resize_y(struct screen *s, u_int sy)
  	}
 
 	/* Resize line arrays. */
+#ifdef GRID_VMF_HISTORY
+	gd->linedata = xrealloc(gd->linedata, sy, sizeof *gd->linedata);
+#else
 	gd->linedata = xrealloc(
 	    gd->linedata, gd->hsize + sy, sizeof *gd->linedata);
+#endif
 
 	/* Size increasing. */
 	if (sy > oldy) {
@@ -205,6 +215,10 @@ screen_resize_y(struct screen *s, u_int sy)
 		 * is enabled.
 		 */
 		available = gd->hsize;
+#ifdef GRID_VMF_HISTORY
+		/* Rows already in the history file stay there. */
+		available = 0;
+#endif
 		if (gd->flags & GRID_HISTORY && available > 0) {
 			if (available > needed)
 				available = needed;
@@ -216,7 +230,7 @@ screen_resize_y(struct screen *s, u_int sy)
 
 		/* Then fill the rest in with blanks. */
 		for (i = gd->hsize + sy - needed; i < gd->hsize + sy; i++)
-			memset(&gd->linedata[i], 0, sizeof gd->linedata[i]);
+			memset(GRID_LINE(gd, i), 0, sizeof *gd->linedata);
 	}
 
 	/* Set the new size, and reset the scroll region. */

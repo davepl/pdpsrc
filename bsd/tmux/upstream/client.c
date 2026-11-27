@@ -19,13 +19,11 @@
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
-#include <sys/stat.h>
 #include <sys/un.h>
 #include <sys/wait.h>
 
 #include <errno.h>
 #include <fcntl.h>
-#include <pwd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <syslog.h>
@@ -44,51 +42,9 @@ const char     *client_exitmsg;
 
 void	client_send_identify(int);
 void	client_send_environ(void);
-#ifdef TMUX_NATIVE_211BSD
-static int	client_tty_refused(uid_t, uid_t, mode_t);
-static void	client_check_tty(const char *);
-#endif
 void	client_write_server(enum msgtype, void *, size_t);
 int	client_dispatch(void);
 void	client_suspend(void);
-
-#ifdef TMUX_NATIVE_211BSD
-/*
- * The native server opens the client's terminal by pathname, as the user it
- * runs as. Decide from the two owners and the terminal's mode whether that is
- * certain to fail. Access through the group is left for the server to try.
- */
-static int
-client_tty_refused(uid_t server_uid, uid_t tty_uid, mode_t tty_mode)
-{
-	if (server_uid == 0 || server_uid == tty_uid)
-		return (0);
-	if ((tty_mode & 0006) == 0006 || (tty_mode & 0060) == 0060)
-		return (0);
-	return (1);
-}
-
-/* Explain a certain refusal here; the server can only say that it failed. */
-static void
-client_check_tty(const char *path)
-{
-	struct stat	 server, tty;
-	struct passwd	*pw;
-	char		*name;
-
-	if ((name = ttyname(STDIN_FILENO)) == NULL)
-		return;
-	if (stat(path, &server) != 0 || stat(name, &tty) != 0)
-		return;
-	if (!client_tty_refused(server.st_uid, tty.st_uid, tty.st_mode))
-		return;
-	pw = getpwuid(server.st_uid);
-	log_warnx("this server runs as %s and cannot open %s",
-	    pw != NULL ? pw->pw_name : "another user", name);
-	log_warnx("log in as that user, or first run: chmod o+rw %s", name);
-	exit(1);
-}
-#endif
 
 struct imsgbuf *
 client_init(char *path, int cmdflags, int flags)

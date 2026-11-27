@@ -121,6 +121,8 @@ key_bindings_init(void)
 		{ '9', 			  0, &cmd_select_window_entry },
 		{ ':', 			  0, &cmd_command_prompt_entry },
 		{ '?', 			  0, &cmd_list_keys_entry },
+		{ '[', 			  0, &cmd_copy_mode_entry },
+		{ ']', 			  0, &cmd_paste_buffer_entry },
 		{ 'c', 			  0, &cmd_new_window_entry },
 		{ 'd', 			  0, &cmd_detach_client_entry },
 		{ 'i',			  0, &cmd_display_message_entry },
@@ -131,6 +133,7 @@ key_bindings_init(void)
 		{ '\002', /* C-b */	  0, &cmd_send_prefix_entry },
 		{ 'n' | KEYC_ESCAPE, 	  0, &cmd_next_window_entry },
 		{ 'p' | KEYC_ESCAPE, 	  0, &cmd_previous_window_entry },
+		{ KEYC_PPAGE, 		  0, &cmd_copy_mode_entry },
 #else
 		{ ' ',			  0, &cmd_next_layout_entry },
 		{ '!', 			  0, &cmd_break_pane_entry },
